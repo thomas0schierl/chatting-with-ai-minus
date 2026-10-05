@@ -52,7 +52,7 @@ test('The plan welcome is shown after the first sign-in only', async () => {
   let saves = 0;
   const plugin = { settings: { ...settings('chatgpt-oauth'), chatgptPlanWelcomeShown: false }, saveSettings: async () => { saves++; } };
   const tab = new api.ChatSettingTab({}, plugin);
-  tab.display = () => {};
+  tab.update = () => {};
 
   await tab.afterSignIn();
   assert.equal(globalThis.__modals.length, 1);

@@ -1,4 +1,4 @@
-import { App, Modal, Notice, PluginSettingTab, Setting, requireApiVersion, type SettingDefinitionItem } from "obsidian";
+import { App, Modal, Notice, PluginSettingTab, Setting, type SettingDefinitionItem } from "obsidian";
 import type ChatPlugin from "./main";
 import type { Provider } from "./types";
 import { DEFAULT_PROVIDER_MODELS } from "./types";
@@ -67,12 +67,12 @@ export class ChatSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
-  // Obsidian 1.13+ indexes these definitions; older versions retain display().
+  // Obsidian renders the tab from these definitions and indexes them for search.
   getSettingDefinitions(): SettingDefinitionItem[] {
     return [
       { name: "Provider", render: setting => this.renderProvider(setting) },
-      { name: "API key", visible: () => this.plugin.settings.provider !== "chatgpt-oauth", render: setting => this.renderApiKeySection(setting.settingEl.parentElement!, setting) },
-      { name: "ChatGPT account", visible: () => this.plugin.settings.provider === "chatgpt-oauth", render: setting => this.renderChatGPTOAuthSection(setting.settingEl.parentElement!, setting) },
+      { name: "API key", visible: () => this.plugin.settings.provider !== "chatgpt-oauth", render: setting => this.renderApiKeySection(setting) },
+      { name: "ChatGPT account", visible: () => this.plugin.settings.provider === "chatgpt-oauth", render: setting => this.renderChatGPTOAuthSection(setting) },
       { name: "Model", aliases: ["Custom model ID", "Refresh models"], render: setting => {
         this.renderModelSection(setting.settingEl.parentElement!, setting);
         void this.loadCatalog(false);
@@ -88,14 +88,9 @@ export class ChatSettingTab extends PluginSettingTab {
     this.editingCustomModel = false;
   }
 
-  private refreshSettingsTab(): void {
-    if (requireApiVersion("1.13.0")) this.update();
-    else this.display();
-  }
-
   /** After a ChatGPT sign-in: the one-time plan welcome, later a short notice. */
   private async afterSignIn(): Promise<void> {
-    this.refreshSettingsTab();
+    this.update();
     if (this.plugin.settings.chatgptPlanWelcomeShown) {
       new Notice("ChatGPT connected. Chats now use your ChatGPT plan.");
       return;
@@ -103,29 +98,6 @@ export class ChatSettingTab extends PluginSettingTab {
     this.plugin.settings.chatgptPlanWelcomeShown = true;
     await this.plugin.saveSettings();
     new ChatGPTPlanWelcomeModal(this.app).open();
-  }
-
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-    const s = this.plugin.settings;
-
-    this.renderProvider(new Setting(containerEl));
-
-    // ─── Auth section: API key OR OAuth Connect ───────────────────────
-    if (s.provider === "chatgpt-oauth") {
-      this.renderChatGPTOAuthSection(containerEl);
-    } else {
-      this.renderApiKeySection(containerEl);
-    }
-
-    // ─── Model ────────────────────────────────────────────────────────
-    this.renderModelSection(containerEl);
-    void this.loadCatalog(false);
-    if (this.thinkingOptions()) this.renderThinkingLevel(new Setting(containerEl));
-
-    this.renderWebSearch(new Setting(containerEl));
-    this.renderMaxIterations(new Setting(containerEl));
   }
 
   private renderProvider(setting: Setting): void {
@@ -153,7 +125,7 @@ export class ChatSettingTab extends PluginSettingTab {
             this.editingCustomModel = false;
             this.plugin.reloadApiKeyForProvider();
             await this.plugin.saveSettings();
-            window.setTimeout(() => this.refreshSettingsTab(), 10);
+            window.setTimeout(() => this.update(), 10);
           })
       );
 
@@ -194,10 +166,10 @@ export class ChatSettingTab extends PluginSettingTab {
 
   // ─── API key + test (anthropic / openai) ──────────────────────────────────
 
-  private renderApiKeySection(containerEl: HTMLElement, row?: Setting): void {
+  private renderApiKeySection(row: Setting): void {
     const s = this.plugin.settings;
 
-    const apiKeySetting = (row ?? new Setting(containerEl))
+    const apiKeySetting = row
       .setName("API key")
       .setDesc(s.apiKey ? "Key saved" : "Enter your API key to get started")
       .addText((text) => {
@@ -220,7 +192,7 @@ export class ChatSettingTab extends PluginSettingTab {
             }
             this.apiKeyTimer = window.setTimeout(() => {
               this.apiKeyEditing = false;
-              this.refreshSettingsTab();
+              this.update();
             }, 800);
           });
       });
@@ -259,11 +231,11 @@ export class ChatSettingTab extends PluginSettingTab {
 
   // ─── ChatGPT OAuth ────────────────────────────────────────────────────────
 
-  private renderChatGPTOAuthSection(containerEl: HTMLElement, row?: Setting): void {
+  private renderChatGPTOAuthSection(row: Setting): void {
     const credential = this.plugin.chatgptOAuth.getCredential();
 
     if (credential) {
-      (row ?? new Setting(containerEl))
+      row
         .setName("ChatGPT account")
         .setDesc(credential.email ? `Using your ChatGPT plan as ${credential.email}.` : "Using your ChatGPT plan.")
         .addButton((button) => button.setButtonText("Manage usage").onClick(() => {
@@ -287,10 +259,9 @@ export class ChatSettingTab extends PluginSettingTab {
               new Notice(revoked
                 ? "ChatGPT disconnected."
                 : "Disconnected on this device. OpenAI didn't confirm the sign-out; you can remove the app in ChatGPT settings.");
-              this.refreshSettingsTab();
+              this.update();
             });
-          if (requireApiVersion("1.13.0")) button.setDestructive();
-          else button.setWarning();
+          button.setDestructive();
         })
         .addButton((button) =>
           button.setButtonText("Test").onClick(async () => {
@@ -319,7 +290,7 @@ export class ChatSettingTab extends PluginSettingTab {
           })
         );
     } else {
-      (row ?? new Setting(containerEl))
+      row
         .setName("ChatGPT account")
         .setDesc("Use your ChatGPT plan instead of an API key.")
         .addButton((button) =>
@@ -335,12 +306,12 @@ export class ChatSettingTab extends PluginSettingTab {
 
   // ─── Model picker ─────────────────────────────────────────────────────────
 
-  private renderModelSection(containerEl: HTMLElement, row?: Setting): void {
+  private renderModelSection(containerEl: HTMLElement, row: Setting): void {
     const s = this.plugin.settings;
     const cached = this.catalogModels;
     const models = cached || FALLBACK_MODELS[s.provider] || FALLBACK_MODELS.anthropic;
 
-    const modelSetting = (row ?? new Setting(containerEl))
+    const modelSetting = row
       .setName("Model")
       .setDesc(this.catalogError || (cached ? `${cached.length} models. Cached for 24 hours; refresh to check now.` : "Using defaults. Models load automatically when connected."))
       .addDropdown((dropdown) => {
@@ -359,14 +330,14 @@ export class ChatSettingTab extends PluginSettingTab {
           if (value === CUSTOM_MODEL_OPTION) {
             // UI state only: the model changes once an ID is typed.
             this.editingCustomModel = true;
-            this.refreshSettingsTab();
+            this.update();
             return;
           }
           this.editingCustomModel = false;
           s.model = value;
           await this.plugin.saveSettings();
           // The thinking levels on offer depend on the model.
-          this.refreshSettingsTab();
+          this.update();
         });
       });
 
@@ -424,7 +395,7 @@ export class ChatSettingTab extends PluginSettingTab {
         dropdown.onChange(async (value) => {
           s.thinkingLevel = value;
           await this.plugin.saveSettings();
-          this.refreshSettingsTab();
+          this.update();
         });
       });
   }
@@ -456,7 +427,7 @@ export class ChatSettingTab extends PluginSettingTab {
         this.catalogError = "";
         changed = true;
       }
-      if (changed && cached) this.refreshSettingsTab();
+      if (changed && cached) this.update();
       if (!force && cached && Date.now() - cached.fetchedAt >= 0 && Date.now() - cached.fetchedAt < CATALOG_TTL) return;
       const models = await refreshCatalog(state, provider, identity, s.apiKey, this.plugin.chatgptOAuth, force);
       if (!current()) return;
@@ -475,8 +446,8 @@ export class ChatSettingTab extends PluginSettingTab {
       }
     } finally {
       this.loadingCatalog = false;
-      if (current() && (changed || force)) this.refreshSettingsTab();
-      else if (!current()) this.refreshSettingsTab();
+      if (current() && (changed || force)) this.update();
+      else if (!current()) this.update();
     }
   }
 

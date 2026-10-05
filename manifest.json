@@ -2,7 +2,7 @@
   "id": "chatting-with-ai-minus",
   "name": "Chatting with AI Minus",
   "version": "0.1.0",
-  "minAppVersion": "1.11.4",
+  "minAppVersion": "1.13.0",
   "description": "AI chat that reads, searches, creates and edits your notes. Supports Anthropic, OpenAI and ChatGPT account sign-in.",
   "author": "Thomas Schierl",
   "isDesktopOnly": false

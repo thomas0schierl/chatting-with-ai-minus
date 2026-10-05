@@ -470,7 +470,7 @@ test('Settings: fresh persisted catalog opens repeatedly without network or rese
   const identity = await api.catalogIdentity('openai','settings-cache');
   const plugin = {settings:{...settings('openai'),apiKey:'settings-cache',model:'future-custom',modelCatalog:{entries:[{identity,provider:'openai',models:[{value:'gpt-6.1-sol',label:'GPT 6.1'}],fetchedAt:Date.now()}]}},saveSettings:async()=>assert.fail('No write needed for fresh cache')};
   const tab = new api.ChatSettingTab({},plugin);
-  tab.display = ()=>{};
+  tab.update = ()=>{};
   globalThis.__providerRequest = async()=>assert.fail('Fresh cache must not request network');
   await tab.loadCatalog(false);
   await tab.loadCatalog(false);
@@ -483,7 +483,7 @@ test('Settings: stale cache renders before background request resolves and failu
   const plugin = {settings:{...settings('openai'),apiKey:'settings-stale',model:'future-custom',modelCatalog:{entries:[{identity,provider:'openai',models,fetchedAt:0}]}},saveSettings:async()=>{}};
   const tab = new api.ChatSettingTab({},plugin);
   const displays=[];
-  tab.display=()=>displays.push(tab.catalogModels);
+  tab.update=()=>displays.push(tab.catalogModels);
   let finish, started;
   const waiting = new Promise(resolve=>started=resolve);
   globalThis.__providerRequest=async()=>{started();return new Promise(resolve=>finish=resolve);};
@@ -499,7 +499,7 @@ test('Settings: account change during refresh never displays the former account 
   let account='account-a';
   const plugin={settings:{...settings('chatgpt-oauth'),modelCatalog:{entries:[]}},chatgptOAuth:{getCredential:()=>({accountId:account}),getUsableCredential:async()=>({accessToken:'fake',accountId:account})},saveSettings:async()=>{}};
   const tab=new api.ChatSettingTab({},plugin);
-  tab.display=()=>{};
+  tab.update=()=>{};
   let finish, started;
   const waiting=new Promise(resolve=>started=resolve);
   globalThis.__providerRequest=async()=>(started(),new Promise(resolve=>finish=resolve));
@@ -558,18 +558,13 @@ test('Agent freezes provider/model configuration for a multi-tool turn', async (
   assert.equal(requests[0].model,requests[1].model);
 });
 
-test('Declarative settings stay searchable and reuse the legacy renderers without fetching during indexing', () => {
+test('Declarative settings stay searchable without fetching during indexing', () => {
   const plugin={settings:settings('openai')}; const tab=new api.ChatSettingTab({},plugin);
   globalThis.__providerRequest=async()=>assert.fail('Indexing must not perform network I/O');
   const definitions=tab.getSettingDefinitions();
   assert.deepEqual(definitions.map(d=>d.name),['Provider','API key','ChatGPT account','Model','Thinking level','Web search','Max tool iterations']);
   assert.equal(definitions[1].visible(),true); assert.equal(definitions[2].visible(),false);
   plugin.settings.provider='chatgpt-oauth'; assert.equal(definitions[1].visible(),false); assert.equal(definitions[2].visible(),true);
-  let updates=0,displays=0; tab.display=()=>displays++;
-  tab.refreshSettingsTab(); assert.equal(displays,1);
-  globalThis.__supportsNewObsidian=true;
-  tab.update=()=>updates++; tab.refreshSettingsTab(); assert.equal(updates,1); assert.equal(displays,1);
-  globalThis.__supportsNewObsidian=false;
 });
 test('OAuth catalog refuses to associate a new account credential with an old cache identity', async () => {
   const state={entries:[]};
@@ -604,7 +599,7 @@ test('Settings: thinking level offers the catalog levels of the selected model a
   const saved = [];
   const plugin = {settings:{...settings('chatgpt-oauth'),thinkingLevel:'xhigh'},saveSettings:async()=>saved.push(plugin.settings.thinkingLevel)};
   const tab = new api.ChatSettingTab({},plugin);
-  tab.display = ()=>{};
+  tab.update = ()=>{};
   const thinking = tab.getSettingDefinitions().find(d=>d.name==='Thinking level');
   assert.equal(thinking.visible(), false);
   tab.catalogModels = models;
@@ -651,8 +646,8 @@ test('Settings: "Custom..." is UI state only and never saves an empty model', as
     const plugin = {settings:{...settings(provider)},saveSettings:async()=>{saves++;}};
     const original = plugin.settings.model;
     const tab = new api.ChatSettingTab({},plugin);
-    let refreshes = 0; tab.display = ()=>{refreshes++;};
-    const render = () => { globalThis.__settingRows = []; tab.renderModelSection({}); return globalThis.__settingRows; };
+    let refreshes = 0; tab.update = ()=>{refreshes++;};
+    const render = () => { globalThis.__settingRows = []; tab.renderModelSection({}, new api.Setting()); return globalThis.__settingRows; };
     let rows = render();
     let dropdown = rows[0].controls[0];
     assert.equal(dropdown.value, original);

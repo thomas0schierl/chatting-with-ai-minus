@@ -8,6 +8,7 @@ import { build } from 'esbuild';
 export const bundled = await build({
   stdin: { contents: `
     export { ChatSettingTab, getModelHeaderLabel } from './src/settings';
+    export { Setting } from 'obsidian';
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';
     export { AgentLoop } from './src/agent/loop';
@@ -37,7 +38,7 @@ export const bundled = await build({
       export class ItemView {}
       export class Menu {}
       export class Modal { constructor(app) { this.app = app; this.contentEl = {}; } open() { (globalThis.__modals ??= []).push(this); } close() {} }
-      export class PluginSettingTab { hide() {} }
+      export class PluginSettingTab { hide() {} update() {} }
       // Records rendered rows and their controls in globalThis.__settingRows.
       export class Setting {
         constructor() { this.controls = []; (globalThis.__settingRows ??= []).push(this); }
@@ -53,7 +54,6 @@ export const bundled = await build({
         addText(fn) { return this.control(fn); }
         addButton(fn) { return this.control(fn); }
       }
-      export const requireApiVersion = () => globalThis.__supportsNewObsidian === true;
       export const apiVersion = 'test';
       // Shown notices are recorded in globalThis.__notices.
       export class Notice { constructor(message) { (globalThis.__notices ??= []).push(message); } }
