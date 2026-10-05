@@ -399,11 +399,6 @@ test('ChatGPT: aggregated completed SSE output is retained without item.done eve
 });
 
 
-test('Model catalog: migration preserves future/custom IDs and fixes only version dashes', () => {
-  for (const id of ['gpt-6.1-sol', 'gpt-6-astra', 'o9', 'custom-model', 'gpt-5-mini']) assert.equal(api.migrateOAuthModel(id), id);
-  assert.equal(api.migrateOAuthModel('gpt-6-1-sol'), 'gpt-6.1-sol');
-  assert.equal(api.migrateOAuthModel('gpt-5-5'), 'gpt-5.5');
-});
 test('Catalog persistence rejects credentials and invalid identities', () => {
   const state = api.normalizeCatalogState({entries:[{provider:'openai',identity:'secret-key',fetchedAt:1,models:[]}],accessToken:'secret'});
   assert.deepEqual(state, {entries:[]});

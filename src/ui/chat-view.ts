@@ -6,7 +6,7 @@ import ChatContainer from "./ChatContainer.svelte";
 import type { ToolResult, SelectionScope, ImageAttachment } from "../types";
 import { getModelDisplayName } from "../settings";
 
-export const VIEW_TYPE_CHAT = "ochatting-view";
+export const VIEW_TYPE_CHAT = "chatting-minus-view";
 
 interface ChatContainerProps {
   app: App;
@@ -36,7 +36,7 @@ interface ChatContainerApi extends Record<string, unknown> {
 }
 
 /**
- * Chat view for Chatting with AI.
+ * Chat view for Chatting with AI Minus.
  * Desktop: right sidebar. Mobile: right sidebar (slides in from edge).
  * Uses the plugin's shared AgentLoop and chatHistory so conversations
  * survive the view being closed and reopened (e.g. sidebar toggle).
@@ -58,7 +58,7 @@ export class ObsidianChatView extends ItemView {
   getDisplayText(): string {
     // Distinct from upstream "Chat" tab so users running both plugins
     // side-by-side can tell the workspace tabs apart.
-    return "Chatting with AI";
+    return "Chatting with AI Minus";
   }
 
   getIcon(): string {
@@ -68,7 +68,7 @@ export class ObsidianChatView extends ItemView {
   async onOpen(): Promise<void> {
     const container = this.contentEl;
     container.empty();
-    container.addClass("ochatting-view-container");
+    container.addClass("chatting-minus-view-container");
 
     this.chatContainer = mount<ChatContainerProps, ChatContainerApi>(
       ChatContainer as unknown as Component<ChatContainerProps, ChatContainerApi>,

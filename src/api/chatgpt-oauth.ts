@@ -31,6 +31,7 @@ import {
   ChatGPTOAuthError,
   type ChatGPTOAuthService,
 } from "../auth/chatgptOAuth";
+import { PLUGIN_ID } from "../plugin-id";
 
 const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 
@@ -57,7 +58,7 @@ const ORIGINATOR = "opencode";
  * so we set one explicitly. This is defensive — the backend may or may not
  * gate on UA, but matching the SDK's shape avoids surprises.
  */
-const USER_AGENT = "OpenAI/JS 4.x chatting-with-ai/0.1";
+const USER_AGENT = `OpenAI/JS 4.x ${PLUGIN_ID}/0.1`;
 
 // Settings uses the account-specific Codex catalog, preserving custom model IDs.
 
@@ -103,7 +104,7 @@ export async function sendChatGPTOAuthMessage(
   }
   if (!credential) {
     throw new ChatGPTOAuthError(
-      "ChatGPT OAuth is not connected. Open Settings -> Chatting with AI -> Connect ChatGPT.",
+      "ChatGPT OAuth is not connected. Open Settings -> Chatting with AI Minus -> Connect ChatGPT.",
     );
   }
 

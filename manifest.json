@@ -1,11 +1,9 @@
 {
-  "id": "chatting-with-ai",
-  "name": "Chatting with AI",
-  "version": "0.4.0",
+  "id": "chatting-with-ai-minus",
+  "name": "Chatting with AI Minus",
+  "version": "0.1.0",
   "minAppVersion": "1.11.4",
-  "description": "Agentic AI chat assistant that reads, edits, and creates notes through natural conversation. Supports Anthropic, OpenAI, and ChatGPT account sign-in.",
-  "author": "Yuxiao (o1xhack)",
-  "authorUrl": "https://github.com/o1xhack",
-  "fundingUrl": "https://github.com/sponsors/o1xhack",
+  "description": "AI chat that reads, searches, creates and edits your notes. Supports Anthropic, OpenAI and ChatGPT account sign-in.",
+  "author": "Thomas Schierl",
   "isDesktopOnly": false
 }

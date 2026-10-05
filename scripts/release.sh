@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Release helper for Chatting with AI.
+# Release helper for Chatting with AI Minus.
 #
 # Usage:
 #   scripts/release.sh <version> [notes-file]
@@ -84,4 +84,4 @@ else
     --title "$VERSION" --generate-notes
 fi
 
-echo "==> Done: https://github.com/o1xhack/obsidian-chatting/releases/tag/$VERSION"
+echo "==> Done: $(gh release view "$VERSION" --json url --jq .url)"

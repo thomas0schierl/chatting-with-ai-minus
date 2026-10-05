@@ -11,6 +11,7 @@
  * fan-out, no legacy migration to worry about.
  */
 import type { App } from "obsidian";
+import { PLUGIN_ID } from "../plugin-id";
 
 export interface ChatGPTOAuthCredential {
   accessToken: string;
@@ -26,10 +27,9 @@ export interface ChatGPTOAuthCredential {
 }
 
 // Obsidian's SecretStorage validates IDs as "lowercase alphanumeric with
-// optional dashes" — no colons or uppercase. Keep this in sync with the
-// plugin id so the OS keychain entries are easy to identify.
-const OAUTH_SECRET_KEY = "chatting-with-ai-chatgpt-oauth";
-const LEGACY_OAUTH_SECRET_KEY = "obsidian-chatting-chatgpt-oauth";
+// optional dashes" — no colons or uppercase. Prefixed with the plugin id so
+// the OS keychain entries are easy to identify.
+const OAUTH_SECRET_KEY = `${PLUGIN_ID}-chatgpt-oauth`;
 const EXPIRY_BUFFER_MS = 30_000;
 
 export class ChatGPTOAuthStore {
@@ -39,10 +39,7 @@ export class ChatGPTOAuthStore {
   get(): ChatGPTOAuthCredential | null {
     let raw: string | null = null;
     try {
-      raw =
-        this.app.secretStorage.getSecret(OAUTH_SECRET_KEY) ??
-        this.app.secretStorage.getSecret(LEGACY_OAUTH_SECRET_KEY) ??
-        null;
+      raw = this.app.secretStorage.getSecret(OAUTH_SECRET_KEY);
     } catch {
       return null;
     }

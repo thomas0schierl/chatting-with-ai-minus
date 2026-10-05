@@ -224,7 +224,7 @@ export class ChatSettingTab extends PluginSettingTab {
     const credential = this.plugin.chatgptOAuth.getCredential();
 
     const explainer = containerEl.createDiv({
-      cls: "setting-item-description ochatting-oauth-explainer",
+      cls: "setting-item-description chatting-minus-oauth-explainer",
     });
     if (row) row.settingEl.before(explainer);
     explainer.createSpan({
@@ -451,7 +451,7 @@ class ChatGPTDeviceLoginModal extends Modal {
     contentEl.createEl("p", {
       text: "1. Open this page in any browser:",
     });
-    const linkRow = contentEl.createDiv({ cls: "ochatting-device-link-row" });
+    const linkRow = contentEl.createDiv({ cls: "chatting-minus-device-link-row" });
     const link = linkRow.createEl("a", {
       text: this.authorization.verificationUri,
       href: this.authorization.verificationUri,
@@ -460,11 +460,11 @@ class ChatGPTDeviceLoginModal extends Modal {
     link.setAttr("rel", "noopener");
 
     contentEl.createEl("p", { text: "2. Enter this code on the page:" });
-    const codeRow = contentEl.createDiv({ cls: "ochatting-device-code-row" });
+    const codeRow = contentEl.createDiv({ cls: "chatting-minus-device-code-row" });
 
     codeRow.createEl("code", {
       text: this.authorization.userCode,
-      cls: "ochatting-device-code",
+      cls: "chatting-minus-device-code",
     });
 
     const copyBtn = codeRow.createEl("button", { text: "Copy code" });
@@ -477,10 +477,10 @@ class ChatGPTDeviceLoginModal extends Modal {
 
     const status = contentEl.createEl("p", {
       text: "Waiting for authorization. You can return here after signing in.",
-      cls: "ochatting-device-status",
+      cls: "chatting-minus-device-status",
     });
 
-    const buttons = contentEl.createDiv({ cls: "ochatting-device-buttons" });
+    const buttons = contentEl.createDiv({ cls: "chatting-minus-device-buttons" });
 
     const openBtn = buttons.createEl("button", { text: "Open login page" });
     openBtn.classList.add("mod-cta");
@@ -507,8 +507,8 @@ class ChatGPTDeviceLoginModal extends Modal {
         if (this.cancelled) return;
         const msg = e instanceof Error ? e.message : String(e);
         status.setText(`Login failed: ${msg}`);
-        status.removeClass("ochatting-device-status");
-        status.addClass("ochatting-device-status-error");
+        status.removeClass("chatting-minus-device-status");
+        status.addClass("chatting-minus-device-status-error");
       });
   }
 

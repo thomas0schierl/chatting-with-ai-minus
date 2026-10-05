@@ -14,15 +14,9 @@ import { ObsidianChatView, VIEW_TYPE_CHAT } from "./ui/chat-view";
 import { AgentLoop } from "./agent/loop";
 import { ChatGPTOAuthStore } from "./auth/chatgptOAuthStore";
 import { ChatGPTOAuthService } from "./auth/chatgptOAuth";
-import { migrateOAuthModel as migrateChatGPTOAuthModelSlug, normalizeCatalogState } from "./api/model-catalog";
+import { normalizeCatalogState } from "./api/model-catalog";
 import { setChatGPTOAuthService } from "./api/chatgpt-oauth";
-
-const PLUGIN_ID = "chatting-with-ai";
-const LEGACY_PLUGIN_ID = "obsidian-chatting";
-const LEGACY_RELEASE_ASSETS = new Set(["main.js", "manifest.json", "styles.css"]);
-const SECRET_PROVIDERS = ["anthropic", "openai", "chatgpt-oauth"];
-const CHATGPT_OAUTH_SECRET_KEY = `${PLUGIN_ID}-chatgpt-oauth`;
-const LEGACY_CHATGPT_OAUTH_SECRET_KEY = `${LEGACY_PLUGIN_ID}-chatgpt-oauth`;
+import { PLUGIN_ID } from "./plugin-id";
 
 export default class ChatPlugin extends Plugin {
   settings: ChatSettings = DEFAULT_SETTINGS;
@@ -41,7 +35,6 @@ export default class ChatPlugin extends Plugin {
   }> = [];
 
   async onload(): Promise<void> {
-    await this.migrateLegacyPluginData();
     await this.loadSettings();
 
     // Wire ChatGPT OAuth before constructing the agent: the OAuth API client
@@ -61,7 +54,7 @@ export default class ChatPlugin extends Plugin {
     this.registerView(VIEW_TYPE_CHAT, (leaf) => new ObsidianChatView(leaf, this));
 
     // Ribbon icon (users can hide; commands are the primary access)
-    this.addRibbonIcon("message-circle", "Open Chatting with AI", (evt) => {
+    this.addRibbonIcon("message-circle", "Open Chatting with AI Minus", (evt) => {
       if (evt.type === "contextmenu" || evt.button === 2) {
         // Right-click: show menu with options
         const menu = new Menu();
@@ -177,9 +170,9 @@ export default class ChatPlugin extends Plugin {
 
   private notConfiguredMessage(): string {
     if (this.settings.provider === "chatgpt-oauth") {
-      return "Connect your ChatGPT account in Chatting with AI settings.";
+      return "Connect your ChatGPT account in Chatting with AI Minus settings.";
     }
-    return "Please configure your API key in Chatting with AI settings.";
+    return "Please configure your API key in Chatting with AI Minus settings.";
   }
 
   private async openChat(): Promise<void> {
@@ -307,7 +300,7 @@ export default class ChatPlugin extends Plugin {
 
   private async loadChatHistory(): Promise<void> {
     try {
-      const raw = await this.readFirstExisting([this.chatStatePath, this.legacyChatStatePath]);
+      const raw = await this.app.vault.adapter.read(this.chatStatePath);
       const state: unknown = JSON.parse(raw);
       if (!isPersistedChatState(state)) return;
       if (Array.isArray(state.chatHistory)) {
@@ -330,19 +323,6 @@ export default class ChatPlugin extends Plugin {
     // Fall back to default model if saved model is empty
     if (!this.settings.model) {
       this.settings.model = DEFAULT_PROVIDER_MODELS[this.settings.provider];
-    }
-
-    // Migrate ChatGPT OAuth model slugs that an earlier release wrote with
-    // dash-form versions (`gpt-5-5`, `gpt-5-2`, …). The Codex backend only
-    // accepts dotted slugs (`gpt-5.5`, `gpt-5.2`, …) and rejects the
-    // dash form with HTTP 400. We rewrite in place and persist back.
-    if (this.settings.provider === "chatgpt-oauth") {
-      const migrated = migrateChatGPTOAuthModelSlug(this.settings.model);
-      if (migrated !== this.settings.model) {
-        this.settings.model = migrated;
-        // Best-effort save; ignore errors during initial load
-        this.saveData({ ...this.settings, apiKey: "" }).catch(() => {});
-      }
     }
 
     // Load API key for the current provider from SecretStorage
@@ -370,11 +350,7 @@ export default class ChatPlugin extends Plugin {
 
   private loadApiKey(provider: string): string {
     try {
-      return (
-        this.app.secretStorage.getSecret(`${PLUGIN_ID}-api-key-${provider}`) ||
-        this.app.secretStorage.getSecret(`${LEGACY_PLUGIN_ID}-api-key-${provider}`) ||
-        ""
-      );
+      return this.app.secretStorage.getSecret(`${PLUGIN_ID}-api-key-${provider}`) || "";
     } catch {
       return "";
     }
@@ -388,111 +364,12 @@ export default class ChatPlugin extends Plugin {
     }
   }
 
-  private async readFirstExisting(paths: string[]): Promise<string> {
-    let lastError: unknown;
-    for (const path of paths) {
-      try {
-        return await this.app.vault.adapter.read(path);
-      } catch (e) {
-        lastError = e;
-      }
-    }
-    throw lastError;
-  }
-
-  private async migrateLegacyPluginData(): Promise<void> {
-    await this.migrateLegacyDataFiles();
-    this.migrateLegacySecrets();
-  }
-
-  private async migrateLegacyDataFiles(): Promise<void> {
-    const adapter = this.app.vault.adapter;
-    try {
-      if (!(await adapter.exists(this.legacyPluginDataDir))) return;
-      await this.ensureFolder(this.pluginDataDir);
-      await this.copyLegacyPluginDataDir(this.legacyPluginDataDir, this.pluginDataDir, true);
-
-      await adapter.rmdir(this.legacyPluginDataDir, true);
-    } catch {
-      // Migration is best-effort; legacy fallback reads still protect users.
-    }
-  }
-
-  private async copyLegacyPluginDataDir(fromDir: string, toDir: string, isRoot: boolean): Promise<void> {
-    const adapter = this.app.vault.adapter;
-    const listed = await adapter.list(fromDir);
-
-    for (const folder of listed.folders) {
-      const name = folder.split("/").pop();
-      if (!name) continue;
-      const target = `${toDir}/${name}`;
-      await this.ensureFolder(target);
-      await this.copyLegacyPluginDataDir(folder, target, false);
-    }
-
-    for (const file of listed.files) {
-      const name = file.split("/").pop();
-      if (!name) continue;
-      if (isRoot && LEGACY_RELEASE_ASSETS.has(name)) continue;
-
-      const target = `${toDir}/${name}`;
-      if (!(await adapter.exists(target))) {
-        await adapter.writeBinary(target, await adapter.readBinary(file));
-      }
-    }
-  }
-
-  private async ensureFolder(path: string): Promise<void> {
-    const adapter = this.app.vault.adapter;
-    if (await adapter.exists(path)) return;
-    const parent = path.split("/").slice(0, -1).join("/");
-    if (parent) await this.ensureFolder(parent);
-    try {
-      await adapter.mkdir(path);
-    } catch {
-      // Another plugin startup path may have created it first.
-    }
-  }
-
-  private migrateLegacySecrets(): void {
-    for (const provider of SECRET_PROVIDERS) {
-      this.migrateSecret(
-        `${PLUGIN_ID}-api-key-${provider}`,
-        `${LEGACY_PLUGIN_ID}-api-key-${provider}`,
-      );
-    }
-    this.migrateSecret(CHATGPT_OAUTH_SECRET_KEY, LEGACY_CHATGPT_OAUTH_SECRET_KEY);
-  }
-
-  private migrateSecret(currentKey: string, legacyKey: string): void {
-    try {
-      const currentValue = this.app.secretStorage.getSecret(currentKey);
-      const legacyValue = this.app.secretStorage.getSecret(legacyKey);
-      if (legacyValue && !currentValue) {
-        this.app.secretStorage.setSecret(currentKey, legacyValue);
-      }
-      if (legacyValue) {
-        this.app.secretStorage.setSecret(legacyKey, "");
-      }
-    } catch {
-      // SecretStorage may be unavailable on very old Obsidian versions.
-    }
-  }
-
   private get pluginDataDir(): string {
     return `${this.app.vault.configDir}/plugins/${PLUGIN_ID}`;
   }
 
-  private get legacyPluginDataDir(): string {
-    return `${this.app.vault.configDir}/plugins/${LEGACY_PLUGIN_ID}`;
-  }
-
   private get chatStatePath(): string {
     return `${this.pluginDataDir}/chat-state.json`;
-  }
-
-  private get legacyChatStatePath(): string {
-    return `${this.legacyPluginDataDir}/chat-state.json`;
   }
 }
 

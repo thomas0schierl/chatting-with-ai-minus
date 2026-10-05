@@ -24,13 +24,14 @@ import type {
   ChatGPTOAuthCredential,
   ChatGPTOAuthStore,
 } from "./chatgptOAuthStore";
+import { PLUGIN_ID } from "../plugin-id";
 
 const ISSUER = "https://auth.openai.com";
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const DEVICE_VERIFICATION_URI = `${ISSUER}/codex/device`;
 const DEVICE_REDIRECT_URI = `${ISSUER}/deviceauth/callback`;
 const POLL_MARGIN_MS = 3000;
-const USER_AGENT = "chatting-with-ai/chatgpt-oauth";
+const USER_AGENT = `${PLUGIN_ID}/chatgpt-oauth`;
 
 export class ChatGPTOAuthError extends Error {
   constructor(message: string) {

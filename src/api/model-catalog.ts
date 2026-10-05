@@ -2,6 +2,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { requestUrl } from "obsidian";
 import type { Provider } from "../types";
 import type { ChatGPTOAuthService } from "../auth/chatgptOAuth";
+import { PLUGIN_ID } from "../plugin-id";
 
 export interface ModelOption {
   value: string;
@@ -60,9 +61,6 @@ export function normalizeCatalogState(value: unknown): CatalogState {
 export function getCatalogModels(provider: Provider): ModelOption[] | undefined { return activeModels.get(provider); }
 export function clearCatalogModels(provider: Provider): void { activeModels.delete(provider); }
 export function getCodexClientVersion(): string { return clientVersion; }
-export function migrateOAuthModel(slug: string): string {
-  return slug ? slug.replace(/^gpt-(\d+)-(\d{1,2})(?=-|$)/, "gpt-$1.$2") : "gpt-5.5";
-}
 export function supportsReasoning(model: string): boolean {
   const major = model.match(/^gpt-(\d+)/)?.[1];
   return /^o\d/.test(model) || (!!major && Number(major) >= 5) || /codex/i.test(model);
@@ -134,7 +132,7 @@ export async function refreshCatalog(state: CatalogState, provider: Provider, id
         throw new Error("ChatGPT account changed while loading models; retry for the current account");
       }
       const version = await updateClientVersion(state, force);
-      const headers: Record<string, string> = { Authorization: `Bearer ${credential.accessToken}`, originator: "opencode", "User-Agent": `chatting-with-ai/${version}`, version };
+      const headers: Record<string, string> = { Authorization: `Bearer ${credential.accessToken}`, originator: "opencode", "User-Agent": `${PLUGIN_ID}/${version}`, version };
       if (credential.accountId) headers["ChatGPT-Account-Id"] = credential.accountId;
       const json = await jsonRequest(`https://chatgpt.com/backend-api/codex/models?client_version=${encodeURIComponent(version)}`, headers);
       if (!Array.isArray(json.models)) throw new Error("Invalid Codex model catalog");

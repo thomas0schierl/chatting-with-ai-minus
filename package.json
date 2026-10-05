@@ -1,18 +1,9 @@
 {
-  "name": "chatting-with-ai",
-  "version": "0.4.0",
+  "name": "chatting-with-ai-minus",
+  "version": "0.1.0",
   "private": true,
   "author": {
-    "name": "Yuxiao (o1xhack)",
-    "url": "https://github.com/o1xhack"
-  },
-  "homepage": "https://github.com/o1xhack/obsidian-chatting",
-  "bugs": {
-    "url": "https://github.com/o1xhack/obsidian-chatting/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/o1xhack/obsidian-chatting.git"
+    "name": "Thomas Schierl"
   },
   "scripts": {
     "test": "node --test test/provider-history.test.mjs",

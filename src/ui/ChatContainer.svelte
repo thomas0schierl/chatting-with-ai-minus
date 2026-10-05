@@ -368,74 +368,74 @@
   }
 </script>
 
-<div class="ochatting-container">
+<div class="chatting-minus-container">
   <!-- Header -->
-  <div class="ochatting-header">
-    <div class="ochatting-header-left">
-      <span class="ochatting-header-title">Chat</span>
-      <span class="ochatting-header-model">{displayModel || "No model"}</span>
+  <div class="chatting-minus-header">
+    <div class="chatting-minus-header-left">
+      <span class="chatting-minus-header-title">Chat</span>
+      <span class="chatting-minus-header-model">{displayModel || "No model"}</span>
     </div>
-    <button class="ochatting-clear-btn" onclick={onClear}>Clear</button>
+    <button class="chatting-minus-clear-btn" onclick={onClear}>Clear</button>
   </div>
 
   <!-- Messages -->
-  <div class="ochatting-messages" bind:this={messagesEl}>
+  <div class="chatting-minus-messages" bind:this={messagesEl}>
     {#each messages as msg (msg.id)}
       {#if msg.type === "user"}
-        <div class="ochatting-msg ochatting-user-msg">
+        <div class="chatting-minus-msg chatting-minus-user-msg">
           {#if msg.images?.length}
-            <div class="ochatting-user-images">
+            <div class="chatting-minus-user-images">
               {#each msg.images as image (image.id)}
                 <img src={imageDataUrl(image)} alt={image.fileName} />
               {/each}
             </div>
           {/if}
           {#if msg.text}
-            <div class="ochatting-msg-content">{msg.text}</div>
+            <div class="chatting-minus-msg-content">{msg.text}</div>
           {/if}
         </div>
 
       {:else if msg.type === "assistant"}
-        <div class="ochatting-msg ochatting-assistant-msg">
-          <div class="ochatting-msg-content" use:markdown={msg.text ?? ""}></div>
+        <div class="chatting-minus-msg chatting-minus-assistant-msg">
+          <div class="chatting-minus-msg-content" use:markdown={msg.text ?? ""}></div>
         </div>
 
       {:else if msg.type === "tool-call"}
-        <div class="ochatting-tool-call">
-          <div class="ochatting-tool-status">
-            <span class="ochatting-spinner"></span>
-            <span class="ochatting-tool-name">{formatToolName(msg.toolName ?? "")}</span>
+        <div class="chatting-minus-tool-call">
+          <div class="chatting-minus-tool-status">
+            <span class="chatting-minus-spinner"></span>
+            <span class="chatting-minus-tool-name">{formatToolName(msg.toolName ?? "")}</span>
           </div>
-          <details class="ochatting-tool-details">
+          <details class="chatting-minus-tool-details">
             <summary>Parameters</summary>
-            <pre class="ochatting-tool-json">{JSON.stringify(msg.toolInput, null, 2)}</pre>
+            <pre class="chatting-minus-tool-json">{JSON.stringify(msg.toolInput, null, 2)}</pre>
           </details>
         </div>
 
       {:else if msg.type === "tool-result"}
-        <div class="ochatting-tool-call">
-          <div class="ochatting-tool-status">
-            <span class={msg.toolResult?.isError ? "ochatting-tool-error" : "ochatting-tool-success"}>
+        <div class="chatting-minus-tool-call">
+          <div class="chatting-minus-tool-status">
+            <span class={msg.toolResult?.isError ? "chatting-minus-tool-error" : "chatting-minus-tool-success"}>
               {msg.toolResult?.isError ? "\u2718" : "\u2714"}
             </span>
-            <span class="ochatting-tool-name">{formatToolName(msg.toolName ?? "")}</span>
+            <span class="chatting-minus-tool-name">{formatToolName(msg.toolName ?? "")}</span>
           </div>
-          <details class="ochatting-tool-details">
+          <details class="chatting-minus-tool-details">
             <summary>{msg.toolResult?.isError ? "Error" : "Result"}</summary>
-            <pre class="ochatting-tool-json">{truncate(msg.toolResult?.result ?? "", 2000)}</pre>
+            <pre class="chatting-minus-tool-json">{truncate(msg.toolResult?.result ?? "", 2000)}</pre>
           </details>
         </div>
 
       {:else if msg.type === "error"}
-        <div class="ochatting-msg ochatting-error-msg">
-          <div class="ochatting-msg-content">{msg.text}</div>
+        <div class="chatting-minus-msg chatting-minus-error-msg">
+          <div class="chatting-minus-msg-content">{msg.text}</div>
         </div>
 
       {:else if msg.type === "thinking"}
-        <div class="ochatting-thinking">
-          <span class="ochatting-dot"></span>
-          <span class="ochatting-dot"></span>
-          <span class="ochatting-dot"></span>
+        <div class="chatting-minus-thinking">
+          <span class="chatting-minus-dot"></span>
+          <span class="chatting-minus-dot"></span>
+          <span class="chatting-minus-dot"></span>
         </div>
       {/if}
     {/each}
@@ -443,13 +443,13 @@
 
   <!-- Selection pill -->
   {#if selection}
-    <div class="ochatting-selection-pill">
-      <div class="ochatting-selection-content">
-        <span class="ochatting-selection-label">Selection from {selection.filePath.split("/").pop()}</span>
-        <span class="ochatting-selection-preview">{selection.text.substring(0, 80)}{selection.text.length > 80 ? "..." : ""}</span>
+    <div class="chatting-minus-selection-pill">
+      <div class="chatting-minus-selection-content">
+        <span class="chatting-minus-selection-label">Selection from {selection.filePath.split("/").pop()}</span>
+        <span class="chatting-minus-selection-preview">{selection.text.substring(0, 80)}{selection.text.length > 80 ? "..." : ""}</span>
       </div>
       <button
-        class="ochatting-selection-dismiss"
+        class="chatting-minus-selection-dismiss"
         onclick={() => selection = null}
         aria-label="Remove selection"
       >
@@ -459,13 +459,13 @@
   {/if}
 
   {#if attachments.length > 0}
-    <div class="ochatting-attachment-tray" aria-label="Image attachments">
+    <div class="chatting-minus-attachment-tray" aria-label="Image attachments">
       {#each attachments as image (image.id)}
-        <div class="ochatting-attachment-preview">
+        <div class="chatting-minus-attachment-preview">
           <img src={imageDataUrl(image)} alt={image.fileName} />
           <span title={image.fileName}>{image.fileName}</span>
           <button
-            class="ochatting-attachment-remove"
+            class="chatting-minus-attachment-remove"
             type="button"
             onclick={() => removeAttachment(image.id)}
             disabled={!inputEnabled}
@@ -477,10 +477,10 @@
   {/if}
 
   <!-- Input bar -->
-  <div class="ochatting-input-bar">
+  <div class="chatting-minus-input-bar">
     <input
       bind:this={fileInputEl}
-      class="ochatting-file-input"
+      class="chatting-minus-file-input"
       type="file"
       accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif"
       multiple
@@ -488,7 +488,7 @@
       aria-label="Choose images"
     />
     <button
-      class="ochatting-attach-btn"
+      class="chatting-minus-attach-btn"
       type="button"
       onclick={openImagePicker}
       disabled={!inputEnabled || attachments.length >= MAX_IMAGE_COUNT}
@@ -498,7 +498,7 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
     </button>
     <textarea
-      class="ochatting-input"
+      class="chatting-minus-input"
       bind:this={textareaEl}
       bind:value={inputText}
       {placeholder}
@@ -510,7 +510,7 @@
     ></textarea>
     {#if inputEnabled}
       <button
-        class="ochatting-send-btn"
+        class="chatting-minus-send-btn"
         onclick={handleSend}
         aria-label="Send message"
       >
@@ -518,7 +518,7 @@
       </button>
     {:else}
       <button
-        class="ochatting-send-btn ochatting-stop-btn"
+        class="chatting-minus-send-btn chatting-minus-stop-btn"
         onclick={onStop}
         aria-label="Stop generation"
       >
@@ -530,7 +530,7 @@
 
 <style>
   /* ─── Container ─────────────────────────────────────────────────────── */
-  .ochatting-container {
+  .chatting-minus-container {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -538,7 +538,7 @@
   }
 
   /* ─── Header ────────────────────────────────────────────────────────── */
-  .ochatting-header {
+  .chatting-minus-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -547,24 +547,24 @@
     flex-shrink: 0;
   }
 
-  .ochatting-header-left {
+  .chatting-minus-header-left {
     display: flex;
     align-items: baseline;
     gap: 8px;
   }
 
-  .ochatting-header-title {
+  .chatting-minus-header-title {
     font-weight: var(--font-weight-bold, 600);
     font-size: var(--font-ui-medium);
     color: var(--text-normal);
   }
 
-  .ochatting-header-model {
+  .chatting-minus-header-model {
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
   }
 
-  .ochatting-clear-btn {
+  .chatting-minus-clear-btn {
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
     background: none;
@@ -574,13 +574,13 @@
     border-radius: var(--radius-s);
   }
 
-  .ochatting-clear-btn:hover {
+  .chatting-minus-clear-btn:hover {
     background: var(--background-modifier-hover);
     color: var(--text-normal);
   }
 
   /* ─── Messages ──────────────────────────────────────────────────────── */
-  .ochatting-messages {
+  .chatting-minus-messages {
     flex: 1 1 0;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -592,7 +592,7 @@
     user-select: text;
   }
 
-  .ochatting-msg {
+  .chatting-minus-msg {
     max-width: 90%;
     padding: 8px 12px;
     border-radius: var(--radius-m);
@@ -602,43 +602,43 @@
     user-select: text;
   }
 
-  .ochatting-user-msg {
+  .chatting-minus-user-msg {
     align-self: flex-end;
     background: var(--interactive-accent);
     color: var(--text-on-accent);
     border-bottom-right-radius: var(--radius-s);
   }
 
-  .ochatting-user-images {
+  .chatting-minus-user-images {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     margin-bottom: 6px;
   }
 
-  .ochatting-user-images img {
+  .chatting-minus-user-images img {
     max-width: min(100%, 280px);
     max-height: 220px;
     border-radius: var(--radius-s);
     object-fit: contain;
   }
 
-  .ochatting-assistant-msg {
+  .chatting-minus-assistant-msg {
     align-self: flex-start;
     background: var(--background-secondary);
     color: var(--text-normal);
     border-bottom-left-radius: var(--radius-s);
   }
 
-  .ochatting-assistant-msg :global(p:first-child) {
+  .chatting-minus-assistant-msg :global(p:first-child) {
     margin-top: 0;
   }
 
-  .ochatting-assistant-msg :global(p:last-child) {
+  .chatting-minus-assistant-msg :global(p:last-child) {
     margin-bottom: 0;
   }
 
-  .ochatting-error-msg {
+  .chatting-minus-error-msg {
     align-self: flex-start;
     background: var(--background-secondary);
     color: var(--text-error);
@@ -648,7 +648,7 @@
   }
 
   /* ─── Tool Calls ────────────────────────────────────────────────────── */
-  .ochatting-tool-call {
+  .chatting-minus-tool-call {
     align-self: flex-start;
     padding: 6px 10px;
     background: var(--background-secondary-alt);
@@ -658,35 +658,35 @@
     max-width: 90%;
   }
 
-  .ochatting-tool-status {
+  .chatting-minus-tool-status {
     display: flex;
     align-items: center;
     gap: 6px;
   }
 
-  .ochatting-tool-name {
+  .chatting-minus-tool-name {
     font-weight: 500;
   }
 
-  .ochatting-tool-success {
+  .chatting-minus-tool-success {
     color: var(--text-success);
   }
 
-  .ochatting-tool-error {
+  .chatting-minus-tool-error {
     color: var(--text-error);
   }
 
-  .ochatting-tool-details {
+  .chatting-minus-tool-details {
     margin-top: 4px;
   }
 
-  .ochatting-tool-details summary {
+  .chatting-minus-tool-details summary {
     cursor: pointer;
     color: var(--text-faint);
     font-size: var(--font-ui-smaller);
   }
 
-  .ochatting-tool-json {
+  .chatting-minus-tool-json {
     margin: 4px 0 0;
     padding: 6px 8px;
     background: var(--background-primary);
@@ -699,55 +699,55 @@
   }
 
   /* ─── Spinner ───────────────────────────────────────────────────────── */
-  .ochatting-spinner {
+  .chatting-minus-spinner {
     display: inline-block;
     width: 12px;
     height: 12px;
     border: 2px solid var(--text-faint);
     border-top-color: var(--interactive-accent);
     border-radius: 50%;
-    animation: ochatting-spin 0.6s linear infinite;
+    animation: chatting-minus-spin 0.6s linear infinite;
   }
 
-  @keyframes ochatting-spin {
+  @keyframes chatting-minus-spin {
     to { transform: rotate(360deg); }
   }
 
   /* ─── Thinking Dots ─────────────────────────────────────────────────── */
-  .ochatting-thinking {
+  .chatting-minus-thinking {
     align-self: flex-start;
     display: flex;
     gap: 4px;
     padding: 8px 12px;
   }
 
-  .ochatting-dot {
+  .chatting-minus-dot {
     width: 8px;
     height: 8px;
     background: var(--text-faint);
     border-radius: 50%;
-    animation: ochatting-pulse 1.4s ease-in-out infinite;
+    animation: chatting-minus-pulse 1.4s ease-in-out infinite;
   }
 
-  .ochatting-dot:nth-child(2) {
+  .chatting-minus-dot:nth-child(2) {
     animation-delay: 0.2s;
   }
 
-  .ochatting-dot:nth-child(3) {
+  .chatting-minus-dot:nth-child(3) {
     animation-delay: 0.4s;
   }
 
-  @keyframes ochatting-pulse {
+  @keyframes chatting-minus-pulse {
     0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
     40% { opacity: 1; transform: scale(1); }
   }
 
   /* ─── Input Bar ─────────────────────────────────────────────────────── */
-  .ochatting-file-input {
+  .chatting-minus-file-input {
     display: none;
   }
 
-  .ochatting-attachment-tray {
+  .chatting-minus-attachment-tray {
     display: flex;
     gap: 8px;
     overflow-x: auto;
@@ -755,7 +755,7 @@
     flex-shrink: 0;
   }
 
-  .ochatting-attachment-preview {
+  .chatting-minus-attachment-preview {
     position: relative;
     display: flex;
     align-items: center;
@@ -768,7 +768,7 @@
     background: var(--background-secondary);
   }
 
-  .ochatting-attachment-preview img {
+  .chatting-minus-attachment-preview img {
     width: 38px;
     height: 38px;
     flex-shrink: 0;
@@ -776,7 +776,7 @@
     object-fit: cover;
   }
 
-  .ochatting-attachment-preview span {
+  .chatting-minus-attachment-preview span {
     min-width: 0;
     overflow: hidden;
     color: var(--text-muted);
@@ -785,7 +785,7 @@
     white-space: nowrap;
   }
 
-  .ochatting-attachment-remove {
+  .chatting-minus-attachment-remove {
     position: absolute;
     top: 3px;
     right: 3px;
@@ -799,12 +799,12 @@
     cursor: pointer;
   }
 
-  .ochatting-attachment-remove:disabled {
+  .chatting-minus-attachment-remove:disabled {
     cursor: not-allowed;
     opacity: 0.5;
   }
 
-  .ochatting-input-bar {
+  .chatting-minus-input-bar {
     display: flex;
     align-items: flex-end;
     gap: 8px;
@@ -815,7 +815,7 @@
     flex-shrink: 0;
   }
 
-  .ochatting-attach-btn {
+  .chatting-minus-attach-btn {
     width: 34px;
     height: 34px;
     min-width: 34px;
@@ -832,17 +832,17 @@
     flex-shrink: 0;
   }
 
-  .ochatting-attach-btn:hover {
+  .chatting-minus-attach-btn:hover {
     background: var(--background-modifier-hover);
     color: var(--text-normal);
   }
 
-  .ochatting-attach-btn:disabled {
+  .chatting-minus-attach-btn:disabled {
     cursor: not-allowed;
     opacity: 0.45;
   }
 
-  .ochatting-input {
+  .chatting-minus-input {
     flex: 1;
     resize: none;
     border: 1.5px solid var(--background-modifier-border-hover, var(--background-modifier-border));
@@ -858,17 +858,17 @@
     box-shadow: none;
   }
 
-  .ochatting-input:focus {
+  .chatting-minus-input:focus {
     outline: none;
     border-color: var(--interactive-accent);
     box-shadow: none;
   }
 
-  .ochatting-input:disabled {
+  .chatting-minus-input:disabled {
     opacity: 0.5;
   }
 
-  .ochatting-send-btn {
+  .chatting-minus-send-btn {
     width: 34px;
     height: 34px;
     min-width: 34px;
@@ -887,26 +887,26 @@
     margin-bottom: 1px;
   }
 
-  .ochatting-send-btn:hover {
+  .chatting-minus-send-btn:hover {
     background-color: var(--interactive-accent-hover);
   }
 
-  .ochatting-send-btn:disabled {
+  .chatting-minus-send-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }
 
-  .ochatting-stop-btn {
+  .chatting-minus-stop-btn {
     background-color: var(--text-error);
   }
 
-  .ochatting-stop-btn:hover {
+  .chatting-minus-stop-btn:hover {
     background-color: var(--text-error);
     opacity: 0.85;
   }
 
   /* ─── Selection Pill ─────────────────────────────────────────────────── */
-  .ochatting-selection-pill {
+  .chatting-minus-selection-pill {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -918,7 +918,7 @@
     flex-shrink: 0;
   }
 
-  .ochatting-selection-content {
+  .chatting-minus-selection-content {
     flex: 1;
     min-width: 0;
     display: flex;
@@ -926,13 +926,13 @@
     gap: 2px;
   }
 
-  .ochatting-selection-label {
+  .chatting-minus-selection-label {
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
     font-weight: 500;
   }
 
-  .ochatting-selection-preview {
+  .chatting-minus-selection-preview {
     font-size: var(--font-ui-smaller);
     color: var(--text-faint);
     white-space: nowrap;
@@ -940,7 +940,7 @@
     text-overflow: ellipsis;
   }
 
-  .ochatting-selection-dismiss {
+  .chatting-minus-selection-dismiss {
     flex-shrink: 0;
     width: 20px;
     height: 20px;
@@ -955,30 +955,30 @@
     justify-content: center;
   }
 
-  .ochatting-selection-dismiss:hover {
+  .chatting-minus-selection-dismiss:hover {
     background: var(--background-modifier-border);
     color: var(--text-normal);
   }
 
   /* ─── Responsive ────────────────────────────────────────────────────── */
   @media (max-width: 768px) {
-    .ochatting-msg {
+    .chatting-minus-msg {
       max-width: 95%;
     }
 
-    .ochatting-input-bar {
+    .chatting-minus-input-bar {
       gap: 10px;
       padding: 10px 12px;
       padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     }
 
-    .ochatting-input {
+    .chatting-minus-input {
       font-size: 16px; /* Prevents iOS zoom on focus */
       padding: 10px 16px;
       border-radius: 22px;
     }
 
-    .ochatting-send-btn {
+    .chatting-minus-send-btn {
       width: 36px;
       height: 36px;
       min-width: 36px;

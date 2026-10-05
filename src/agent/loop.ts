@@ -15,6 +15,7 @@ import { executeTool } from "../tools/executor";
 import { buildContext } from "./context";
 import { buildSystemPrompt, buildContextMessage } from "./system-prompt";
 import { trimHistory } from "./history";
+import { PLUGIN_ID } from "../plugin-id";
 
 const MAX_CONVERSATION_LENGTH = 50;
 const KEEP_RECENT = 40;
@@ -29,7 +30,7 @@ function debugLog(app: App, label: string, data: unknown): void {
     const entry = `\n--- ${label} [${timestamp}] ---\n${JSON.stringify(data, null, 2)}\n`;
     // Use the adapter to write into the current vault config folder.
     void app.vault.adapter.append(
-      `${app.vault.configDir}/plugins/chatting-with-ai/debug.log`,
+      `${app.vault.configDir}/plugins/${PLUGIN_ID}/debug.log`,
       entry
     );
   } catch {
@@ -88,7 +89,7 @@ export class AgentLoop {
     const systemPrompt = buildSystemPrompt();
 
     const parts: string[] = [
-      `# Chatting with AI Transcript`,
+      `# Chatting with AI Minus Transcript`,
       ``,
       `**Date:** ${new Date().toISOString()}`,
       `**Provider:** ${this.settings.provider}`,
