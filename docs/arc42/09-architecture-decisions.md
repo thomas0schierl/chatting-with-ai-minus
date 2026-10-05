@@ -7,6 +7,8 @@
 
 ## ADR-01: All HTTP through `requestUrl()`, no streaming
 
+- **Status:** narrowed by ADR-11. Still applies to all HTTP; the live voice
+  audio connection (WebRTC) is the one exception.
 - **Context:** mobile WebViews enforce CORS, and `requestUrl()` is the only
   HTTP API that works on every platform. It returns complete responses only.
 - **Decision:** every request uses `requestUrl()`. Answers appear when
@@ -101,3 +103,26 @@
     arc42.
   - Every doc starts with a sentence saying what belongs in it.
 - **Consequences:** each fact has one home; changes update one file.
+
+## ADR-11: Live voice through the OpenAI Realtime API over WebRTC
+
+- **Context:** users want a voice mode like in the ChatGPT, Claude and
+  Codex apps: talk, hear the answer, interrupt (GAP-013). That needs a
+  continuous two-way audio stream, which `requestUrl()` can't carry.
+  WebRTC isn't HTTP, so the CORS reason behind ADR-01 doesn't apply to it.
+  Of the three providers, only OpenAI offers a speech-to-speech API.
+- **Decision:**
+  - Live voice uses the OpenAI Realtime API over a WebRTC peer
+    connection: audio both ways, plus a data channel for events and tool
+    calls.
+  - The two HTTP setup calls go through `requestUrl()` as usual: minting
+    a short-lived client secret, and exchanging the WebRTC offer.
+  - Vault tools run through the existing tool executor, and both sides'
+    transcripts are added to the chat history.
+- **Consequences:**
+  - Voice needs microphone and WebRTC support in the Obsidian apps, to be
+    confirmed on iOS and Android before building.
+  - It works with an OpenAI API key, and with the ChatGPT sign-in only if
+    that account can get Realtime credentials (open).
+  - Anthropic users get no voice mode.
+  - Voice runs only while the chat panel is open.

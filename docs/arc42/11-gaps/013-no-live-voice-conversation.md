@@ -58,9 +58,9 @@ voice needs, so this feature needs a new ADR.
      Android?
    - Does WebRTC to OpenAI work from those WebViews?
    - Can the ChatGPT sign-in get a Realtime client secret?
-2. **Decide and record an ADR:** A for OpenAI (and ChatGPT if the spike
-   says yes), with B as the fallback for Anthropic, or B only if the spike
-   fails on mobile.
+2. **Decided: option A** ([ADR-11](../09-architecture-decisions.md)).
+   B is not planned; Anthropic users get no voice mode. If the spike
+   shows WebRTC doesn't work on mobile, revisit ADR-11.
 3. **Keep voice and text in one conversation:** transcripts go into the
    chat history, and tool calls run through the same executor and are
    shown as tool cards.
