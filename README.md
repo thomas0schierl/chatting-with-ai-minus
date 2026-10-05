@@ -18,7 +18,7 @@ It works the same on desktop, iPhone, iPad and Android.
   unclear.
 - **Conversations:** start a new chat at any time; switch, rename and
   delete earlier chats from the history list. *Chat about this note* and
-  *Send selection to Chat* start a new chat. The chat that was open comes
+  *Send selection to chat* start a new chat. The chat that was open comes
   back after a restart.
 - **Selection scope:** select text in a note, choose *Send selection to
   Chat*, and the AI changes only that text.

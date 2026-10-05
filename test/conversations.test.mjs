@@ -222,7 +222,7 @@ test('OpenAI: after a restart the open conversation replays in full once, then c
   assert.equal(requests[1].previous_response_id, 'resp_0');
 });
 
-test('"Chat about this note" and "Send selection to Chat" start a new conversation', async () => {
+test('"Chat about this note" and "Send selection to chat" start a new conversation', async () => {
   globalThis.window ??= globalThis;
   const { plugin, view, chat } = await chatSetup('anthropic');
   const requests = answering('anthropic');

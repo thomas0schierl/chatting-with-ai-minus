@@ -128,7 +128,7 @@ switching or listing.
    shown so far stays in that conversation), then
    `startNewConversation()` adds an empty conversation and activates it. If
    the current one is still empty, it stays instead. *Chat about this
-   note* and *Send selection to Chat* (commands, context menus) start a
+   note* and *Send selection to chat* (commands, context menus) start a
    new chat the same way before sending or showing the selection.
 2. **Switch** (a row of the history list): the same stop, then
    `openConversation(id)`. **Activating** aborts the loop and imports the

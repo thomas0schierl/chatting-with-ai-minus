@@ -556,11 +556,11 @@ class ChatGPTSignInModal extends Modal {
       contentEl.createEl("p", { text: "On the sign-in page, allow use of your ChatGPT plan." });
     }
 
-    const step1 = contentEl.createEl("p", { text: "1. Sign in on the " });
-    const link = step1.createEl("a", { text: "sign-in page", href: pending.url });
+    const step1 = contentEl.createEl("p", { text: "1. " });
+    const link = step1.createEl("a", { text: "Open the sign-in page", href: pending.url });
     // An expired attempt is replaced when the page is opened.
     link.addEventListener("click", () => { link.href = this.attempt().url; });
-    step1.appendText(".");
+    step1.appendText(" and sign in.");
     const open = contentEl.createEl("button", { text: "Open sign-in page", cls: "mod-cta" });
     open.addEventListener("click", () => {
       window.open(this.attempt().url, "_blank");
