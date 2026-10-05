@@ -343,6 +343,28 @@ test('Nothing is saved before the saved conversations have been read', async () 
   assert.equal(writes[0].activeConversationId, 'b');
 });
 
+test('Tool cards keep their (capped) input across a reload; old cards without input still show', async () => {
+  const { plugin, view, writes } = await chatSetup('anthropic');
+  const input = { path: 'Untitled.md', note: 'x'.repeat(1000), lines: Array.from({ length: 15 }, (_, i) => i) };
+  transport((body, index) => index === 0
+    ? response('anthropic', [call('r', 'read_file', input)], 'tool_use')
+    : response('anthropic', [text('Read it')]));
+  await view.handleUserMessage('Read the note', null);
+  const card = plugin.chatHistory.find(e => e.type === 'tool-result');
+  assert.equal(card.toolInput.path, 'Untitled.md');
+  assert.equal(card.toolInput.note, `${'x'.repeat(300)}… (1000 characters)`);
+  assert.deepEqual(card.toolInput.lines, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, '… (5 more)']);
+  // The API history keeps the full input.
+  assert.equal(plugin.agent.exportMessages()[1].content[0].input.note.length, 1000);
+
+  const saved = writes.at(-1);
+  saved.conversations[0].chatHistory.push({ type: 'tool-result', toolName: 'list_files', toolResult: { result: 'old', isError: false } });
+  const reloaded = await chatSetup('anthropic', saved);
+  reloaded.view.renderHistory();
+  const cards = reloaded.chat.shown.filter(m => m.type === 'tool-result');
+  assert.deepEqual(cards.map(m => m.toolInput), [card.toolInput, {}]);
+});
+
 // A plugin whose chat-state.json holds `content` (undefined: no file), with a
 // fake adapter that records writes and renames.
 async function loadFrom(content, { renameFails = false } = {}) {

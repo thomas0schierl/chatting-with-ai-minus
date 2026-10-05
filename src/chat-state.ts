@@ -141,6 +141,29 @@ export function savedConversation(conversation: ConversationRecord): Conversatio
   };
 }
 
+/** A tool card's saved input: strings cut to 300 characters, lists to 10 items. */
+export const SAVED_INPUT_TEXT = 300;
+export const SAVED_INPUT_ITEMS = 10;
+
+/**
+ * A tool call's input as saved with its card, capped so long note content
+ * or canvas lists don't bloat `chat-state.json`. For display only.
+ */
+export function savedToolInput(input: Record<string, unknown>): Record<string, unknown> {
+  const cap = (value: unknown): unknown => {
+    if (typeof value === "string") {
+      return value.length > SAVED_INPUT_TEXT ? `${value.slice(0, SAVED_INPUT_TEXT)}… (${value.length} characters)` : value;
+    }
+    if (Array.isArray(value)) {
+      const items = value.slice(0, SAVED_INPUT_ITEMS).map(cap);
+      return value.length > SAVED_INPUT_ITEMS ? [...items, `… (${value.length - SAVED_INPUT_ITEMS} more)`] : items;
+    }
+    if (isRecord(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cap(item)]));
+    return value;
+  };
+  return cap(input) as Record<string, unknown>;
+}
+
 /** Entries as saved: images keep their name, type and size, not their data. */
 export function withoutImageData(entries: ChatHistoryEntry[]): ChatHistoryEntry[] {
   return entries.map((entry) => entry.images?.length

@@ -203,7 +203,7 @@ export function fakeChat() {
       const index = chat.shown.findIndex(m => m.type === 'user' && m.turnId === turnId);
       if (index >= 0) chat.shown.splice(index);
     },
-    addToolCall(name) { chat.shown.push({ id: nextId, type: 'tool-call', toolName: name }); return nextId++; },
+    addToolCall(name, input) { chat.shown.push({ id: nextId, type: 'tool-call', toolName: name, toolInput: input }); return nextId++; },
     updateToolResult(id) { const msg = chat.shown.find(m => m.id === id); if (msg) msg.type = 'tool-result'; },
     addError(value, kind) { chat.shown.push({ id: nextId++, type: 'error', text: value, ...(kind ? { errorKind: kind } : {}) }); },
     showThinking() {}, hideThinking() {},

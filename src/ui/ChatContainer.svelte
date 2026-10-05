@@ -951,6 +951,12 @@
             </span>
             <span class="chatting-minus-tool-name">{formatToolName(msg.toolName ?? "")}</span>
           </div>
+          {#if msg.toolInput && Object.keys(msg.toolInput).length > 0}
+            <details class="chatting-minus-tool-details">
+              <summary>Parameters</summary>
+              <pre class="chatting-minus-tool-json">{JSON.stringify(msg.toolInput, null, 2)}</pre>
+            </details>
+          {/if}
           <details class="chatting-minus-tool-details">
             <summary>{msg.toolResult?.isError ? "Error" : "Result"}</summary>
             <pre class="chatting-minus-tool-json">{truncate(msg.toolResult?.result ?? "", 2000)}</pre>

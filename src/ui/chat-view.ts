@@ -5,6 +5,7 @@ import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
 import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind } from "../types";
 import { newTurnId } from "../agent/history";
+import { savedToolInput } from "../chat-state";
 import { debugLog } from "../agent/loop";
 import { VoiceController, type VoiceTurnHooks, type VoiceViewState } from "../voice/controller";
 
@@ -364,7 +365,7 @@ export class ObsidianChatView extends ItemView {
     chat.setInputEnabled(false);
     chat.setBusy(true);
 
-    const toolCallIds = new Map<string, number>();
+    const toolCalls = new Map<string, { id: number; input: Record<string, unknown> }>();
     this.streaming = null;
 
     try {
@@ -389,16 +390,13 @@ export class ObsidianChatView extends ItemView {
           this.endStream(false);
           if (name === "ask_user") return;
           voice?.onToolCall(name);
-          const msgId = chat.addToolCall(name, input);
-          toolCallIds.set(`latest-${name}`, msgId);
+          toolCalls.set(name, { id: chat.addToolCall(name, input), input });
         },
         onToolResult: (name, result: ToolResult) => {
           if (name === "ask_user") return;
-          const msgId = toolCallIds.get(`latest-${name}`);
-          if (msgId !== undefined) {
-            chat.updateToolResult(msgId, name, result);
-          }
-          history.push({ type: "tool-result", toolName: name, toolInput: {}, toolResult: result });
+          const call = toolCalls.get(name);
+          if (call) chat.updateToolResult(call.id, name, result);
+          history.push({ type: "tool-result", toolName: name, toolInput: savedToolInput(call?.input ?? {}), toolResult: result });
         },
         onResponse: (text) => {
           chat.hideThinking();
