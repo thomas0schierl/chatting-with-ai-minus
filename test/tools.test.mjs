@@ -1,7 +1,16 @@
-// Vault tools through the real executor: the date for daily notes.
+// Vault tools through the real executor: the date for daily notes. Also
+// how a selection scope reaches the model.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { api } from './harness.mjs';
+import { api, settings, text, response, transport, vaultApp, callbacks } from './harness.mjs';
+
+test('A multi-line selection is quoted line by line', async () => {
+  const requests = transport(() => response('anthropic', [text('OK')]));
+  const agent = new api.AgentLoop(vaultApp().app, settings('anthropic'));
+  await agent.run('Shorten this', callbacks(), { text: 'First line\nSecond line\r\n\nFourth', filePath: 'Notes/Draft.md' });
+  const sent = requests[0].messages[0].content;
+  assert.match(sent, /Selected text:\n> First line\n> Second line\n> \n> Fourth\n\nShorten this$/);
+});
 
 const run = (app, name, input = {}) => api.executeTool(app, name, input, async () => 'yes');
 
