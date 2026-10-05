@@ -19,7 +19,9 @@ interface ChatContainerProps {
 
 interface ChatContainerApi extends Record<string, unknown> {
   addUserMessage(text: string, images?: ImageAttachment[]): void;
-  addAssistantMessage(text: string): void;
+  addAssistantMessage(text: string): number;
+  updateAssistantMessage(id: number, text: string, final?: boolean): void;
+  removeMessage(id: number): void;
   addToolCall(name: string, input: Record<string, unknown>): number;
   updateToolResult(msgId: number, name: string, result: ToolResult): void;
   addError(text: string): void;
@@ -44,6 +46,8 @@ export class ObsidianChatView extends ItemView {
   private plugin: ChatPlugin;
   private chatContainer: ChatContainerApi | undefined;
   private running = false;
+  /** The assistant message being streamed, until the loop delivers it whole. */
+  private streaming: { id: number; text: string } | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: ChatPlugin) {
     super(leaf);
@@ -167,14 +171,28 @@ export class ObsidianChatView extends ItemView {
     chat.setInputEnabled(false);
 
     const toolCallIds = new Map<string, number>();
+    this.streaming = null;
 
     try {
       await this.plugin.agent.run(text, {
         onThinking: () => {
+          this.endStream(false);
           chat.showThinking();
+        },
+        onTextDelta: (delta) => {
+          chat.hideThinking();
+          if (this.streaming) {
+            this.streaming.text += delta;
+            chat.updateAssistantMessage(this.streaming.id, this.streaming.text);
+          } else {
+            this.streaming = { id: chat.addAssistantMessage(delta), text: delta };
+          }
         },
         onToolCall: (name, input) => {
           chat.hideThinking();
+          // Streamed text the loop didn't deliver (it precedes ask_user,
+          // which shows the question itself) is dropped, as before streaming.
+          this.endStream(false);
           if (name === "ask_user") return;
           const msgId = chat.addToolCall(name, input);
           toolCallIds.set(`latest-${name}`, msgId);
@@ -189,11 +207,15 @@ export class ObsidianChatView extends ItemView {
         },
         onResponse: (text) => {
           chat.hideThinking();
-          chat.addAssistantMessage(text);
+          // The whole text replaces the streamed one: same message as unstreamed.
+          if (this.streaming) chat.updateAssistantMessage(this.streaming.id, text, true);
+          else chat.addAssistantMessage(text);
+          this.streaming = null;
           history.push({ type: "assistant", text });
         },
         onAskUser: async (question) => {
           chat.hideThinking();
+          this.endStream(false);
           chat.setInputEnabled(true);
           const answer = await chat.showAskUser(question);
           chat.setInputEnabled(false);
@@ -201,6 +223,7 @@ export class ObsidianChatView extends ItemView {
         },
         onError: (error) => {
           chat.hideThinking();
+          this.endStream(true);
           chat.addError(error);
           history.push({ type: "error", text: error });
         },
@@ -218,8 +241,25 @@ export class ObsidianChatView extends ItemView {
     }
   }
 
+  /**
+   * Ends the streamed message the loop hasn't delivered whole: kept (and
+   * saved for display) when the turn was stopped or failed, else removed.
+   */
+  private endStream(keep: boolean): void {
+    const stream = this.streaming;
+    if (!stream) return;
+    this.streaming = null;
+    if (keep) {
+      this.chatContainer?.updateAssistantMessage(stream.id, stream.text, true);
+      this.plugin.chatHistory.push({ type: "assistant", text: stream.text });
+    } else {
+      this.chatContainer?.removeMessage(stream.id);
+    }
+  }
+
   private handleStop(): void {
     this.plugin.agent.abort();
+    this.endStream(true);
     this.running = false;
     const chat = this.chatContainer;
     if (chat) {
@@ -233,6 +273,7 @@ export class ObsidianChatView extends ItemView {
   private handleClear(): void {
     this.plugin.agent.abort();
     this.plugin.agent.clear();
+    this.streaming = null;
     this.plugin.chatHistory = [];
     this.chatContainer?.clearMessages();
     this.running = false;

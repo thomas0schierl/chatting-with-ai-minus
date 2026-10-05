@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { App, Component as ObsidianComponent } from "obsidian";
-  import { MarkdownRenderer, Notice } from "obsidian";
+  import type { App } from "obsidian";
+  import { Component, MarkdownRenderer, Notice } from "obsidian";
   import type { ToolResult, SelectionScope, ImageAttachment } from "../types";
   import { normalizeMathMarkdown } from "./math-markdown";
 
@@ -26,7 +26,7 @@
 
   interface Props {
     app: App;
-    component: ObsidianComponent;
+    component: Component;
     provider: string;
     model: string;
     onSend: (text: string, selection: SelectionScope | null, images: ImageAttachment[]) => void;
@@ -140,8 +140,38 @@
     messages.push({ id: nextId++, type: "user", text, images: images.slice() });
   }
 
-  export function addAssistantMessage(text: string): void {
-    messages.push({ id: nextId++, type: "assistant", text });
+  export function addAssistantMessage(text: string): number {
+    const id = nextId++;
+    messages.push({ id, type: "assistant", text });
+    return id;
+  }
+
+  // ─── Streamed answers: Markdown is re-rendered at most every 100 ms ────
+  const STREAM_RENDER_MS = 100;
+  const pendingText = new Map<number, string>();
+  let renderTimer: number | null = null;
+
+  /** Replace an assistant message's text; `final` renders it at once. */
+  export function updateAssistantMessage(id: number, text: string, final = false): void {
+    pendingText.set(id, text);
+    if (final) flushPendingText();
+    else renderTimer ??= window.setTimeout(flushPendingText, STREAM_RENDER_MS);
+  }
+
+  function flushPendingText(): void {
+    if (renderTimer !== null) window.clearTimeout(renderTimer);
+    renderTimer = null;
+    for (const [id, text] of pendingText) {
+      const msg = messages.find((m) => m.id === id);
+      if (msg) msg.text = text;
+    }
+    pendingText.clear();
+  }
+
+  export function removeMessage(id: number): void {
+    pendingText.delete(id);
+    const idx = messages.findIndex((m) => m.id === id);
+    if (idx !== -1) messages.splice(idx, 1);
   }
 
   export function addToolCall(name: string, input: Record<string, unknown>): number {
@@ -192,6 +222,7 @@
   }
 
   export function clearMessages(): void {
+    pendingText.clear();
     messages = [];
     attachments = [];
     if (fileInputEl) fileInputEl.value = "";
@@ -410,17 +441,21 @@
 
   // Render markdown into a DOM node using Obsidian's renderer. Math
   // delimiters are normalized for display only; the message stays unchanged.
-  function renderMarkdown(node: HTMLElement, text: string): void {
-    node.empty();
-    MarkdownRenderer.render(app, normalizeMathMarkdown(text), node, "", component);
-  }
-
-  // Use action for markdown rendering
+  // Each render gets its own child component, unloaded when the text changes
+  // (streamed answers render many times) or the message goes away.
   function markdown(node: HTMLElement, text: string) {
-    renderMarkdown(node, text);
+    let child: Component | null = null;
+    const render = (value: string) => {
+      if (child) component.removeChild(child);
+      child = component.addChild(new Component());
+      node.empty();
+      void MarkdownRenderer.render(app, normalizeMathMarkdown(value), node, "", child);
+    };
+    render(text);
     return {
-      update(newText: string) {
-        renderMarkdown(node, newText);
+      update: render,
+      destroy() {
+        if (child) component.removeChild(child);
       },
     };
   }
