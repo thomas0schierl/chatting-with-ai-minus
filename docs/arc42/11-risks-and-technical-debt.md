@@ -2,7 +2,7 @@
 
 > **Belongs here:** known risks, and known gaps as an index. Gaps are flaws
 > in the current code (debt) or features users expect from comparable AI
-> apps that are missing. Each gap has its own file in [11-gaps/](11-gaps/):
+> apps that are missing. Each gap has its own file in `11-gaps/` (created with the first open gap):
 > the title, one sentence describing the gap, then **Where**, **Impact**,
 > **Problem** and **Fix**. Delete a gap's file when it's closed (git keeps
 > the history). **Elsewhere:** decisions (→ [9](09-architecture-decisions.md)),
@@ -82,9 +82,11 @@ gap or drop.
   live caption, not in the chat history. GPT-Live's delegation carries no
   text; the request is the transcript since the last delegation, which
   may be cut or include words that weren't meant for it.
-- Codex voice route (private builds): whether the WebRTC data channel
-  carries the events at all (Codex reads them over a WebSocket) and in
-  which dialect; `VOICE_EVENT` and `VOICE_NO_EVENTS` in `debug.log` show
-  it. A WebSocket fallback would be desktop-only.
+- Codex voice route (private builds): checked on desktop 2026-10-05.
+  The data channel carries Codex's dialect (`delegation.created` with
+  the request text, `input_transcript.added`, `turn.done`, …) and
+  acknowledges `delegation.context.append`; two requests ran on the
+  ChatGPT plan with vault tools and were spoken. Not yet checked in the
+  mobile apps.
 - Stale comments: `tools/registry.ts` says 9 tools, and
   `ChatContainer.svelte` mentions a `chat-modal.ts` that doesn't exist.

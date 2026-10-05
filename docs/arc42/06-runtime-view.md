@@ -155,7 +155,7 @@ it stays active and, being empty, leaves the list.
 
 ## Voice conversation (`voice/`, ADR-11)
 
-1. **Start:** the microphone button (shown when `main.voiceRoute()` finds
+1. **Start:** the voice button (shown when `main.voiceRoute()` finds
    a route: an OpenAI API key, or in private builds the Codex sign-in)
    calls `ChatView.startVoice()`, which creates a `VoiceController`.
 2. **Connect** (`VoiceSession.start()`): microphone with echo

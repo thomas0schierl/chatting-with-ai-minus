@@ -83,7 +83,7 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   allows that browser-style request; the key is never sent anywhere else.
 - Voice: microphone audio and the recent chat (as text, to seed the
   voice) go to OpenAI while a voice conversation runs; nothing before
-  the user presses the microphone button.
+  the user presses the voice button.
 - `delete_file` moves files to the trash, as set in Obsidian.
 
 ## UI conventions

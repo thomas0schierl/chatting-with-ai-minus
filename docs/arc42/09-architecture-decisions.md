@@ -275,5 +275,6 @@
 - **Consequences:**
   - The public plugin and its docs (README) don't mention the route; it
     is documented here and in §11.
-  - It can break without notice; whether the data channel carries the
-    events at all is still to be checked live (§11).
+  - It can break without notice. Checked on desktop 2026-10-05: the
+    data channel carries the events in Codex's dialect, so no WebSocket
+    is needed (§11).

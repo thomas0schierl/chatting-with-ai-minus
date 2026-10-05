@@ -1108,7 +1108,8 @@
         aria-label="Start voice conversation"
         title="Start voice conversation"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0 0 14 0v-1"></path><line x1="12" y1="18" x2="12" y2="22"></line></svg>
+        <!-- Live voice, as in the chat apps: a filled circle with sound-wave bars (the microphone means dictation there) -->
+        <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="currentColor"></circle><g class="chatting-minus-voice-bars" fill="none" stroke-width="2" stroke-linecap="round"><line x1="7.5" y1="10.5" x2="7.5" y2="13.5"></line><line x1="10.5" y1="7.5" x2="10.5" y2="16.5"></line><line x1="13.5" y1="9" x2="13.5" y2="15"></line><line x1="16.5" y1="10.5" x2="16.5" y2="13.5"></line></g></svg>
       </button>
     {/if}
     {#if inputEnabled}
@@ -1754,6 +1755,15 @@
     border-top: 1px solid var(--background-modifier-border);
     background: transparent;
     flex-shrink: 0;
+  }
+
+  /* Live voice: a solid circle (text colour) with bars in the background colour */
+  .chatting-minus-voice-start {
+    color: var(--text-normal);
+  }
+
+  .chatting-minus-voice-bars {
+    stroke: var(--background-primary);
   }
 
   .chatting-minus-attach-btn {

@@ -66,7 +66,7 @@ account can use `gpt-live-1`. OpenAI bills voice at **$0.05 per minute**
 of conversation, silence included; the chat model's answers are billed as
 usual.
 
-Press the microphone button next to the chat input to start. A bar shows
+Press the voice button (a circle with sound-wave bars) next to the chat input to start. A bar shows
 whether the assistant is listening, working or speaking, with the latest
 words of both sides. Choose **Hands-free** (just talk) or **Hold to talk**
 in the settings; **End** stops the conversation. Switching or starting a
