@@ -15,6 +15,8 @@
 | PKCE | Proof Key for Code Exchange: the sign-in sends a hash of a one-time secret, the code exchange the secret itself, so a stolen code is useless. |
 | Provider | One of `anthropic`, `openai`, `chatgpt-oauth`. |
 | `requestUrl()` | Obsidian's HTTP function; works around CORS on mobile and returns complete responses only. |
+| SSE | Server-Sent Events: the `event:`/`data:` text format in which providers stream answers; parsed in `src/api/stream.ts`. |
+| Text delta | A piece of answer text from a stream, shown as it arrives (`onTextDelta`). |
 | Responses API | OpenAI's `/v1/responses` API, used by the OpenAI provider (API key) and the ChatGPT provider (ChatGPT-plan token). |
 | `SecretStorage` | Obsidian's API for storing secrets in the OS keychain. |
 | Selection scope | Mode where the user's selected text is sent with the message and edits must stay inside it. |

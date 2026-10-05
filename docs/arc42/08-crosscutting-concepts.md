@@ -21,8 +21,10 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 
 ## Error handling
 
-- **Adapters** use `requestUrl({ throw: false })`, check the status and
-  throw an error with the provider's message. ChatGPT errors say how to
+- **Adapters** send through `api/stream.ts`, which returns the status and,
+  for errors, the body; they throw an error with the provider's message.
+  Errors reported inside a stream (`error`, `response.failed`) and a stream
+  that ends before its final event are errors too, never partial answers. ChatGPT errors say how to
   recover: sign in again (401), or manage usage at
   `chatgpt.com/settings/usage` (usage-limit codes).
 - **The agent loop** turns every adapter error into an error bubble that is
@@ -30,15 +32,20 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 - **Tools never throw** to the loop. Failures and invalid arguments return
   an error result to the model.
 - **Rate limits:** one retry after the server's suggested delay (5 s
-  default, 30 s maximum).
+  default, 30 s maximum), only if no answer text was shown yet; otherwise
+  the error is shown below the partial answer.
 - **Notices** are only for user actions (connection test, model refresh,
   copy).
 
 ## Mobile
 
-- HTTP only through `requestUrl()`. No `fetch`, no Node modules, no
-  localhost.
-- No streaming; answers appear when complete.
+- HTTP through `requestUrl()`, except chat requests: they stream with
+  `fetch` in `api/stream.ts` (ADR-12). No Node modules, no localhost.
+- If `fetch` fails before any response (blocked by CORS, network), the same
+  request goes through `requestUrl()` and the answer appears when complete;
+  after one such fallback the session skips `fetch`. Whether the iOS and
+  Android apps deliver a streamed `fetch` body is still to be checked on a
+  device (*Check device capabilities*).
 - On iOS `response.json` throws for non-JSON bodies, so always read it
   inside `try`.
 - Hashing uses pure JavaScript (`@noble/hashes`), since `SubtleCrypto`
@@ -60,6 +67,10 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 - ChatGPT sign-in: PKCE, `state` and `nonce` per attempt; only the full
   callback address is accepted. The ID token's issuer, audience, expiry
   and nonce are checked; tokens never go into URLs, logs or `data.json`.
+- API keys and tokens travel in request headers from the user's own
+  device straight to the provider, with `fetch` as with `requestUrl()`.
+  Anthropic's `anthropic-dangerous-direct-browser-access` header only
+  allows that browser-style request; the key is never sent anywhere else.
 - `delete_file` moves files to the trash, as set in Obsidian.
 
 ## UI conventions

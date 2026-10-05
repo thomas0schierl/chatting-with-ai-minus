@@ -33,13 +33,22 @@ No network requests happen at start.
 3. **Loop, up to the iteration limit:**
    1. Show the thinking indicator.
    2. Call `client.sendMessage()`, which sends through the provider's
-      adapter.
+      adapter with `stream: true` (`api/stream.ts`). Each text delta goes
+      through `onTextDelta` to the view: the first one replaces the
+      thinking indicator with an assistant message, later ones extend it
+      (Markdown re-rendered at most every 100 ms). The adapter returns
+      only when the stream is complete, with the same response a
+      non-streamed request gives.
    3. If the answer was cut off by the token limit, show an error and stop;
       tool calls from a cut-off answer never run.
    4. Store the assistant message, including the provider's native items
       for replay.
-   5. If there are no tool calls: show the text and end the turn. Anthropic
-      `pause_turn` continues instead.
+   5. If there are no tool calls: deliver the whole text (`onResponse`),
+      which replaces the streamed text in the same message and goes into
+      the UI history, and end the turn. Anthropic `pause_turn` continues
+      instead. With tool calls, the text before them is delivered the same
+      way and stays as its own message above the tool cards; text before
+      `ask_user` is removed, since the question is shown instead.
    6. Otherwise, first store placeholder results ("cancelled"), then run
       the tools one by one, replacing each placeholder with the real
       result. This keeps every call paired with a result even if the user
@@ -50,8 +59,11 @@ No network requests happen at start.
 4. **Finish:** the view re-enables input and saves the chat history after
    every turn.
 
-**Stop:** sets a flag and a new run version. A request already sent can't
-be cancelled, but its result is ignored.
+**Stop:** sets a flag and a new run version and aborts the request: a
+streamed `fetch` stops reading at once. A request on the `requestUrl()`
+fallback can't be cancelled; its result is ignored. Text already shown
+stays and is saved in the UI history (not in the API history), as on an
+error.
 
 **`ask_user`:** shows the question; the user's next input becomes the tool
 result instead of a new message.
@@ -61,8 +73,9 @@ result instead of a new message.
 | | Anthropic | OpenAI | ChatGPT |
 |---|---|---|---|
 | History sent | All messages; native blocks (thinking signatures, search results) replayed when provider, model and key are unchanged | Only new items, chained with `previous_response_id`; full replay after model or key changes, restore, or trimming | Full replay every turn (`store: false`, no `previous_response_id`); function tools inside the `vault` namespace |
+| Request headers | `anthropic-dangerous-direct-browser-access: true` (CORS for `fetch`) | | |
 | Thinking | From the model catalog: `thinking` adaptive or fixed budget (8192 tokens); `output_config.effort` only when the chosen level is offered. None without catalog data | None; `/v1/models` reports no reasoning data | From the model catalog: `reasoning.effort` = chosen level if offered, else the model's default; `summary` unless the model rejects it. None without catalog data |
-| Response | JSON | JSON | SSE (`stream: true`), buffered by `requestUrl()` and parsed afterwards; done only at `response.completed` |
+| Response | SSE (`stream: true`); content blocks rebuilt from `content_block_*` events (text, thinking and signature deltas, tool input JSON, citations); done only at `message_stop` | SSE (`stream: true`); `response.output_text.delta` for text, items from `response.output_item.done`; done only at `response.completed` | same as OpenAI (the route requires `stream: true`) |
 | Images in tool results | `image` blocks inside the `tool_result` content | `function_call_output.output` as an array of `input_text` and `input_image` (data URL) | same as OpenAI |
 | Caching | `cache_control` on the system prompt and last tool | provider-side | provider-side |
 

@@ -17,6 +17,7 @@ main.ts ──▶ settings.ts ─────────────┐
    └──▶ agent/loop.ts ──▶ api/client.ts ──▶ api/anthropic.ts
           │    │                       ├──▶ api/openai.ts ────────┐
           │    │                       └──▶ api/chatgpt-oauth.ts ─┤──▶ api/responses-format.ts
+          │    │                 (all three adapters ──▶ api/stream.ts)
           │    ▼                                    │              │
           │  tools/registry.ts, tools/executor.ts   ▼              │
           ▼                                auth/chatgptOAuth.ts    │
@@ -34,18 +35,19 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
 |---|---|
 | `main.ts` | Plugin entry. Loads and saves settings (`data.json`) and API keys (SecretStorage), loads and saves chat history (`chat-state.json`), wires the ChatGPT OAuth service, registers the view, ribbon icon, commands and context menus. |
 | `settings.ts` | Settings tab: provider, API key or ChatGPT connect/disconnect, model picker with catalog refresh, thinking level, web search, iteration limit. Also the device-login modal and the chat header label. |
-| `ui/chat-view.ts` | Obsidian `ItemView` that mounts the Svelte component and connects its events to the agent loop callbacks. |
-| `ui/ChatContainer.svelte` | The whole chat UI: messages (rendered as Obsidian Markdown), tool cards, thinking indicator, selection pill, image tray, input with send and stop. Keeps the latest question at the top while its answer arrives. |
+| `ui/chat-view.ts` | Obsidian `ItemView` that mounts the Svelte component and connects its events to the agent loop callbacks; turns text deltas into a growing assistant message. |
+| `ui/ChatContainer.svelte` | The whole chat UI: messages (rendered as Obsidian Markdown, a streamed answer at most every 100 ms), tool cards, thinking indicator, selection pill, image tray, input with send and stop. Keeps the latest question at the top while its answer arrives. |
 | `ui/math-markdown.ts` | Converts `\(…\)`, `\[…\]` and math code fences to Obsidian's `$`/`$$` at render time, leaving code untouched. |
-| `agent/loop.ts` | The agent loop: owns the message history, calls the provider, runs tools, handles stop and `ask_user`, writes the debug log. |
+| `agent/loop.ts` | The agent loop: owns the message history, calls the provider, passes text deltas to the view, runs tools, handles stop (aborts the request) and `ask_user`, writes the debug log. |
 | `agent/history.ts` | Trims history only at the start of a user turn, so a tool call is never separated from its result. |
 | `agent/context.ts` | Collects per-turn context: vault name, note count, active note path, selection. |
 | `agent/system-prompt.ts` | The static system prompt and the per-turn context prefix. |
-| `api/client.ts` | Picks the adapter for the current provider; one retry on rate limits. |
-| `api/anthropic.ts` | Anthropic Messages API adapter (thinking, prompt caching, web search, native replay). |
+| `api/client.ts` | Picks the adapter for the current provider; one retry on rate limits while no text has been shown. |
+| `api/stream.ts` | The transport for chat: POST with `fetch`, an incremental SSE parser, abort; falls back to `requestUrl()` (and stays there for the session) when `fetch` fails before a response. The only module using `fetch` besides the device check. |
+| `api/anthropic.ts` | Anthropic Messages API adapter (streamed; thinking, prompt caching, web search, native replay). Rebuilds the message from stream events. |
 | `api/openai.ts` | OpenAI Responses API adapter (`previous_response_id` chaining, full replay as fallback). |
-| `api/chatgpt-oauth.ts` | ChatGPT adapter (`api.openai.com/v1/responses` with the ChatGPT-plan token): `store: false`, full replay each turn, tools in a namespace, buffered SSE parsing. |
-| `api/responses-format.ts` | Converts unified messages to and from the Responses API format (shared by the OpenAI and ChatGPT adapters). |
+| `api/chatgpt-oauth.ts` | ChatGPT adapter (`api.openai.com/v1/responses` with the ChatGPT-plan token): `store: false`, full replay each turn, tools in a namespace. |
+| `api/responses-format.ts` | Converts unified messages to and from the Responses API format, and rebuilds a response from its stream events (shared by the OpenAI and ChatGPT adapters). |
 | `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account; thinking and parallel-tool capabilities, and the thinking parameters built from them. |
 | `auth/chatgptOAuth.ts` | Device login, token exchange and refresh against `auth.openai.com`. |
 | `auth/chatgptOAuthStore.ts` | Reads and writes the OAuth credential in SecretStorage. |

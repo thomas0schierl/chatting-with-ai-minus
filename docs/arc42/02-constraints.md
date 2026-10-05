@@ -9,8 +9,9 @@
 | Constraint | Consequence |
 |---|---|
 | Runs inside Obsidian (minimum app version in `manifest.json`) | Only the Obsidian plugin API; one bundled `main.js`. |
-| Mobile apps run in a WebView that enforces CORS | All HTTP goes through Obsidian's `requestUrl()`, not `fetch`. |
-| `requestUrl()` returns the whole response at once | No streaming UI; streamed (SSE) responses are parsed after they complete. |
+| Mobile apps run in a WebView that enforces CORS | `fetch` works only where the server allows Obsidian's origins (`app://obsidian.md`, `capacitor://localhost`, `http://localhost`). Anthropic `/v1/messages` does with the header `anthropic-dangerous-direct-browser-access: true`, OpenAI `/v1/responses` always (checked 2026-10-05); other HTTP goes through Obsidian's `requestUrl()`. |
+| `requestUrl()` returns the whole response at once and can't be cancelled | Streamed answers need `fetch` (ADR-12); when it fails, the buffered stream is parsed after it completes. |
+| Obsidian's review lint warns about every `fetch` (`no-restricted-globals`) and forbids disabling it in a comment | `fetch` stays in one module (`api/stream.ts`, plus the device check); the warning is accepted. |
 | No Node.js modules on mobile | No local servers or file-system APIs outside the vault adapter; the ChatGPT sign-in can't catch its `127.0.0.1` callback, so the user pastes its address. |
 | iOS `response.json` throws on non-JSON bodies | Read `.json` inside `try`, fall back to `.text`. |
 | Secrets API is Obsidian `SecretStorage` (IDs: lowercase letters, digits, dashes) | Key names follow that pattern. |

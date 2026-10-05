@@ -7,8 +7,9 @@
 
 ## ADR-01: All HTTP through `requestUrl()`, no streaming
 
-- **Status:** narrowed by ADR-11 (live voice audio uses WebRTC). ADR-12
-  (proposed) would replace it for chat requests to Anthropic and OpenAI.
+- **Status:** superseded by ADR-12 (2026-10-05): chat requests stream
+  with `fetch`. Narrowed before by ADR-11 (live voice audio uses WebRTC).
+  Every other request still uses `requestUrl()`.
 - **Context:** mobile WebViews enforce CORS, and `requestUrl()` is the only
   HTTP API that works on every platform. It returns complete responses only.
 - **Decision:** every request uses `requestUrl()`. Answers appear when
@@ -132,39 +133,54 @@
   - Anthropic users get no voice mode.
   - Voice runs only while the chat panel is open.
 
-## ADR-12: Stream chat with `fetch` where the provider allows it (proposed)
+## ADR-12: Stream chat answers with `fetch`, `requestUrl()` as fallback
 
-- **Status:** proposed; decided after the device spike in GAP-016.
-  Updated after ADR-13: ChatGPT now uses `api.openai.com`, so it can
-  stream too.
-- **Context:** ADR-01 assumed `requestUrl()` is the only HTTP API that
-  works everywhere. Checked on 2026-10-05 for the origins Obsidian uses
-  (`app://obsidian.md`, `capacitor://localhost`, `http://localhost`):
-  - **Anthropic `/v1/messages`:** answers with `Access-Control-Allow-Origin: *`
-    when the request sends `anthropic-dangerous-direct-browser-access: true`.
-  - **OpenAI `/v1/responses`:** always answers with it.
-  - **Codex `/backend-api/codex/responses`:** sends no allow-origin header,
-    so browsers block it.
-
-  `requestUrl()` can't stream and can't be cancelled, which costs streamed
-  answers (GAP-016) and a working Stop.
-- **Decision (proposed):**
-  - Chat requests to Anthropic, OpenAI and ChatGPT use `fetch` with
-    `stream: true`, render text as it arrives, and cancel with
-    `AbortController`.
-  - If `fetch` fails before any response (blocked or network error), the
-    same request falls back to `requestUrl()` and is parsed from the
-    buffered stream, as ChatGPT is today.
-  - Sign-in and model-list requests stay on `requestUrl()`.
+- **Status:** accepted 2026-10-05; supersedes ADR-01 for chat requests.
+- **Context:**
+  - Users expect answers to appear as they're written, as in the ChatGPT
+    app. `requestUrl()` returns complete responses only and can't be
+    cancelled, so long answers showed a thinking indicator until done, and
+    Stop could only ignore the result.
+  - ADR-01 assumed the providers reject cross-origin `fetch`. Checked on
+    2026-10-05 for Obsidian's origins (`app://obsidian.md`,
+    `capacitor://localhost`, `http://localhost`): Anthropic
+    `/v1/messages` answers with `Access-Control-Allow-Origin: *` when the
+    request sends `anthropic-dangerous-direct-browser-access: true`;
+    OpenAI `/v1/responses` (OpenAI and ChatGPT providers) always does.
+- **Decision:**
+  - Chat requests of all three providers send `stream: true` through one
+    transport module, `api/stream.ts`: `fetch` with a streamed body, an
+    incremental SSE parser, and an `AbortController` that Stop triggers.
+  - The adapters rebuild from the stream events the same response the
+    non-streamed API returns (Anthropic content blocks with thinking
+    signatures, citations and server tool blocks; Responses output items),
+    so history, persistence and native replay are unchanged. Text deltas
+    go through `onTextDelta` to the chat view; tool calls run only once the
+    response is complete.
+  - If `fetch` fails before any response (CORS block, network error), the
+    same request goes through `requestUrl()`, and its buffered SSE goes
+    through the same parser: the answer appears at once. Once that
+    fallback has worked, the session skips `fetch`. Such a request can't be
+    cancelled; Stop ignores its result.
+  - Sign-in, model lists and all other HTTP stay on `requestUrl()`.
 - **Consequences:**
-  - All three adapters then parse server-sent events, sharing one parser.
-  - Two transport paths to test.
+  - Answers appear as they're written; Stop cancels the request.
+  - Two transport paths. The tests run both: the harness `fetch` fails
+    like a CORS block unless a test supplies a streamed body.
+  - The rate-limit retry happens only before any text was shown.
   - **Plugin review:** Obsidian's review lint (`eslint-plugin-obsidianmd`)
-    flags every `fetch` (`no-restricted-globals`), and its config forbids
-    switching the rule off in a comment (checked 2026-10-05). Before
-    adopting, find out whether Obsidian accepts a justified exception for
-    streaming, or whether it blocks a listing.
-  - Supersedes ADR-01 for these providers.
+    warns about every `fetch` (`no-restricted-globals`, a warning, not an
+    error), and its config forbids switching the rule off in a comment.
+    `fetch` is kept in `api/stream.ts` (and the device check in
+    `diagnostics/capability-check.ts`), so the review sees one justified
+    use. If review refuses it, removing the `fetch` call leaves the
+    `requestUrl()` path, i.e. ADR-01's behaviour.
+  - **Mobile:** not yet verified on a device whether the iOS and Android
+    apps deliver a streamed `fetch` body (the *Check device capabilities*
+    command tests it). If `fetch` is blocked there, the fallback keeps chat
+    working without streaming.
+  - API keys and tokens travel in `fetch` headers from the user's device
+    to the provider, as before with `requestUrl()` (§8).
 
 ## ADR-13: ChatGPT sign-in through OpenAI's official route, with a pasted callback
 
@@ -187,7 +203,7 @@
   - Chat and model lists use `api.openai.com/v1` with the ChatGPT-plan
     token.
 - **Consequences:**
-  - A sanctioned, documented route, with streaming possible (ADR-12).
+  - A sanctioned, documented route; answers stream (ADR-12).
   - One extra copy step at sign-in; each device signs in separately.
   - The programme is a preview and may change.
   - Users of the old route sign in again.
