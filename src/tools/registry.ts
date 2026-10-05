@@ -1,14 +1,11 @@
 import type { UnifiedToolDef } from "../types";
 
-/**
- * All 9 tools the agent can call. Deliberately minimal:
- * read, edit, search, create, list, read-any, rename, delete, and ask-user.
- */
+/** The tools the agent can call (arc42 §5 lists them with the Obsidian API each uses). */
 export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
   {
     name: "read_document",
     description:
-      "Read the content of a markdown document. If no path is given, reads the currently active document.",
+      "Read the content of a markdown document. If no path is given, reads the currently active document. For .canvas files use read_canvas.",
     inputSchema: {
       type: "object",
       properties: {
@@ -23,7 +20,7 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
   {
     name: "edit_document",
     description:
-      "Edit a markdown document. Supports three operations: 'replace_all' replaces the entire content, 'find_replace' finds a specific string and replaces it, 'insert' adds content at a position.",
+      "Edit a markdown document (for .canvas files use edit_canvas instead). Supports three operations: 'replace_all' replaces the entire content, 'find_replace' finds a specific string and replaces it, 'insert' adds content at a position.",
     inputSchema: {
       type: "object",
       properties: {
@@ -56,7 +53,7 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
   {
     name: "search_vault",
     description:
-      "Search for files in the vault by filename or content. Returns matching file paths and snippets.",
+      "Search notes and canvases by filename or content. In canvases, content search covers card text, group labels and edge labels and reports the node or edge ID. Returns matching file paths and snippets.",
     inputSchema: {
       type: "object",
       properties: {
@@ -78,7 +75,7 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
   },
   {
     name: "read_file",
-    description: "Read the full content of any file in the vault by its path.",
+    description: "Read the full raw content of any file in the vault by its path. For .canvas files prefer read_canvas, which is shorter and easier to follow.",
     inputSchema: {
       type: "object",
       properties: {
@@ -88,6 +85,86 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
         },
       },
       required: ["path"],
+    },
+  },
+  {
+    name: "read_canvas",
+    description:
+      "Read an Obsidian canvas (.canvas file) as a compact outline: each group with the nodes inside it, then nodes outside groups, then edges as 'fromId → toId: label'. Shows node IDs, type, text (shortened) / file / URL, position (top-left x,y) and size. Use the IDs with edit_canvas.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the .canvas file relative to vault root.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "edit_canvas",
+    description:
+      "Change an Obsidian canvas (.canvas file) with structured operations, applied in order and all-or-nothing (on any error nothing is written). Generates node and edge IDs, keeps the file valid JSON Canvas, places new nodes without overlapping others, and keeps unknown fields. Read the canvas with read_canvas first. Operations: add_node, update_node, move_node, remove_node (also removes its edges), add_edge, update_edge, remove_edge. To create a new canvas, create_file with content '{\"nodes\":[],\"edges\":[]}' and then use this tool.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the .canvas file relative to vault root.",
+        },
+        operations: {
+          type: "array",
+          description: "Operations to apply in order.",
+          items: {
+            type: "object",
+            properties: {
+              op: {
+                type: "string",
+                enum: ["add_node", "update_node", "move_node", "remove_node", "add_edge", "update_edge", "remove_edge"],
+              },
+              id: {
+                type: "string",
+                description: "Node or edge ID (or ref) to update, move or remove.",
+              },
+              ref: {
+                type: "string",
+                description: "add_node/add_edge: a temporary name for the new node or edge, usable as id, near, group, fromNode or toNode in later operations of this call.",
+              },
+              type: {
+                type: "string",
+                enum: ["text", "file", "link", "group"],
+                description: "add_node: the node type.",
+              },
+              text: { type: "string", description: "Markdown text of a text node." },
+              file: { type: "string", description: "Vault path of a file node; the file must exist." },
+              subpath: { type: "string", description: "Heading or block in the file, e.g. '#Heading'. Empty string removes it." },
+              url: { type: "string", description: "URL of a link node." },
+              label: { type: "string", description: "Label of a group or an edge. Empty string removes it." },
+              color: { type: "string", description: "'1'-'6' (red, orange, yellow, green, cyan, purple) or hex like '#FF0000'. Empty string removes it." },
+              x: { type: "number", description: "add_node/move_node: left edge. Omit to place automatically." },
+              y: { type: "number", description: "add_node/move_node: top edge. Omit to place automatically." },
+              width: { type: "number", description: "add_node/update_node: width. add_node has a default per type." },
+              height: { type: "number", description: "add_node/update_node: height. add_node has a default per type." },
+              near: { type: "string", description: "add_node/move_node: put the node next to this node, without overlapping others." },
+              side: {
+                type: "string",
+                enum: ["top", "right", "bottom", "left"],
+                description: "Which side of 'near' to use. Default: right.",
+              },
+              group: { type: "string", description: "add_node/move_node: put the node inside this group; the group grows if needed." },
+              fromNode: { type: "string", description: "add_edge/update_edge: start node ID or ref." },
+              toNode: { type: "string", description: "add_edge/update_edge: end node ID or ref." },
+              fromSide: { type: "string", enum: ["top", "right", "bottom", "left"], description: "Default: the side facing the other node." },
+              toSide: { type: "string", enum: ["top", "right", "bottom", "left"], description: "Default: the side facing the other node." },
+              fromEnd: { type: "string", enum: ["none", "arrow"], description: "Default: none." },
+              toEnd: { type: "string", enum: ["none", "arrow"], description: "Default: arrow." },
+            },
+            required: ["op"],
+          },
+        },
+      },
+      required: ["path", "operations"],
     },
   },
   {

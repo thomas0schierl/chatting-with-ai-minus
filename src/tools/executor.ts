@@ -1,5 +1,6 @@
 import { App, TFile, normalizePath } from "obsidian";
 import type { ToolResult } from "../types";
+import { applyCanvasOperations, canvasSearchTexts, describeCanvas, isCanvasPath, parseCanvas, serializeCanvas } from "./canvas";
 
 type AskUserCallback = (question: string) => Promise<string>;
 
@@ -31,6 +32,10 @@ export async function executeTool(
         return await searchVault(app, input);
       case "read_file":
         return await readFile(app, input);
+      case "read_canvas":
+        return await readCanvas(app, input);
+      case "edit_canvas":
+        return await editCanvas(app, input);
       case "create_file":
         return await createFile(app, input);
       case "list_files":
@@ -99,6 +104,23 @@ function requiredRecord(value: unknown): Record<string, unknown> | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+/** About 50 characters either side of a match, on one line. */
+function snippet(content: string, idx: number, length: number): string {
+  const start = Math.max(0, idx - 50);
+  const end = Math.min(content.length, idx + length + 50);
+  return `...${content.substring(start, end).replace(/\n/g, " ")}...`;
+}
+
+/** The canvas file at `path`, or an error result for the model. */
+function resolveCanvas(app: App, path: string): TFile | ToolResult {
+  if (!path) return { result: "'path' parameter is required.", isError: true };
+  if (!isCanvasPath(path)) {
+    return { result: `${path} is not a canvas. read_canvas and edit_canvas work on .canvas files; use read_document or edit_document for notes.`, isError: true };
+  }
+  const file = app.vault.getFileByPath(normalizePath(path));
+  return file ?? { result: `File not found: ${path}`, isError: true };
 }
 
 // ─── Tool Implementations ───────────────────────────────────────────────────
@@ -212,7 +234,8 @@ async function searchVault(
   const searchContent = input.searchContent as boolean | undefined;
   const limit = Math.min((input.limit as number) || 10, 50);
 
-  const files = app.vault.getMarkdownFiles();
+  const canvases = app.vault.getFiles().filter((f) => isCanvasPath(f.path));
+  const files = [...app.vault.getMarkdownFiles(), ...canvases];
   const results: string[] = [];
 
   for (const file of files) {
@@ -223,16 +246,26 @@ async function searchVault(
       continue;
     }
 
-    if (searchContent) {
+    if (searchContent && isCanvasPath(file.path)) {
+      // Card text, group labels and edge labels; positions in the JSON don't count.
+      let texts: ReturnType<typeof canvasSearchTexts>;
+      try {
+        texts = canvasSearchTexts(parseCanvas(await app.vault.cachedRead(file)));
+      } catch {
+        continue; // Not valid JSON Canvas; nothing searchable.
+      }
+      for (const { id, kind, text } of texts) {
+        if (results.length >= limit) break;
+        const idx = text.toLowerCase().indexOf(query);
+        if (idx !== -1) results.push(`- ${file.path} (${kind} ${id}): ${snippet(text, idx, query.length)}`);
+      }
+    } else if (searchContent) {
       // cachedRead() avoids redundant disk reads
       const content = await app.vault.cachedRead(file);
       const lowerContent = content.toLowerCase();
       const idx = lowerContent.indexOf(query);
       if (idx !== -1) {
-        const start = Math.max(0, idx - 50);
-        const end = Math.min(content.length, idx + query.length + 50);
-        const snippet = content.substring(start, end).replace(/\n/g, " ");
-        results.push(`- ${file.path}: ...${snippet}...`);
+        results.push(`- ${file.path}: ${snippet(content, idx, query.length)}`);
       }
     }
   }
@@ -263,6 +296,55 @@ async function readFile(
 
   const content = await app.vault.cachedRead(file);
   return { result: content, isError: false };
+}
+
+async function readCanvas(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const file = resolveCanvas(app, requiredString(input.path));
+  if ("isError" in file) return file;
+
+  let canvas;
+  try {
+    canvas = parseCanvas(await app.vault.cachedRead(file));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { result: `${file.path} is not valid JSON Canvas (${msg}). Use read_file to see the raw text.`, isError: true };
+  }
+  return { result: describeCanvas(file.path, canvas), isError: false };
+}
+
+async function editCanvas(
+  app: App,
+  input: Record<string, unknown>
+): Promise<ToolResult> {
+  const file = resolveCanvas(app, requiredString(input.path));
+  if ("isError" in file) return file;
+  const operations = input.operations;
+  if (!Array.isArray(operations) || operations.length === 0) {
+    return { result: "'operations' must be a non-empty array.", isError: true };
+  }
+
+  const fileExists = (path: string) => app.vault.getFileByPath(normalizePath(path)) !== null;
+  let summary: string[] = [];
+  let error = "";
+  // All operations apply, or none: on any error the file is left unchanged.
+  await app.vault.process(file, (data) => {
+    try {
+      const canvas = parseCanvas(data);
+      summary = applyCanvasOperations(canvas, operations, fileExists);
+      return serializeCanvas(canvas);
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+      return data;
+    }
+  });
+
+  if (error) {
+    return { result: `No changes made to ${file.path}. ${error}`, isError: true };
+  }
+  return { result: `Updated ${file.path}:\n${summary.map((line) => `- ${line}`).join("\n")}`, isError: false };
 }
 
 async function createFile(

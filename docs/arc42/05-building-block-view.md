@@ -47,8 +47,9 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID.
 | `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account; Codex client version; thinking and parallel-tool capabilities, and the thinking parameters built from them. |
 | `auth/chatgptOAuth.ts` | Device login, token exchange and refresh against `auth.openai.com`. |
 | `auth/chatgptOAuthStore.ts` | Reads and writes the OAuth credential in SecretStorage. |
-| `tools/registry.ts` | The 14 tool definitions (JSON Schema) offered to the model. |
+| `tools/registry.ts` | The 16 tool definitions (JSON Schema) offered to the model. |
 | `tools/executor.ts` | Runs a tool call against the Obsidian vault and returns a result or an error for the model. |
+| `tools/canvas.ts` | JSON Canvas 1.0 without vault access: parse, write in Obsidian's format, the outline for `read_canvas`, the `edit_canvas` operations (IDs, placement without overlap, validation) and the searchable canvas text. |
 | `types.ts` | Settings, unified message and response types, defaults. |
 | `plugin-id.ts` | The plugin ID, used for keychain keys, paths and User-Agents. |
 
@@ -58,8 +59,10 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID.
 |---|---|---|
 | `read_document` | `vault.cachedRead()` | Active note if no path given |
 | `edit_document` | `vault.process()` / `vault.modify()` | Find/replace, insert, or replace all |
-| `search_vault` | `getMarkdownFiles()` + `cachedRead()` | Linear scan, up to 50 results |
-| `read_file` | `vault.getFileByPath()` + `cachedRead()` | Any file type |
+| `search_vault` | `getMarkdownFiles()`, `getFiles()` + `cachedRead()` | Linear scan of notes and canvases (card text, group and edge labels, with the node or edge ID), up to 50 results |
+| `read_file` | `vault.getFileByPath()` + `cachedRead()` | Any file type, raw |
+| `read_canvas` | `vault.getFileByPath()` + `cachedRead()` | `.canvas` only: groups with their nodes, other nodes, edges, with IDs, positions and sizes |
+| `edit_canvas` | `vault.process()` | `.canvas` only: add, update, move or remove nodes and edges; all operations or none; keeps unknown fields |
 | `create_file` | `vault.create()` | Creates parent folders |
 | `list_files` | `vault.getFiles()` | Up to 100 results |
 | `rename_file` | `fileManager.renameFile()` | Updates links |
