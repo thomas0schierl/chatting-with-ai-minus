@@ -21,7 +21,6 @@ import {
   newestFirst,
   restoreImages,
   savedConversation,
-  SAVED_MESSAGES,
   type ChatState,
   type ConversationRecord,
 } from "./chat-state";
@@ -453,7 +452,7 @@ export default class ChatPlugin extends Plugin {
 
   /** Copies the agent's history into the active conversation's record. */
   private storeActiveMessages(): void {
-    if (this.agent) this.activeConversation.agentMessages = this.agent.exportMessages(SAVED_MESSAGES);
+    if (this.agent) this.activeConversation.agentMessages = this.agent.exportMessages();
   }
 
   // ─── Chat history persistence ─────────────────────────────────────────

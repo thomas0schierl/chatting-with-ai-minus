@@ -5,6 +5,12 @@ function startsUserTurn(message: UnifiedMessage): boolean {
     message.content.some(block => block.type === "text" || block.type === "image"));
 }
 
+/**
+ * The API history keeps the last 80 messages, rounded to whole user turns:
+ * what is sent at the start of a turn, kept in memory and saved.
+ */
+export const HISTORY_MESSAGES = 80;
+
 /** Keep whole user turns so pruning/persistence cannot orphan tool results. */
 export function trimHistory(messages: UnifiedMessage[], limit: number): UnifiedMessage[] {
   const firstTurn = messages.findIndex(startsUserTurn);

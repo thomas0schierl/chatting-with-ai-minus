@@ -30,7 +30,8 @@ an answer through the chat view with a fake Svelte component
 (`message-actions.test.mjs`, also Stop and Clear while `ask_user`
 waits), saving each image once with the
 migration of older saved chats (`images-once.test.mjs`), named
-conversations: migration, new chat, switch, rename, delete, restore, an
+conversations: migration, new chat, switch (the API history keeps up to 80
+messages), rename, delete, restore, an
 unreadable saved file kept aside, saves one at a time, tool card inputs after a reload,
 titles, and isolation of histories and OpenAI chaining
 (`conversations.test.mjs`), `edit_document` without content

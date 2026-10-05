@@ -20,7 +20,7 @@
    history's images their data from its API messages (same image ID); an
    image no longer there keeps only its name and is shown as a chip. Make
    the saved active conversation active again and import its API messages
-   into the agent loop (trimmed to 40). Until this has finished, `saveChatHistory()` does
+   into the agent loop (as saved: at most 80). Until this has finished, `saveChatHistory()` does
    nothing, so an early unload can't overwrite the saved chat. No file
    (first run) starts a new chat silently. A file that can't be read or
    isn't a saved chat is renamed to `chat-state.corrupt-<time>.json` and a
@@ -39,7 +39,8 @@ No network requests happen at start.
 2. **Turn setup:** `run()` takes a snapshot of the settings, so provider
    and model stay fixed for the turn. It adds the context prefix (and the
    selection-scope instruction), appends the user message with the turn ID,
-   and trims the history if it is over 50 messages.
+   and trims the history to the last 80 messages (whole turns), the cap
+   that saving uses too.
 3. **Loop, up to the iteration limit:**
    1. Show the thinking indicator.
    2. Call `client.sendMessage()`, which sends through the provider's

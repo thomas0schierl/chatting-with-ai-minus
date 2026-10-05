@@ -4,7 +4,7 @@
 // OpenAI chaining stay within their conversation.
 import assert from 'node:assert/strict';
 import { test, beforeEach } from 'node:test';
-import { api, settings, text, call, response, transport, vaultApp, chatSetup } from './harness.mjs';
+import { api, settings, text, call, image, response, transport, vaultApp, chatSetup } from './harness.mjs';
 
 beforeEach(() => {
   api.clearOpenAIState();
@@ -314,6 +314,31 @@ test('Each conversation is saved with its own caps (100 entries, 80 API messages
   assert.equal(saved.agentMessages.length, 80);
   assert.equal(saved.agentMessages[0].turnId, 't20');
   assert.equal(writes.at(-1).conversations.length, 2);
+});
+
+test('Switching away and back keeps the API history up to 80 messages, and its images', async () => {
+  const { plugin, view, writes } = await chatSetup('anthropic');
+  const requests = answering('anthropic');
+  const long = plugin.activeConversation;
+  for (let i = 0; i < 35; i++) {
+    const images = i === 0 ? [{ ...image, id: 'old-image' }] : [];
+    long.chatHistory.push({ type: 'user', text: `Q${i}`, turnId: `t${i}`, images }, { type: 'assistant', text: `A${i}` });
+    const content = i === 0 ? [{ type: 'image', image: images[0] }, text(`Q${i}`)] : `Q${i}`;
+    long.agentMessages.push({ role: 'user', content, turnId: `t${i}` }, { role: 'assistant', content: [text(`A${i}`)] });
+  }
+  plugin.agent.importMessages(long.agentMessages);
+
+  view.newChat();
+  view.openConversation(long.id);
+  assert.equal(plugin.agent.exportMessages().length, 70);
+  await view.handleUserMessage('Next', null);
+  assert.equal(requests[0].messages.length, 71);
+
+  // Saved and loaded again: the oldest turn and its image are still there.
+  await new Promise(resolve => setTimeout(resolve, 2));
+  const restored = await chatSetup('anthropic', JSON.parse(JSON.stringify(writes.at(-1))));
+  assert.equal(restored.plugin.agent.exportMessages().length, 72);
+  assert.equal(restored.plugin.chatHistory[0].images[0].data, image.data);
 });
 
 test('Nothing is saved before the saved conversations have been read', async () => {

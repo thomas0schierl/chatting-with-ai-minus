@@ -15,11 +15,8 @@ import { TOOL_DEFINITIONS } from "../tools/registry";
 import { executeTool } from "../tools/executor";
 import { buildContext } from "./context";
 import { buildSystemPrompt, buildContextMessage } from "./system-prompt";
-import { trimHistory, cutBeforeTurn, newTurnId } from "./history";
+import { trimHistory, cutBeforeTurn, newTurnId, HISTORY_MESSAGES } from "./history";
 import { PLUGIN_ID } from "../plugin-id";
-
-const MAX_CONVERSATION_LENGTH = 50;
-const KEEP_RECENT = 40;
 
 // Debug logging: writes transcript to the vault's plugin config folder
 // (also used by the voice session for its data-channel events).
@@ -102,14 +99,14 @@ export class AgentLoop {
     this.messages = cutBeforeTurn(this.messages, turnId);
   }
 
-  /** Export API messages for persistence */
-  exportMessages(limit = 80): UnifiedMessage[] {
-    return trimHistory(this.messages, limit);
+  /** The API history as saved: the last `HISTORY_MESSAGES` messages, whole turns. */
+  exportMessages(): UnifiedMessage[] {
+    return trimHistory(this.messages, HISTORY_MESSAGES);
   }
 
-  /** Restore API messages from persistence */
+  /** Continue from a saved API history (trimmed when it was saved). */
   importMessages(messages: UnifiedMessage[]): void {
-    this.messages = trimHistory(messages, KEEP_RECENT);
+    this.messages = [...messages];
     clearOpenAIState();
     clearChatGPTOAuthState();
   }
@@ -231,8 +228,8 @@ export class AgentLoop {
       : fullMessage;
     this.messages.push({ role: "user", content, turnId });
 
-    // Prune if conversation is too long
-    this.pruneHistory();
+    // What is sent is capped like what is saved.
+    this.messages = trimHistory(this.messages, HISTORY_MESSAGES);
 
     // System prompt is static (cache-friendly). Built once, identical every call.
     const systemPrompt = buildSystemPrompt();
@@ -354,12 +351,5 @@ export class AgentLoop {
     callbacks.onError(
       `Reached maximum iterations (${maxIterations}). The task may be too complex for a single conversation turn.`
     );
-  }
-
-  /** Drop oldest messages when conversation gets too long, keeping recent context */
-  private pruneHistory(): void {
-    if (this.messages.length > MAX_CONVERSATION_LENGTH) {
-      this.messages = trimHistory(this.messages, KEEP_RECENT);
-    }
   }
 }

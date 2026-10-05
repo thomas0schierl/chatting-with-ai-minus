@@ -4,14 +4,13 @@
  * image once. Pure functions; `main.ts` reads and writes the file.
  */
 import type { ChatHistoryEntry, ImageAttachment, UnifiedMessage } from "./types";
-import { assignLegacyTurnIds, trimHistory } from "./agent/history";
+import { assignLegacyTurnIds, trimHistory, HISTORY_MESSAGES } from "./agent/history";
 
 /** Current format version of `chat-state.json`. */
 export const CHAT_STATE_VERSION = 3;
 
-/** Saved per conversation: the last 100 visible entries and 80 API messages. */
+/** Saved per conversation: the last 100 visible entries (and `HISTORY_MESSAGES` API messages). */
 export const SAVED_ENTRIES = 100;
-export const SAVED_MESSAGES = 80;
 
 /** The title of a conversation without a user message yet. */
 export const NEW_CHAT_TITLE = "New chat";
@@ -137,7 +136,7 @@ export function savedConversation(conversation: ConversationRecord): Conversatio
   return {
     ...conversation,
     chatHistory: withoutImageData(conversation.chatHistory.slice(-SAVED_ENTRIES)),
-    agentMessages: trimHistory(conversation.agentMessages, SAVED_MESSAGES),
+    agentMessages: trimHistory(conversation.agentMessages, HISTORY_MESSAGES),
   };
 }
 
