@@ -18,6 +18,7 @@ export const bundled = await build({
     export { buildResponsesInput, fromResponsesOutput } from './src/api/responses-format';
     export { default as ChatPlugin } from './src/main';
     export { executeTool } from './src/tools/executor';
+    export * as canvasRender from './src/tools/canvas-render';
     export * as auth from './src/auth/chatgptOAuth';
     export { ChatGPTOAuthStore } from './src/auth/chatgptOAuthStore';
   `, resolveDir: process.cwd(), loader: 'ts' },
@@ -55,6 +56,7 @@ export const bundled = await build({
       export class TFile { constructor(path) { this.path = path; this.extension = 'md'; } }
       export const normalizePath = path => path;
       export const requestUrl = request => globalThis.__providerRequest(request);
+      export const arrayBufferToBase64 = buffer => Buffer.from(buffer).toString('base64');
     `, loader: 'js' }));
   } }],
 });

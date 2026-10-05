@@ -75,7 +75,7 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
   },
   {
     name: "read_file",
-    description: "Read the full raw content of any file in the vault by its path. For .canvas files prefer read_canvas, which is shorter and easier to follow.",
+    description: "Read the full raw text of any text file in the vault by its path. Refuses images (use view_image) and other binary files. For .canvas files prefer read_canvas, which is shorter and easier to follow.",
     inputSchema: {
       type: "object",
       properties: {
@@ -88,15 +88,49 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
     },
   },
   {
+    name: "view_image",
+    description:
+      "Look at an image file in the vault (PNG, JPEG, GIF or WebP): returns the image itself so you can see it. Large images are scaled down. Use this for any question about what an image in the vault shows.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the image relative to vault root.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
     name: "read_canvas",
     description:
-      "Read an Obsidian canvas (.canvas file) as a compact outline: each group with the nodes inside it, then nodes outside groups, then edges as 'fromId → toId: label'. Shows node IDs, type, text (shortened) / file / URL, position (top-left x,y) and size. Use the IDs with edit_canvas.",
+      "Read an Obsidian canvas (.canvas file) as a compact outline: each group with the nodes inside it, then nodes outside groups, then edges as 'fromId → toId: label'. Shows node IDs, type, text (shortened) / file / URL, position (top-left x,y) and size. Use the IDs with edit_canvas. To see the layout as a picture, use view_canvas.",
     inputSchema: {
       type: "object",
       properties: {
         path: {
           type: "string",
           description: "Path to the .canvas file relative to vault root.",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "view_canvas",
+    description:
+      "Look at an Obsidian canvas (.canvas file) as a picture: returns a PNG of the layout (groups, cards, files with images drawn, links, edges with arrows and labels, colours) plus a legend mapping the ID tag drawn on each node to its type and first words. Use it to understand the visual arrangement or to check a layout after edit_canvas; use read_canvas for the full text. Large canvases are scaled to fit; set 'focus' to zoom to one group or node.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the .canvas file relative to vault root.",
+        },
+        focus: {
+          type: "string",
+          description: "ID of a group or node to zoom to (or its tag from an earlier picture). Omit to show the whole canvas.",
         },
       },
       required: ["path"],

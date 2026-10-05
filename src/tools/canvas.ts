@@ -565,7 +565,7 @@ function defaultSize(type: string, text: string): { width: number; height: numbe
 }
 
 /** Connects the facing sides of two nodes. */
-function defaultSides(from: Rect, to: Rect): { fromSide: string; toSide: string } {
+export function defaultSides(from: Rect, to: Rect): { fromSide: string; toSide: string } {
   const dx = to.x + to.width / 2 - (from.x + from.width / 2);
   const dy = to.y + to.height / 2 - (from.y + from.height / 2);
   if (Math.abs(dx) >= Math.abs(dy)) {
