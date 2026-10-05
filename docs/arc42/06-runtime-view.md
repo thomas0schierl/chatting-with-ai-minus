@@ -92,6 +92,10 @@ OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
    - first sign-in: `client_id=dynamic_agent_client` and
      `agent_name_hint`; later: the issued client ID and the saved email as
      `login_hint`.
+
+   The attempt is saved in SecretStorage and reused, also after a restart,
+   until its code is exchanged or it is 10 minutes old. A phone that kills
+   Obsidian while the user is in the browser can still finish the paste.
 2. **Browser:** *Open sign-in page* opens it in the system browser. The
    user signs in and allows plan use; the browser then lands on the
    `127.0.0.1` address, which doesn't load.
@@ -108,8 +112,9 @@ OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
    expiry, with the issued client ID and resource; one refresh at a time,
    since refresh tokens rotate. An unusable refresh token clears the
    sign-in; network and server errors keep it.
-6. **Disconnect:** `signOut()` revokes the refresh token, then clears the
-   tokens. The host and client ID stay for the next sign-in.
+6. **Disconnect:** `signOut()` revokes the refresh token (one retry after
+   a network error or 5xx), then clears the tokens. The host and client ID
+   stay for the next sign-in.
 
 ## Model list refresh (`api/model-catalog.ts`)
 

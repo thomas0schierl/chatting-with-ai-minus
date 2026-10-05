@@ -8,13 +8,14 @@ import { api, settings, text, call, result, response, sse, transport } from './h
 
 const { auth } = api;
 const ISSUED = 'oaiapp_test123';
+const PENDING_KEY = 'chatting-with-ai-minus-chatgpt-sign-in';
+const OAUTH_KEY = 'chatting-with-ai-minus-chatgpt-oauth';
 
 function secretApp() {
   const secrets = new Map();
   return { secrets, secretStorage: { getSecret: key => secrets.get(key) ?? null, setSecret: (key, value) => secrets.set(key, value) } };
 }
-function service() {
-  const app = secretApp();
+function service(app = secretApp()) {
   const store = new api.ChatGPTOAuthStore(app);
   return { app, store, oauth: new auth.ChatGPTOAuthService(store) };
 }
@@ -134,7 +135,7 @@ test('Sign-in is refused without the plan scope, with a wrong nonce, or with a r
   ({ oauth } = service());
   await assert.rejects(signIn(oauth, () => ({ status: 400, json: { error: 'invalid_grant' } })), /rejected or has expired/);
   // The code is single-use: the attempt is over.
-  await assert.rejects(oauth.completeSignIn('http://127.0.0.1:50000/auth/callback?code=c&state=s'), /Open the sign-in page first/);
+  await assert.rejects(oauth.completeSignIn('http://127.0.0.1:50000/auth/callback?code=c&state=s'), /No sign-in is waiting/);
 });
 
 test('Refresh: issued client and resource, rotated tokens, one request at a time', async () => {
@@ -180,10 +181,57 @@ test('Sign-out revokes the refresh token and keeps the registration', async () =
   assert.deepEqual(form(request), { token: 'fake-refresh', token_type_hint: 'refresh_token', client_id: ISSUED });
   assert.equal(oauth.getCredential(), null);
   assert.equal(store.getRegistration().clientId, ISSUED);
-  await signIn(oauth);
-  globalThis.__providerRequest = async () => ({ status: 500 });
-  assert.equal(await oauth.signOut(), false);
-  assert.equal(oauth.getCredential(), null);
+});
+
+test('Revocation is retried once after a network error or 5xx, not after a 4xx', async (t) => {
+  const { oauth } = service();
+  // The retry waits on window.setTimeout; skip the wait here.
+  globalThis.window = { setTimeout: fn => setTimeout(fn, 0) };
+  t.after(() => { delete globalThis.window; });
+  const revokeWith = async (...results) => {
+    await signIn(oauth);
+    let calls = 0;
+    globalThis.__providerRequest = async () => {
+      const next = results[calls++];
+      if (next instanceof Error) throw next;
+      return next;
+    };
+    const revoked = await oauth.signOut();
+    assert.equal(oauth.getCredential(), null);
+    return { revoked, calls };
+  };
+  assert.deepEqual(await revokeWith({ status: 503 }, { status: 200, text: '' }), { revoked: true, calls: 2 });
+  assert.deepEqual(await revokeWith(new Error('offline'), { status: 200, text: '' }), { revoked: true, calls: 2 });
+  assert.deepEqual(await revokeWith({ status: 500 }, { status: 502 }), { revoked: false, calls: 2 });
+  assert.deepEqual(await revokeWith({ status: 400, json: { error: 'invalid_client' } }), { revoked: false, calls: 1 });
+});
+
+test('The pending attempt survives a restart until it is used or 10 minutes old', async () => {
+  const app = secretApp();
+  const first = service(app).oauth.beginSignIn();
+  assert.ok(app.secrets.get(PENDING_KEY).includes(first.codeVerifier));
+  // A new service (Obsidian restarted) reopens the same attempt...
+  assert.deepEqual(service(app).oauth.beginSignIn(), first);
+  // ...and completes the pasted address with its verifier.
+  const { oauth } = service(app);
+  let request;
+  globalThis.__providerRequest = async r => { request = r; return tokens(first.nonce); };
+  await oauth.completeSignIn(callbackFor(first, { code: 'fake-code', state: first.state, client_id: ISSUED }));
+  assert.equal(form(request).code_verifier, first.codeVerifier);
+  assert.equal(form(request).redirect_uri, first.redirectUri);
+  assert.ok(oauth.getCredential());
+  // Used: cleared from SecretStorage.
+  assert.equal(app.secrets.get(PENDING_KEY), '');
+  assert.equal(service(app).oauth.beginSignIn().state === first.state, false);
+
+  // An attempt over 10 minutes old is dropped, also from SecretStorage.
+  const old = { ...service(app).oauth.beginSignIn(), createdAt: Date.now() - 11 * 60 * 1000 };
+  app.secrets.set(PENDING_KEY, JSON.stringify(old));
+  await assert.rejects(service(app).oauth.completeSignIn(callbackFor(old, { code: 'c', state: old.state })), /No sign-in is waiting/);
+  assert.equal(app.secrets.get(PENDING_KEY), '');
+  // A malformed record counts as none.
+  app.secrets.set(PENDING_KEY, '{"state":1}');
+  assert.notEqual(service(app).oauth.beginSignIn().state, 1);
 });
 
 test('Inference: api.openai.com/v1/responses, bearer only, store false, stream true, namespaced tools', async () => {
@@ -259,8 +307,9 @@ test('No sign-in secrets or IDs reach data.json', async () => {
   }
 });
 
-test('A credential from the former Codex sign-in counts as not connected', () => {
+test('A credential from the former Codex sign-in is erased on first read', () => {
   const { app, oauth } = service();
-  app.secrets.set('chatting-with-ai-minus-chatgpt-oauth', JSON.stringify({ accessToken: 'old', refreshToken: 'old', expiresAt: Date.now() + 1e6, updatedAt: 1, accountId: 'acct' }));
+  app.secrets.set(OAUTH_KEY, JSON.stringify({ accessToken: 'old', refreshToken: 'old', expiresAt: Date.now() + 1e6, updatedAt: 1, accountId: 'acct' }));
   assert.equal(oauth.getCredential(), null);
+  assert.equal(app.secrets.get(OAUTH_KEY), '');
 });

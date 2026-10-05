@@ -12,6 +12,9 @@
  *      the code, validate the ID token and the plan scope, store tokens.
  *   4. getUsableCredential() refreshes near expiry; signOut() revokes.
  *
+ * The pending attempt is saved in SecretStorage, so the paste still works
+ * after a phone killed Obsidian while the user was in the browser.
+ *
  * All HTTP goes through `requestUrl()` (mobile parity).
  */
 import { requestUrl } from "obsidian";
@@ -19,7 +22,10 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import type {
   ChatGPTOAuthCredential,
   ChatGPTOAuthStore,
+  PendingSignIn,
 } from "./chatgptOAuthStore";
+
+export type { PendingSignIn } from "./chatgptOAuthStore";
 
 export const ISSUER = "https://auth.openai.com";
 export const AUTHORIZE_URL = `${ISSUER}/api/accounts/authorize`;
@@ -49,24 +55,14 @@ export class ChatGPTOAuthError extends Error {
   }
 }
 
-/** One authorization attempt; kept in memory until the callback is pasted. */
-export interface PendingSignIn {
-  url: string;
-  state: string;
-  nonce: string;
-  codeVerifier: string;
-  redirectUri: string;
-  /** `dynamic_agent_client` for a new registration, else the issued client ID. */
-  clientId: string;
-  /** Epoch ms; the attempt is reused until it is used or SIGN_IN_REUSE_MS old. */
-  createdAt: number;
-}
-
 /**
- * How long reopening the sign-in dialog keeps the same attempt, so an
- * address copied after the dialog was closed still matches.
+ * How long a sign-in attempt lives. Within it, reopening the dialog (or
+ * restarting Obsidian) keeps the same attempt, so an address copied after
+ * the dialog was closed still matches.
  */
-const SIGN_IN_REUSE_MS = 10 * 60 * 1000;
+const SIGN_IN_TTL_MS = 10 * 60 * 1000;
+/** Wait before the one retry of a failed revocation. */
+const REVOKE_RETRY_MS = 1000;
 
 interface TokenResponse {
   access_token?: string;
@@ -205,9 +201,26 @@ async function postForm(url: string, form: Record<string, string>) {
   });
 }
 
+/**
+ * Revoke a refresh token. A network error or 5xx is retried once; an empty
+ * 200 is success (also for an already-invalid token).
+ */
+async function revoke(refreshToken: string, clientId: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) await new Promise(resolve => window.setTimeout(resolve, REVOKE_RETRY_MS));
+    try {
+      const response = await postForm(REVOKE_URL, { token: refreshToken, token_type_hint: "refresh_token", client_id: clientId });
+      if (response.status < 500) return response.status === 200;
+    } catch {
+      // Network error: retry.
+    }
+  }
+  return false;
+}
+
 export class ChatGPTOAuthService {
-  /** The sign-in attempt whose callback we're waiting for. */
-  private pending: PendingSignIn | null = null;
+  /** The sign-in attempt whose callback we're waiting for; undefined until read from SecretStorage. */
+  private pending: PendingSignIn | null | undefined;
   /** Serializes refreshes: refresh tokens rotate, so two refreshes would race. */
   private refreshing: Promise<ChatGPTOAuthCredential> | null = null;
 
@@ -223,7 +236,8 @@ export class ChatGPTOAuthService {
    * nonce and port) if there is none or it is over 10 minutes old.
    */
   beginSignIn(): PendingSignIn {
-    if (this.pending && Date.now() - this.pending.createdAt < SIGN_IN_REUSE_MS) return this.pending;
+    const current = this.currentAttempt();
+    if (current) return current;
     const registration = this.store.getRegistration();
     const clientId = registration.clientId ?? NEW_REGISTRATION_CLIENT_ID;
     const port = PORT_MIN + Math.floor(Math.random() * (PORT_MAX - PORT_MIN + 1));
@@ -251,13 +265,27 @@ export class ChatGPTOAuthService {
       state, nonce, codeVerifier, redirectUri, clientId,
       createdAt: Date.now(),
     };
+    this.store.setPending(this.pending);
     return this.pending;
+  }
+
+  /** The pending attempt (read lazily from SecretStorage), or null if none or expired. */
+  private currentAttempt(): PendingSignIn | null {
+    if (this.pending === undefined) this.pending = this.store.getPending();
+    const age = this.pending ? Date.now() - this.pending.createdAt : 0;
+    if (this.pending && (age < 0 || age >= SIGN_IN_TTL_MS)) this.endAttempt();
+    return this.pending;
+  }
+
+  private endAttempt(): void {
+    this.pending = null;
+    this.store.clearPending();
   }
 
   /** Finish the pending attempt with the pasted callback address. */
   async completeSignIn(callbackUrl: string): Promise<ChatGPTOAuthCredential> {
-    const pending = this.pending;
-    if (!pending) throw new ChatGPTOAuthError("Open the sign-in page first.");
+    const pending = this.currentAttempt();
+    if (!pending) throw new ChatGPTOAuthError("No sign-in is waiting (attempts expire after 10 minutes). Open the sign-in page again.");
     const { code, clientId } = parseCallback(callbackUrl, pending);
     const registration = this.store.getRegistration();
     // Keep the issued client ID even if the exchange fails: retries reuse it.
@@ -272,7 +300,7 @@ export class ChatGPTOAuthService {
       resource: RESOURCE,
     });
     // A code is single-use: any result ends this attempt.
-    this.pending = null;
+    this.endAttempt();
     if (response.status < 200 || response.status >= 300) {
       throw new ChatGPTOAuthError(errorCode(readJson(response)) === "invalid_grant"
         ? "The sign-in code was rejected or has expired. Open the sign-in page again."
@@ -301,19 +329,7 @@ export class ChatGPTOAuthService {
   async signOut(): Promise<boolean> {
     const credential = this.store.get();
     const clientId = this.store.getRegistration().clientId;
-    let revoked = false;
-    if (credential && clientId) {
-      try {
-        const response = await postForm(REVOKE_URL, {
-          token: credential.refreshToken,
-          token_type_hint: "refresh_token",
-          client_id: clientId,
-        });
-        revoked = response.status === 200;
-      } catch {
-        revoked = false;
-      }
-    }
+    const revoked = credential && clientId ? await revoke(credential.refreshToken, clientId) : false;
     this.store.clear();
     return revoked;
   }
