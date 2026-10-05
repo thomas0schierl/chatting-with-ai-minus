@@ -20,7 +20,8 @@ provider (Anthropic web search in the documented stream shape), tool
 flows, cancellation, model catalogs and caching, thinking
 parameters, the ChatGPT sign-in and its refresh and retry after a 401
 (`chatgpt-signin.test.mjs`), canvas tools
-(`canvas.test.mjs`), image tools and canvas drawing (`view-tools.test.mjs`),
+(`canvas.test.mjs`), image tools, leaving older tool images out of
+requests, and canvas drawing (`view-tools.test.mjs`),
 math conversion (`math-markdown.test.mjs`), streamed answers: SSE
 parsing, rebuilt responses, fallback, Stop and rate-limit retry
 (`streaming.test.mjs`), editing a message, regenerating and copying

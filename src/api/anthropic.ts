@@ -9,6 +9,7 @@ import type {
   StreamOptions,
 } from "../types";
 import { streamSSE } from "./stream";
+import { withoutOldToolImages } from "../agent/history";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
@@ -46,7 +47,7 @@ export async function sendAnthropicMessage(
         cache_control: { type: "ephemeral" },
       },
     ],
-    messages: messages.map(msg => toAnthropicMessage(msg, model, identity)),
+    messages: withoutOldToolImages(messages).map(msg => toAnthropicMessage(msg, model, identity)),
   };
 
   // Thinking mode and effort come from the model catalog (`/v1/models`

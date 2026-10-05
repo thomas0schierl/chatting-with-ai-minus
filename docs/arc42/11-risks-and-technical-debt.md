@@ -42,9 +42,6 @@ gap or drop.
   chats with images (saving attachments as separate files would fix it).
 - Switching conversations stops a running turn; it can't finish in the
   background. The conversation list has no search.
-- Tool images (`view_image`, `view_canvas`) stay in the API history and are
-  sent again on every full replay (ChatGPT replays every turn); old ones
-  are never pruned.
 - `view_canvas` shows note file nodes by name only, and very large canvases
   are hard to read when fitted.
 - ChatGPT: whether `function_call_output` may contain `input_image` is

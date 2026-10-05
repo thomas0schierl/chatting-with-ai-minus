@@ -12,7 +12,7 @@ export const bundled = await build({
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';
     export { AgentLoop } from './src/agent/loop';
-    export { trimHistory } from './src/agent/history';
+    export { trimHistory, withoutOldToolImages } from './src/agent/history';
     export * as chatState from './src/chat-state';
     export { sendAnthropicMessage } from './src/api/anthropic';
     export { sendOpenAIMessage, clearOpenAIState } from './src/api/openai';

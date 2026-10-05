@@ -1,4 +1,5 @@
 import type { ContentBlock, ImageAttachment, Provider, UnifiedMessage, UnifiedResponse } from "../types";
+import { withoutOldToolImages } from "../agent/history";
 
 /** The ChatGPT route takes function tools only inside a namespace; this is ours. */
 export const CHATGPT_TOOL_NAMESPACE = "vault";
@@ -11,7 +12,7 @@ export function buildResponsesInput(
   identity?: string,
 ): Record<string, unknown>[] {
   const items: Record<string, unknown>[] = [];
-  for (const message of messages) {
+  for (const message of withoutOldToolImages(messages)) {
     if (message.role === "assistant" && message.replay?.provider === provider && (!model || !message.replay.model || message.replay.model === model) && (!identity || !message.replay.identity || message.replay.identity === identity)) {
       items.push(...message.replay.items);
       continue;

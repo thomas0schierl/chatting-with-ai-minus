@@ -160,6 +160,59 @@ for (const provider of ['anthropic', 'openai', 'chatgpt-oauth']) {
   });
 }
 
+// Three turns: the first with an attached image and a view_canvas image,
+// the second with a view_image image.
+function imageHistory() {
+  const picture = (id, fileName) => ({ id, fileName, mediaType: 'image/png', data: `${id}-data`, sizeBytes: 1 });
+  return [
+    { role: 'user', content: [{ type: 'image', image: picture('attached', 'photo.png') }, text('Look at this and the board')], turnId: 't1' },
+    { role: 'assistant', content: [call('canvas', 'view_canvas', { path: 'Board.canvas' })] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'canvas', content: 'Board.canvas', is_error: false, images: [picture('board', 'Board.png')] }] },
+    { role: 'assistant', content: [text('A board')] },
+    { role: 'user', content: 'Now the cat', turnId: 't2' },
+    { role: 'assistant', content: [call('cat', 'view_image', { path: 'Pics/cat.png' })] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'cat', content: 'Pics/cat.png', is_error: false, images: [picture('cat', 'cat.png')] }] },
+    { role: 'assistant', content: [text('A cat')] },
+    { role: 'user', content: 'Compare them', turnId: 't3' },
+  ];
+}
+
+for (const provider of ['anthropic', 'openai', 'chatgpt-oauth']) {
+  test(`${provider}: tool images older than the last 2 turns are left out of the request; attached images stay`, async () => {
+    api.setChatGPTOAuthService({ getUsableCredential: async () => ({ accessToken: 'fake-token', accountId: 'fake-account' }) });
+    api.clearOpenAIState();
+    const history = imageHistory();
+    const saved = JSON.stringify(history);
+    const requests = transport((body, index) => response(provider, [text('Done')], 'end_turn', index));
+    const send = { anthropic: api.sendAnthropicMessage, openai: api.sendOpenAIMessage, 'chatgpt-oauth': api.sendChatGPTOAuthMessage }[provider];
+    await send(settings(provider), history, [], 'System');
+    const note = 'Board.canvas\n\n[image from view_canvas omitted to save context]';
+    const body = requests[0];
+    if (provider === 'anthropic') {
+      assert.equal(body.messages[0].content[0].source.data, 'attached-data');
+      assert.deepEqual(body.messages[2].content, [{ type: 'tool_result', tool_use_id: 'canvas', content: note, is_error: false }]);
+      assert.equal(body.messages[6].content[0].content[1].source.data, 'cat-data');
+    } else {
+      assert.equal(body.input[0].content[0].image_url, 'data:image/png;base64,attached-data');
+      const outputs = body.input.filter(item => item.type === 'function_call_output').map(item => item.output);
+      assert.equal(outputs[0], note);
+      assert.equal(outputs[1][1].image_url, 'data:image/png;base64,cat-data');
+    }
+    // The history itself (saved, edited, regenerated) keeps every image.
+    assert.equal(JSON.stringify(history), saved);
+  });
+}
+
+test('Tool images: fewer than 3 turns keep all; several images and unknown tools get one note', () => {
+  const history = imageHistory();
+  assert.equal(api.withoutOldToolImages(history.slice(0, 8))[2], history[2]);
+  const many = [...history];
+  many[2] = { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'gone', content: '', images: history[2].content[0].images.concat(history[6].content[0].images) }] };
+  assert.deepEqual(api.withoutOldToolImages(many)[2].content, [{ type: 'tool_result', tool_use_id: 'gone', content: '[2 images from a tool omitted to save context]' }]);
+  // Later messages are the same objects (OpenAI chaining compares them).
+  assert.equal(api.withoutOldToolImages(many)[6], many[6]);
+});
+
 test('Responses: results without images keep a plain string output', () => {
   const items = api.buildResponsesInput([{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'plain' }] }], 'openai');
   assert.equal(items[0].output, 'plain');

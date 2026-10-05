@@ -1,4 +1,4 @@
-import type { ChatHistoryEntry, UnifiedMessage } from "../types";
+import type { ChatHistoryEntry, ContentBlock, UnifiedMessage } from "../types";
 
 function startsUserTurn(message: UnifiedMessage): boolean {
   return message.role === "user" && (typeof message.content === "string" ||
@@ -15,6 +15,48 @@ export function trimHistory(messages: UnifiedMessage[], limit: number): UnifiedM
     if (startsUserTurn(messages[index])) start = index;
   }
   return start === 0 ? messages : messages.slice(start);
+}
+
+/** Tool results of the last 2 user turns keep their images when sent. */
+export const TOOL_IMAGE_TURNS = 2;
+
+/**
+ * The history as sent to a provider: tool results older than the last
+ * `turns` user turns lose their images (`view_image`, `view_canvas`) and
+ * say so in their text, so a full replay doesn't send every image again.
+ * Images the user attached stay. Nothing is changed in place; unchanged
+ * messages are the same objects.
+ */
+export function withoutOldToolImages(messages: UnifiedMessage[], turns = TOOL_IMAGE_TURNS): UnifiedMessage[] {
+  let cutoff = -1;
+  for (let index = messages.length - 1, seen = 0; index >= 0; index--) {
+    if (startsUserTurn(messages[index]) && ++seen === turns) {
+      cutoff = index;
+      break;
+    }
+  }
+  const toolNames = new Map<string, string>();
+  for (const message of messages.slice(0, Math.max(cutoff, 0))) {
+    if (typeof message.content === "string") continue;
+    for (const block of message.content) {
+      if (block.type === "tool_use" && block.id && block.name) toolNames.set(block.id, block.name);
+    }
+  }
+  return messages.map((message, index) => {
+    if (index >= cutoff || typeof message.content === "string" ||
+      !message.content.some((block) => block.type === "tool_result" && block.images?.length)) return message;
+    return {
+      ...message,
+      content: message.content.map((block): ContentBlock => {
+        if (block.type !== "tool_result" || !block.images?.length) return block;
+        const { images, ...rest } = block;
+        const what = images.length === 1 ? "image" : `${images.length} images`;
+        const tool = toolNames.get(block.tool_use_id ?? "") ?? "a tool";
+        const note = `[${what} from ${tool} omitted to save context]`;
+        return { ...rest, content: rest.content ? `${rest.content}\n\n${note}` : note };
+      }),
+    };
+  });
 }
 
 let turnCount = 0;
