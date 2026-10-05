@@ -17,7 +17,21 @@ export interface ChatSettings {
   /** The one-time "You're using your ChatGPT plan" welcome was shown. */
   chatgptPlanWelcomeShown: boolean;
   modelCatalog?: import("./api/model-catalog").CatalogState;
+  /**
+   * Live voice (ADR-11): `openai` uses the OpenAI API key; `codex` the
+   * separate Codex sign-in, only in private builds (ADR-14).
+   */
+  voiceRoute: VoiceRouteId;
+  /** Voice of the OpenAI route (`audio.output.voice`). */
+  voice: string;
+  /** Voice of the Codex route. */
+  codexVoice: string;
+  /** Hands-free (the server detects turns) or hold to talk (mic on while pressed). */
+  voiceMicMode: VoiceMicMode;
 }
+
+export type VoiceRouteId = "openai" | "codex";
+export type VoiceMicMode = "hands-free" | "hold";
 
 export const DEFAULT_PROVIDER_MODELS: Record<Provider, string> = {
   anthropic: "claude-sonnet-4-6",
@@ -33,6 +47,10 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   maxIterations: 20,
   enableWebSearch: true,
   chatgptPlanWelcomeShown: false,
+  voiceRoute: "openai",
+  voice: "marin",
+  codexVoice: "cove",
+  voiceMicMode: "hands-free",
 };
 
 /**
@@ -119,6 +137,8 @@ export interface ConversationContext {
   selection: string | null;
   vaultName: string;
   fileCount: number;
+  /** The turn comes from a voice conversation; its answer will be spoken. */
+  voice?: boolean;
 }
 
 // ─── Selection Scope ────────────────────────────────────────────────────────

@@ -27,10 +27,13 @@ import {
 } from "./chat-state";
 import { ChatGPTOAuthStore } from "./auth/chatgptOAuthStore";
 import { ChatGPTOAuthService } from "./auth/chatgptOAuth";
-import { cachedCatalog, catalogIdentity, normalizeCatalogState } from "./api/model-catalog";
+import { cachedCatalog, catalogIdentity, codexClientVersion, normalizeCatalogState } from "./api/model-catalog";
 import { setChatGPTOAuthService } from "./api/chatgpt-oauth";
 import { PLUGIN_ID } from "./plugin-id";
 import { runCapabilityCheck } from "./diagnostics/capability-check";
+import type { VoiceRoute } from "./voice/session";
+import { openAILiveRoute } from "./voice/openai-live";
+import { CodexVoiceAuth, codexVoiceRoute } from "./voice/codex";
 
 export default class ChatPlugin extends Plugin {
   settings: ChatSettings = DEFAULT_SETTINGS;
@@ -38,6 +41,8 @@ export default class ChatPlugin extends Plugin {
   agent!: AgentLoop;
   /** ChatGPT OAuth service (used by the chatgpt-oauth provider). */
   chatgptOAuth!: ChatGPTOAuthService;
+  /** The Codex sign-in for voice; private builds only (ADR-14). */
+  codexVoice?: CodexVoiceAuth;
   /**
    * All conversations. The active one's API history lives in `agent` and
    * is copied into its record when saving or switching.
@@ -69,6 +74,7 @@ export default class ChatPlugin extends Plugin {
     const oauthStore = new ChatGPTOAuthStore(this.app);
     this.chatgptOAuth = new ChatGPTOAuthService(oauthStore);
     setChatGPTOAuthService(this.chatgptOAuth);
+    if (__CODEX_VOICE__) this.codexVoice = new CodexVoiceAuth(this.app);
     // The chat header shows the thinking level from the saved catalog.
     await this.activateModelCatalog();
 
@@ -199,7 +205,34 @@ export default class ChatPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.getChatView()?.endVoice();
     void this.saveChatHistory();
+  }
+
+  /**
+   * The voice route the settings choose, or null when it isn't set up: an
+   * OpenAI API key (official), or in private builds the Codex sign-in
+   * (ADR-14).
+   */
+  voiceRoute(): VoiceRoute | null {
+    const s = this.settings;
+    if (__CODEX_VOICE__ && s.voiceRoute === "codex") {
+      const auth = this.codexVoice;
+      if (!auth?.getCredential()) return null;
+      return codexVoiceRoute(auth, s.codexVoice, () => codexClientVersion(s.modelCatalog ??= { entries: [] }, false));
+    }
+    const key = this.loadApiKey("openai");
+    return key ? openAILiveRoute(key, s.voice) : null;
+  }
+
+  /**
+   * Save the OpenAI API key from the voice settings. It is the OpenAI
+   * provider's key too, so the provider's copy in the settings follows.
+   */
+  async saveOpenAIKey(key: string): Promise<void> {
+    this.saveApiKey("openai", key);
+    if (this.settings.provider === "openai") this.settings.apiKey = key;
+    await this.saveSettings();
   }
 
   // ─── Chat operations ────────────────────────────────────────────────
@@ -486,7 +519,9 @@ export default class ChatPlugin extends Plugin {
     await this.saveData(toSave);
 
     // Update the chat view header with the new model name and thinking level
-    this.getChatView()?.updateModel(this.modelHeaderLabel(), this.settings.provider);
+    const view = this.getChatView();
+    view?.updateModel(this.modelHeaderLabel(), this.settings.provider);
+    view?.updateVoiceAvailable();
   }
 
   /** Model name and thinking level, as shown in the chat view header. */
@@ -544,6 +579,10 @@ function normalizeSettings(value: unknown): Partial<ChatSettings> {
   if (typeof value.maxIterations === "number") settings.maxIterations = value.maxIterations;
   if (typeof value.enableWebSearch === "boolean") settings.enableWebSearch = value.enableWebSearch;
   settings.modelCatalog = normalizeCatalogState(value.modelCatalog);
+  if (value.voiceRoute === "openai" || value.voiceRoute === "codex") settings.voiceRoute = value.voiceRoute;
+  if (typeof value.voice === "string" && value.voice) settings.voice = value.voice;
+  if (typeof value.codexVoice === "string" && value.codexVoice) settings.codexVoice = value.codexVoice;
+  if (value.voiceMicMode === "hands-free" || value.voiceMicMode === "hold") settings.voiceMicMode = value.voiceMicMode;
   return settings;
 }
 

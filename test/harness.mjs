@@ -25,8 +25,15 @@ export const bundled = await build({
     export * as canvasRender from './src/tools/canvas-render';
     export * as auth from './src/auth/chatgptOAuth';
     export { ChatGPTOAuthStore } from './src/auth/chatgptOAuthStore';
+    export * as voiceProtocol from './src/voice/protocol';
+    export * as voiceSession from './src/voice/session';
+    export * as voiceController from './src/voice/controller';
+    export * as openAILive from './src/voice/openai-live';
+    export * as codexVoice from './src/voice/codex';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, write: false, platform: 'node', format: 'esm',
+  // Tests cover the private build, Codex voice route included (ADR-14).
+  define: { __CODEX_VOICE__: 'true' },
   plugins: [{ name: 'obsidian-test-transport', setup(build) {
     build.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian', namespace: 'test' }));
     // The chat view's Svelte UI isn't under test; main.ts only needs it to import.
@@ -150,7 +157,7 @@ export function transport(handler) {
 export function vaultApp() {
   const files = new Map([['Cases/Case Template.md', '# Template\n日本語本文'], ['Untitled.md', 'Original']]);
   const app = {
-    workspace: { getActiveFile: () => ({ path: 'Untitled.md' }) },
+    workspace: { getActiveFile: () => ({ path: 'Untitled.md' }), getLeavesOfType: () => [] },
     vault: {
       configDir: '.obsidian', adapter: { append: async () => {} },
       getName: () => 'Test vault',
@@ -204,6 +211,8 @@ export function fakeChat() {
     cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
     setInputEnabled() {}, setBusy(value) { chat.busy = value; },
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle(value) { chat.title = value; }, setSelection() {}, getSelection: () => null,
+    voice: null, voiceAvailable: false,
+    setVoice(state) { chat.voice = state; }, setVoiceAvailable(value) { chat.voiceAvailable = value; },
   };
   return chat;
 }

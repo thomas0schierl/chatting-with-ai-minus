@@ -4,6 +4,8 @@
   import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind } from "../types";
   import { normalizeMathMarkdown } from "./math-markdown";
   import { USAGE_URL } from "../auth/chatgptOAuth";
+  import type { VoiceViewState } from "../voice/controller";
+  import type { VoiceAction } from "./chat-view";
 
   const MAX_IMAGE_COUNT = 4;
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -50,12 +52,58 @@
     onOpenConversation: (id: string) => void;
     onRenameConversation: (id: string, title: string) => void;
     onDeleteConversation: (id: string) => void;
+    /** A voice route is set up: show the microphone button. */
+    voiceAvailable: boolean;
+    onVoice: (action: VoiceAction) => void;
   }
 
   let {
     app, component, provider, model, onSend, onClear, onStop, onEdit, onRegenerate, onCopy,
     title, onNewChat, listConversations, onOpenConversation, onRenameConversation, onDeleteConversation,
+    voiceAvailable, onVoice,
   }: Props = $props();
+
+  // ─── Voice (ADR-11) ───────────────────────────────────────────────────
+  let canVoice = $state(false);
+  let voice = $state<VoiceViewState | null>(null);
+  $effect(() => {
+    canVoice = voiceAvailable;
+  });
+
+  const VOICE_STATUS: Record<VoiceViewState["status"], string> = {
+    connecting: "Connecting…",
+    listening: "Listening",
+    thinking: "Working on it…",
+    speaking: "Speaking",
+  };
+
+  /** The end of a long caption line. */
+  function captionTail(text: string): string {
+    const trimmed = text.trim();
+    return trimmed.length > 160 ? `…${trimmed.slice(-160)}` : trimmed;
+  }
+
+  /** Hold to talk: the microphone is on while the button is pressed. */
+  function talkStart(event: PointerEvent): void {
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    onVoice("talk-start");
+  }
+
+  function talkKey(event: KeyboardEvent, pressed: boolean): void {
+    if (event.key !== " " && event.key !== "Enter") return;
+    event.preventDefault();
+    if (event.repeat) return;
+    onVoice(pressed ? "talk-start" : "talk-end");
+  }
+
+  /** Show the voice bar (null hides it). */
+  export function setVoice(state: VoiceViewState | null): void {
+    voice = state;
+  }
+
+  export function setVoiceAvailable(available: boolean): void {
+    canVoice = available;
+  }
 
   let displayModel = $state("");
   let displayProvider = $state("");
@@ -976,6 +1024,50 @@
     </div>
   {/if}
 
+  {#if voice}
+    <div class="chatting-minus-voice-bar" role="region" aria-label="Voice conversation">
+      <div class="chatting-minus-voice-header">
+        <span class="chatting-minus-voice-dot" data-status={voice.status} aria-hidden="true"></span>
+        <span class="chatting-minus-voice-status" aria-live="polite">{VOICE_STATUS[voice.status]}{voice.micOn ? "" : " · mic off"}</span>
+      </div>
+      {#if voice.you || voice.assistant}
+        <div class="chatting-minus-voice-captions">
+          {#if voice.you}<p><span class="chatting-minus-voice-who">You</span> {captionTail(voice.you)}</p>{/if}
+          {#if voice.assistant}<p><span class="chatting-minus-voice-who">Voice</span> {captionTail(voice.assistant)}</p>{/if}
+        </div>
+      {/if}
+      <div class="chatting-minus-voice-controls">
+        {#if voice.audioBlocked}
+          <button class="chatting-minus-voice-btn mod-cta" type="button" onclick={() => onVoice("play")}>Tap to play audio</button>
+        {/if}
+        {#if voice.holdToTalk}
+          <button
+            class="chatting-minus-voice-btn chatting-minus-voice-talk"
+            class:is-active={voice.micOn}
+            type="button"
+            aria-pressed={voice.micOn}
+            disabled={voice.status === "connecting"}
+            onpointerdown={talkStart}
+            onpointerup={() => onVoice("talk-end")}
+            onpointercancel={() => onVoice("talk-end")}
+            onkeydown={(event) => talkKey(event, true)}
+            onkeyup={(event) => talkKey(event, false)}
+            oncontextmenu={(event) => event.preventDefault()}
+          >{voice.micOn ? "Talking…" : "Hold to talk"}</button>
+        {:else}
+          <button
+            class="chatting-minus-voice-btn"
+            type="button"
+            aria-pressed={!voice.micOn}
+            disabled={voice.status === "connecting"}
+            onclick={() => onVoice("mute")}
+          >{voice.micOn ? "Mute" : "Unmute"}</button>
+        {/if}
+        <button class="chatting-minus-voice-btn chatting-minus-voice-end" type="button" onclick={() => onVoice("end")}>End</button>
+      </div>
+    </div>
+  {/if}
+
   <!-- Input bar -->
   <div class="chatting-minus-input-bar" class:has-plan-row={displayProvider === "chatgpt-oauth"}>
     <input
@@ -1008,6 +1100,17 @@
       onpaste={handlePaste}
       oninput={autoGrow}
     ></textarea>
+    {#if canVoice && !voice}
+      <button
+        class="chatting-minus-attach-btn chatting-minus-voice-start"
+        type="button"
+        onclick={() => onVoice("start")}
+        aria-label="Start voice conversation"
+        title="Start voice conversation"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0 0 14 0v-1"></path><line x1="12" y1="18" x2="12" y2="22"></line></svg>
+      </button>
+    {/if}
     {#if inputEnabled}
       <button
         class="chatting-minus-send-btn"
@@ -1741,6 +1844,104 @@
   .chatting-minus-stop-btn:hover {
     background-color: var(--text-error);
     opacity: 0.85;
+  }
+
+  /* ─── Voice bar ──────────────────────────────────────────────────────── */
+  .chatting-minus-voice-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 8px 0;
+    padding: 8px 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background: var(--background-secondary);
+    flex-shrink: 0;
+  }
+
+  .chatting-minus-voice-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--font-ui-small);
+    color: var(--text-muted);
+  }
+
+  .chatting-minus-voice-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-faint);
+    flex-shrink: 0;
+  }
+
+  .chatting-minus-voice-dot[data-status="listening"] {
+    background: var(--color-green, var(--interactive-accent));
+  }
+
+  .chatting-minus-voice-dot[data-status="speaking"] {
+    background: var(--interactive-accent);
+    animation: chatting-minus-voice-pulse 1s ease-in-out infinite;
+  }
+
+  .chatting-minus-voice-dot[data-status="thinking"],
+  .chatting-minus-voice-dot[data-status="connecting"] {
+    background: var(--color-yellow, var(--text-muted));
+    animation: chatting-minus-voice-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes chatting-minus-voice-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  .chatting-minus-voice-captions {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: var(--font-ui-small);
+    color: var(--text-normal);
+    overflow-wrap: anywhere;
+  }
+
+  .chatting-minus-voice-captions p {
+    margin: 0;
+  }
+
+  .chatting-minus-voice-who {
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-right: 4px;
+  }
+
+  .chatting-minus-voice-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .chatting-minus-voice-btn {
+    min-height: 34px;
+    padding: 0 14px;
+    border-radius: var(--radius-m);
+    cursor: pointer;
+  }
+
+  .chatting-minus-voice-talk {
+    flex: 1;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .chatting-minus-voice-talk.is-active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+  }
+
+  .chatting-minus-voice-end {
+    margin-left: auto;
+    color: var(--text-error);
   }
 
   /* ─── Selection Pill ─────────────────────────────────────────────────── */

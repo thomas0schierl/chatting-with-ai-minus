@@ -3,9 +3,10 @@ import type { ConversationContext } from "../types";
 
 /**
  * Builds a snapshot of the current workspace context.
- * Refreshed each turn so the system prompt reflects the latest state.
+ * Refreshed each turn; it goes into the user message (ADR-05). `voice`
+ * marks a turn from a voice conversation, whose answer will be spoken.
  */
-export function buildContext(app: App): ConversationContext {
+export function buildContext(app: App, voice = false): ConversationContext {
   const activeFile = app.workspace.getActiveFile();
   let activeFileContent: string | null = null;
   let selection: string | null = null;
@@ -25,5 +26,6 @@ export function buildContext(app: App): ConversationContext {
     selection,
     vaultName: app.vault.getName(),
     fileCount: app.vault.getMarkdownFiles().length,
+    ...(voice ? { voice: true } : {}),
   };
 }

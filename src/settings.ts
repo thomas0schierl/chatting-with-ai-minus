@@ -1,6 +1,6 @@
 import { App, Modal, Notice, PluginSettingTab, Setting, type SettingDefinitionItem } from "obsidian";
 import type ChatPlugin from "./main";
-import type { Provider } from "./types";
+import type { Provider, VoiceMicMode } from "./types";
 import { DEFAULT_PROVIDER_MODELS } from "./types";
 import {
   ChatGPTOAuthError,
@@ -10,6 +10,9 @@ import {
   type PendingSignIn,
   type SignInOptions,
 } from "./auth/chatgptOAuth";
+
+import { LIVE_VOICES, hasLiveAccess } from "./voice/openai-live";
+import { CODEX_VOICES, codexAccountSetting, codexRouteSetting } from "./voice/codex";
 
 import { type ModelOption, type CatalogState, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
 
@@ -80,6 +83,14 @@ export class ChatSettingTab extends PluginSettingTab {
       { name: "Thinking level", visible: () => !!this.thinkingOptions(), render: setting => this.renderThinkingLevel(setting) },
       { name: "Web search", render: setting => this.renderWebSearch(setting) },
       { name: "Max tool iterations", render: setting => this.renderMaxIterations(setting) },
+      { type: "group", heading: "Voice", items: [
+        // The Codex route exists only in private builds (ADR-14).
+        ...(__CODEX_VOICE__ ? [codexRouteSetting(this)] : []),
+        { name: "OpenAI API key for voice", aliases: ["GPT-Live"], visible: () => !this.codexRouteChosen(), render: setting => this.renderVoiceKey(setting) },
+        ...(__CODEX_VOICE__ ? [codexAccountSetting(this)] : []),
+        { name: "Voice", render: setting => this.renderVoiceName(setting) },
+        { name: "Microphone", aliases: ["Hold to talk", "Hands-free"], render: setting => this.renderMicMode(setting) },
+      ] },
     ];
   }
 
@@ -160,6 +171,90 @@ export class ChatSettingTab extends PluginSettingTab {
               s.maxIterations = n;
               await this.plugin.saveSettings();
             }
+          })
+      );
+  }
+
+  // ─── Voice (ADR-11; Codex route ADR-14) ───────────────────────────────────
+
+  /** The unofficial Codex route is chosen (private builds only, ADR-14). */
+  codexRouteChosen(): boolean {
+    return __CODEX_VOICE__ && this.plugin.settings.voiceRoute === "codex";
+  }
+
+  private renderVoiceKey(setting: Setting): void {
+    const s = this.plugin.settings;
+    const cost = "Voice uses OpenAI GPT-Live, billed at $0.05 per minute of conversation, silence included.";
+    setting.setName("OpenAI API key for voice");
+    if (s.provider === "openai") {
+      setting.setDesc(`${cost} It uses the OpenAI API key above.`);
+    } else {
+      const key = this.plugin.loadApiKey("openai");
+      setting
+        .setDesc(`${cost} The key is shared with the OpenAI provider.`)
+        .addText((text) => {
+          text.inputEl.type = "password";
+          text
+            .setPlaceholder("Enter your OpenAI API key")
+            .setValue(key)
+            .onChange(async (value) => {
+              await this.plugin.saveOpenAIKey(value.trim());
+            });
+        });
+    }
+    setting.addButton((button) =>
+      button.setButtonText("Check access").onClick(async () => {
+        const key = this.plugin.loadApiKey("openai");
+        if (!key) {
+          new Notice("Enter an OpenAI API key first.");
+          return;
+        }
+        button.setDisabled(true);
+        try {
+          new Notice(await hasLiveAccess(key)
+            ? "This key can use voice (gpt-live-1)."
+            : "This key's account doesn't list gpt-live-1 yet.");
+        } catch (e) {
+          new Notice(e instanceof Error ? e.message : String(e));
+        } finally {
+          button.setDisabled(false);
+        }
+      })
+    );
+  }
+
+  private renderVoiceName(setting: Setting): void {
+    const s = this.plugin.settings;
+    // The flag is repeated in each condition so public builds fold them away.
+    const voices = __CODEX_VOICE__ && this.codexRouteChosen() ? CODEX_VOICES : LIVE_VOICES;
+    const current = __CODEX_VOICE__ && this.codexRouteChosen() ? s.codexVoice : s.voice;
+    setting
+      .setName("Voice")
+      .setDesc("How the assistant sounds.")
+      .addDropdown((dropdown) => {
+        for (const voice of voices) dropdown.addOption(voice, voice.charAt(0).toUpperCase() + voice.slice(1));
+        if (!voices.includes(current)) dropdown.addOption(current, current);
+        dropdown.setValue(current).onChange(async (value) => {
+          if (__CODEX_VOICE__ && this.codexRouteChosen()) s.codexVoice = value;
+          else s.voice = value;
+          await this.plugin.saveSettings();
+        });
+      });
+  }
+
+  private renderMicMode(setting: Setting): void {
+    const s = this.plugin.settings;
+    setting
+      .setName("Microphone")
+      .setDesc("Hands-free: just talk; the voice answers when you pause. Hold to talk: the microphone is on only while you hold the button.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("hands-free", "Hands-free")
+          .addOption("hold", "Hold to talk")
+          .setValue(s.voiceMicMode)
+          .onChange(async (value) => {
+            s.voiceMicMode = value as VoiceMicMode;
+            await this.plugin.saveSettings();
           })
       );
   }

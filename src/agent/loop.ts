@@ -22,9 +22,10 @@ const MAX_CONVERSATION_LENGTH = 50;
 const KEEP_RECENT = 40;
 
 // Debug logging: writes transcript to the vault's plugin config folder
+// (also used by the voice session for its data-channel events).
 const DEBUG = false;
 
-function debugLog(app: App, label: string, data: unknown): void {
+export function debugLog(app: App, label: string, data: unknown): void {
   if (!DEBUG) return;
   try {
     const timestamp = new Date().toISOString();
@@ -177,13 +178,18 @@ export class AgentLoop {
     return parts.join("\n");
   }
 
-  /** Run one user turn through the agentic loop; `turnId` marks where it starts. */
+  /**
+   * Run one user turn through the agentic loop; `turnId` marks where it
+   * starts. `voice`: the turn comes from a voice conversation (its context
+   * asks for a short, speakable answer).
+   */
   async run(
     userMessage: string,
     callbacks: AgentCallbacks,
     selection?: SelectionScope | null,
     images: ImageAttachment[] = [],
-    turnId: string = newTurnId()
+    turnId: string = newTurnId(),
+    { voice = false }: { voice?: boolean } = {}
   ): Promise<void> {
     this.aborted = false;
     const version = ++this.runVersion;
@@ -197,7 +203,7 @@ export class AgentLoop {
     const turnSettings = { ...this.settings };
 
     // Build context once per user turn and prepend to the user message
-    const context = buildContext(this.app);
+    const context = buildContext(this.app, voice);
     const contextPrefix = buildContextMessage(context);
 
     // If there's a selection, inject it as scoped context

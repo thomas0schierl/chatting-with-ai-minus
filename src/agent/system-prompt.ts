@@ -58,6 +58,10 @@ export function buildContextMessage(context: ConversationContext): string {
     parts.push(`Selected text: "${truncated}${context.selection.length > 200 ? "..." : ""}".`);
   }
 
+  if (context.voice) {
+    parts.push("This turn comes from a voice conversation: answer briefly in plain spoken sentences; no tables or code unless asked.");
+  }
+
   parts.push("]");
 
   return parts.join(" ");

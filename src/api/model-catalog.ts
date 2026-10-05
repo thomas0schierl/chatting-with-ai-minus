@@ -67,9 +67,10 @@ export function normalizeCatalogState(value: unknown): CatalogState {
  * given, like the Codex CLI's catalog it is built on. Without the parameter
  * it assumes an old client (seen 2026-10-05: GPT-6-Sol, GPT-6-Luna and
  * GPT-6.1-Sol were missing). This isn't in OpenAI's docs, so we send the
- * latest stable Codex CLI release, cached for a day.
+ * latest stable Codex CLI release, cached for a day. The private Codex
+ * voice route (ADR-14) sends it too.
  */
-async function codexClientVersion(state: CatalogState, force: boolean): Promise<string> {
+export async function codexClientVersion(state: CatalogState, force: boolean): Promise<string> {
   const known = state.clientVersion;
   if (!force && known && Date.now() - known.checkedAt < CATALOG_TTL) return known.value;
   if (versionRequest) return versionRequest;

@@ -5,6 +5,8 @@ import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
 import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind } from "../types";
 import { newTurnId } from "../agent/history";
+import { debugLog } from "../agent/loop";
+import { VoiceController, type VoiceTurnHooks, type VoiceViewState } from "../voice/controller";
 
 export const VIEW_TYPE_CHAT = "chatting-minus-view";
 
@@ -25,7 +27,12 @@ interface ChatContainerProps {
   onOpenConversation: (id: string) => void;
   onRenameConversation: (id: string, title: string) => void;
   onDeleteConversation: (id: string) => void;
+  voiceAvailable: boolean;
+  onVoice: (action: VoiceAction) => void;
 }
+
+/** Voice bar controls and the microphone button. */
+export type VoiceAction = "start" | "end" | "mute" | "talk-start" | "talk-end" | "play";
 
 interface ChatContainerApi extends Record<string, unknown> {
   addUserMessage(text: string, images?: ImageAttachment[], turnId?: string, selection?: SelectionScope): void;
@@ -48,6 +55,8 @@ interface ChatContainerApi extends Record<string, unknown> {
   setTitle(title: string): void;
   setSelection(selection: SelectionScope): void;
   getSelection(): SelectionScope | null;
+  setVoice(state: VoiceViewState | null): void;
+  setVoiceAvailable(available: boolean): void;
 }
 
 /**
@@ -64,6 +73,8 @@ export class ObsidianChatView extends ItemView {
   private turnCount = 0;
   /** The assistant message being streamed, until the loop delivers it whole. */
   private streaming: { id: number; text: string } | null = null;
+  /** The live voice conversation, while one runs (ADR-11). */
+  private voice: VoiceController | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: ChatPlugin) {
     super(leaf);
@@ -112,6 +123,8 @@ export class ObsidianChatView extends ItemView {
         onOpenConversation: (id: string) => this.openConversation(id),
         onRenameConversation: (id: string, title: string) => this.renameConversation(id, title),
         onDeleteConversation: (id: string) => this.deleteConversation(id),
+        voiceAvailable: this.plugin.voiceRoute() !== null,
+        onVoice: (action: VoiceAction) => this.handleVoice(action),
       },
     });
 
@@ -146,6 +159,7 @@ export class ObsidianChatView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.endVoice();
     this.plugin.agent.abort();
     if (this.chatContainer) {
       await unmount(this.chatContainer);
@@ -183,12 +197,69 @@ export class ObsidianChatView extends ItemView {
     this.handleClear();
   }
 
+  // ─── Voice ──────────────────────────────────────────────────────────
+  // A voice conversation belongs to the shown conversation: switching,
+  // a new chat, clearing or closing the view ends it.
+
+  /** Show or hide the microphone button (a voice route is set up or not). */
+  updateVoiceAvailable(): void {
+    this.chatContainer?.setVoiceAvailable(this.plugin.voiceRoute() !== null);
+  }
+
+  /** Start a voice conversation in the current conversation. */
+  startVoice(): void {
+    if (this.voice) return;
+    const route = this.plugin.voiceRoute();
+    if (!route) {
+      new Notice("Set up voice in Chatting with AI Minus settings.");
+      return;
+    }
+    const controller: VoiceController = new VoiceController({
+      runTurn: (text, hooks) => this.handleUserMessage(text, null, [], newTurnId(), hooks),
+      stopTurn: () => this.handleStop(),
+      turnRunning: () => this.running,
+      history: () => this.plugin.chatHistory,
+      showError: (message) => {
+        this.chatContainer?.addError(message);
+        this.plugin.chatHistory.push({ type: "error", text: message });
+        void this.plugin.saveChatHistory();
+      },
+      render: (state) => {
+        if (this.voice !== controller) return;
+        if (!state) this.voice = null;
+        this.chatContainer?.setVoice(state);
+      },
+      log: (label, data) => debugLog(this.app, label, data),
+    }, route, this.plugin.settings.voiceMicMode === "hold");
+    this.voice = controller;
+    void controller.start();
+  }
+
+  /** End the voice conversation, if one runs. */
+  endVoice(): void {
+    const voice = this.voice;
+    if (!voice) return;
+    this.voice = null;
+    this.chatContainer?.setVoice(null);
+    void voice.end();
+  }
+
+  private handleVoice(action: VoiceAction): void {
+    if (action === "start") this.startVoice();
+    else if (action === "end") this.endVoice();
+    else if (action === "mute") this.voice?.toggleMute();
+    else if (action === "talk-start") this.voice?.setTalking(true);
+    else if (action === "talk-end") this.voice?.setTalking(false);
+    else this.voice?.resumeAudio();
+  }
+
   // ─── Conversations ──────────────────────────────────────────────────
   // Switching stops a running turn (as Stop does); what it showed stays in
   // its conversation.
 
   /** Start a new conversation (an empty current one is kept instead). */
   newChat(): void {
+    this.endVoice();
     if (this.running) this.stopTurn();
     this.plugin.startNewConversation();
     this.showConversation();
@@ -197,6 +268,7 @@ export class ObsidianChatView extends ItemView {
   /** Switch to conversation `id`. */
   openConversation(id: string): void {
     if (id === this.plugin.activeConversationId) return;
+    this.endVoice();
     if (this.running) this.stopTurn();
     this.plugin.openConversation(id);
     this.showConversation();
@@ -211,6 +283,7 @@ export class ObsidianChatView extends ItemView {
   /** Delete conversation `id`; for the current one, show the next. */
   deleteConversation(id: string): void {
     const active = id === this.plugin.activeConversationId;
+    if (active) this.endVoice();
     if (active && this.running) this.stopTurn();
     this.plugin.deleteConversation(id);
     if (active) this.showConversation();
@@ -266,11 +339,13 @@ export class ObsidianChatView extends ItemView {
     );
   }
 
+  /** Run one turn; `voice`: it comes from the voice conversation, which gets its progress and answer. */
   private async handleUserMessage(
     text: string,
     selection: SelectionScope | null,
     images: ImageAttachment[] = [],
-    turnId: string = newTurnId()
+    turnId: string = newTurnId(),
+    voice?: VoiceTurnHooks
   ): Promise<void> {
     if (this.running) {
       new Notice("Please wait for the current response to complete.");
@@ -313,6 +388,7 @@ export class ObsidianChatView extends ItemView {
           // which shows the question itself) is dropped, as before streaming.
           this.endStream(false);
           if (name === "ask_user") return;
+          voice?.onToolCall(name);
           const msgId = chat.addToolCall(name, input);
           toolCallIds.set(`latest-${name}`, msgId);
         },
@@ -331,11 +407,13 @@ export class ObsidianChatView extends ItemView {
           else chat.addAssistantMessage(text);
           this.streaming = null;
           history.push({ type: "assistant", text });
+          voice?.onText(text);
         },
         onAskUser: async (question) => {
           chat.hideThinking();
           this.endStream(false);
           chat.setInputEnabled(true);
+          voice?.onAskUser(question);
           const answer = await chat.showAskUser(question);
           chat.setInputEnabled(false);
           return answer;
@@ -345,8 +423,9 @@ export class ObsidianChatView extends ItemView {
           this.endStream(true);
           chat.addError(error, kind);
           history.push({ type: "error", text: error, ...(kind ? { errorKind: kind } : {}) });
+          voice?.onError(error);
         },
-      }, selection, images, turnId);
+      }, selection, images, turnId, { voice: !!voice });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       chat.addError(`Unexpected error: ${msg}`);
@@ -402,6 +481,7 @@ export class ObsidianChatView extends ItemView {
   }
 
   private handleClear(): void {
+    this.endVoice();
     this.plugin.agent.abort();
     this.plugin.agent.clear();
     this.streaming = null;
