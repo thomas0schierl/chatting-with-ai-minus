@@ -12,8 +12,8 @@
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| OpenAI changes or closes the Codex backend for third-party clients | ChatGPT sign-in stops working | API-key providers stay available; errors point to them. |
-| OpenAI objects to the plugin identifying as the Codex CLI | Provider removal, possible plugin delisting | Accepted for now (ADR-03); an official route exists but needs a desktop-only sign-in ([GAP-019](11-gaps/019-chatgpt-provider-uses-internal-backend.md)). |
+| OpenAI changes or ends the "Sign in with ChatGPT" preview | ChatGPT sign-in breaks until updated | API-key providers stay available; errors point to them. |
+| OpenAI objects to signing in by pasting the callback address (not described in its docs) | ChatGPT sign-in on mobile stops working | Desktop could catch the callback with a loopback server; watch for a device flow. |
 | Provider APIs change request or response formats | Errors until fixed | Offline regression tests; live checks before releases ([10](10-quality-requirements.md)). |
 | Upstream fixes don't reach the fork automatically | Bugs fixed upstream stay here | Review upstream changes now and then; port what fits. |
 
@@ -22,7 +22,6 @@
 | ID | Gap | Kind | Impact |
 |---|---|---|---|
 | [GAP-008](11-gaps/008-single-conversation-only.md) | Only one conversation | Feature | Medium |
-| [GAP-009](11-gaps/009-math-not-rendered.md) | Math in answers isn't rendered | Debt | Low–medium |
 | [GAP-010](11-gaps/010-answer-scrolls-question-away.md) | New answers scroll the question out of view | Debt | Medium (mobile) |
 | [GAP-011](11-gaps/011-images-saved-twice.md) | Saved chat history stores every image twice | Debt | Medium |
 | [GAP-012](11-gaps/012-publishing-tooling.md) | No Obsidian lint rules or automated releases | Debt | Medium (publishing) |
@@ -31,13 +30,13 @@
 | [GAP-015](11-gaps/015-no-message-actions.md) | No actions on single messages (copy, regenerate) | Feature | Medium |
 | [GAP-016](11-gaps/016-answers-not-streamed.md) | Answers appear only when complete | Feature | High |
 | [GAP-017](11-gaps/017-agent-cannot-see-images-or-canvases.md) | The agent can't look at images or canvases | Feature | Medium–high |
-| [GAP-019](11-gaps/019-chatgpt-provider-uses-internal-backend.md) | The ChatGPT provider uses Codex's internal backend | Risk | High |
+| [GAP-020](11-gaps/020-chatgpt-signin-follow-ups.md) | ChatGPT sign-in follow-ups (lost attempt on mobile, account switch, token signature) | Debt | Medium |
 
 Numbers are kept from the first gap analysis. 001, 004 and 005 were fixed
 upstream before the fork (stale ChatGPT model list, reasoning guessed from
 model names, failing follow-up messages). 002 (settings rewritten on every
-load) went away with the legacy migration code (ADR-09). 003, 006 and 007
-were fixed in the fork.
+load) went away with the legacy migration code (ADR-09). 003, 006, 007,
+009, 018 and 019 were fixed in the fork.
 
 ## To investigate
 
@@ -48,9 +47,7 @@ gap or drop.
   message would answer the stopped run instead of starting a new one.
 - Anthropic web search results are read from `search_results`, which may
   not match the API's response shape.
-- Codex: no refresh-and-retry after a 401; parallel token refreshes aren't
-  merged.
-- Device login polling has no overall timeout.
+- ChatGPT: no refresh-and-retry after a 401 (parallel refreshes are merged).
 - Restored tool cards lose their inputs (saved as `{}`).
 - OpenAI: requests no longer ask for encrypted reasoning (`include`), so a
   full history replay relies on OpenAI having stored the reasoning items.

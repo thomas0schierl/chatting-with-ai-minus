@@ -23,7 +23,7 @@ It is a fork of [Chatting with AI](https://github.com/o1xhack/obsidian-chatting)
 ## Main features
 
 - Chat in a side panel, with three providers: Anthropic (API key), OpenAI
-  (API key) and ChatGPT account sign-in (Codex backend).
+  (API key) and ChatGPT account sign-in (uses the ChatGPT plan).
 - 16 vault tools: read, search, list, create, edit, rename, trash, open,
   frontmatter, backlinks, canvas reading and editing, date and time, and
   asking the user a question.

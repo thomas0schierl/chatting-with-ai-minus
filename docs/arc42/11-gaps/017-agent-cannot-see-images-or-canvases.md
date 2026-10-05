@@ -21,7 +21,7 @@ the vault. It can't "take a picture" of a canvas to understand its layout.
 
 1. **Image tool results:** let a tool result carry images.
    - **Anthropic:** accepts image blocks inside a `tool_result`.
-   - **OpenAI and Codex:** check whether `function_call_output` accepts
+   - **OpenAI and ChatGPT:** check whether `function_call_output` accepts
      images. If not, add the image in a user message right after the
      result, which every provider accepts.
 2. **`view_image` tool:** reads an image file from the vault

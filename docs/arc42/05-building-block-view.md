@@ -42,9 +42,9 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID.
 | `api/client.ts` | Picks the adapter for the current provider; one retry on rate limits. |
 | `api/anthropic.ts` | Anthropic Messages API adapter (thinking, prompt caching, web search, native replay). |
 | `api/openai.ts` | OpenAI Responses API adapter (`previous_response_id` chaining, full replay as fallback). |
-| `api/chatgpt-oauth.ts` | ChatGPT/Codex adapter: `store: false`, full replay each turn, buffered SSE parsing. |
-| `api/responses-format.ts` | Converts unified messages to and from the Responses API format (shared by OpenAI and Codex). |
-| `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account; Codex client version; thinking and parallel-tool capabilities, and the thinking parameters built from them. |
+| `api/chatgpt-oauth.ts` | ChatGPT adapter (`api.openai.com/v1/responses` with the ChatGPT-plan token): `store: false`, full replay each turn, tools in a namespace, buffered SSE parsing. |
+| `api/responses-format.ts` | Converts unified messages to and from the Responses API format (shared by the OpenAI and ChatGPT adapters). |
+| `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account; thinking and parallel-tool capabilities, and the thinking parameters built from them. |
 | `auth/chatgptOAuth.ts` | Device login, token exchange and refresh against `auth.openai.com`. |
 | `auth/chatgptOAuthStore.ts` | Reads and writes the OAuth credential in SecretStorage. |
 | `tools/registry.ts` | The 16 tool definitions (JSON Schema) offered to the model. |

@@ -13,8 +13,8 @@ It works the same on desktop, iPhone, iPad and Android.
 - **Three providers:** Anthropic (API key), OpenAI (API key), or sign in
   with your ChatGPT account.
 - **Works with your vault:** the AI can read, search, list, create, edit,
-  rename and trash notes, change frontmatter, find backlinks, and ask you
-  when something is unclear.
+  rename and trash notes, change frontmatter, find backlinks, read and edit
+  canvases, and ask you when something is unclear.
 - **Selection scope:** select text in a note, choose *Send selection to
   Chat*, and the AI changes only that text.
 - **Images:** attach or paste up to four images per message, for models

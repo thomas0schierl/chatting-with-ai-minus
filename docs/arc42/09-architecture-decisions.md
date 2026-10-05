@@ -135,6 +135,8 @@
 ## ADR-12: Stream chat with `fetch` where the provider allows it (proposed)
 
 - **Status:** proposed; decided after the device spike in GAP-016.
+  Updated after ADR-13: ChatGPT now uses `api.openai.com`, so it can
+  stream too.
 - **Context:** ADR-01 assumed `requestUrl()` is the only HTTP API that
   works everywhere. Checked on 2026-10-05 for the origins Obsidian uses
   (`app://obsidian.md`, `capacitor://localhost`, `http://localhost`):
@@ -147,12 +149,13 @@
   `requestUrl()` can't stream and can't be cancelled, which costs streamed
   answers (GAP-016) and a working Stop.
 - **Decision (proposed):**
-  - Chat requests to Anthropic and OpenAI use `fetch` with `stream: true`,
-    render text as it arrives, and cancel with `AbortController`.
+  - Chat requests to Anthropic, OpenAI and ChatGPT use `fetch` with
+    `stream: true`, render text as it arrives, and cancel with
+    `AbortController`.
   - If `fetch` fails before any response (blocked or network error), the
     same request falls back to `requestUrl()` and is parsed from the
-    buffered stream, as Codex is today.
-  - Codex, sign-in and model-list requests stay on `requestUrl()`.
+    buffered stream, as ChatGPT is today.
+  - Sign-in and model-list requests stay on `requestUrl()`.
 - **Consequences:**
   - All three adapters then parse server-sent events, sharing one parser.
   - Two transport paths to test.
