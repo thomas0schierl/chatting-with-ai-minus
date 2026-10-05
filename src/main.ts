@@ -478,21 +478,46 @@ export default class ChatPlugin extends Plugin {
   }
 
   private async loadChatHistory(): Promise<void> {
-    try {
-      const raw = await this.app.vault.adapter.read(this.chatStatePath);
-      const state = migrateChatState(JSON.parse(raw));
-      if (!state) return;
-      for (const conversation of state.conversations) {
-        conversation.chatHistory = restoreImages(conversation.chatHistory, conversation.agentMessages);
-      }
+    const state = await this.readChatState();
+    // Unreadable and not set aside: saving would overwrite it.
+    if (state === undefined) return;
+    if (state) {
       this.conversations = state.conversations;
       this.activeConversationId = state.activeConversationId;
       this.agent.importMessages(this.activeConversation.agentMessages);
-    } catch {
-      // No saved state or parse error — start fresh
-    } finally {
-      this.chatHistoryLoaded = true;
     }
+    this.chatHistoryLoaded = true;
+  }
+
+  /**
+   * The saved chats in the current format; null when there are none yet
+   * (first run, silent) or the file couldn't be read and was renamed to
+   * `chat-state.corrupt-<time>.json` (with a notice); undefined when it
+   * couldn't be read or renamed.
+   */
+  private async readChatState(): Promise<ChatState | null | undefined> {
+    const { adapter } = this.app.vault;
+    const path = this.chatStatePath;
+    try {
+      const state = migrateChatState(JSON.parse(await adapter.read(path)));
+      if (state) {
+        for (const conversation of state.conversations) {
+          conversation.chatHistory = restoreImages(conversation.chatHistory, conversation.agentMessages);
+        }
+        return state;
+      }
+    } catch {
+      if (!(await adapter.exists(path).catch(() => true))) return null;
+    }
+    const name = `chat-state.corrupt-${Date.now()}.json`;
+    try {
+      await adapter.rename(path, `${this.pluginDataDir}/${name}`);
+    } catch {
+      new Notice("Saved chats couldn't be read. The file is left as it is, and chats aren't saved until Obsidian restarts.");
+      return undefined;
+    }
+    new Notice(`Saved chats couldn't be read. The file was kept as ${name} in the plugin folder; starting with a new chat.`);
+    return null;
   }
 
   // ─── Settings persistence ────────────────────────────────────────────

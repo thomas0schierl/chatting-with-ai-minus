@@ -15,7 +15,7 @@
 | SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | ChatGPT credential (JSON): access, refresh and ID token, expiry, granted scopes, account `sub` and email | Cleared by writing `""` on disconnect or an unusable refresh token. A record without `scopes` (former Codex sign-in) is erased on its first read |
 | SecretStorage `chatting-with-ai-minus-chatgpt-sign-in` | The pending sign-in attempt (JSON): authorize URL, PKCE verifier, `state`, `nonce`, redirect URI, client ID, start time | Cleared once its code is exchanged; ignored and cleared when 10 minutes old |
 | SecretStorage `chatting-with-ai-minus-chatgpt-registration` | This device's `ext_agent_host_id` (`urn:uuid:…`), the issued client ID, the registered account's `sub` and email | Kept on disconnect; client ID, `sub` and email replaced by *Use another account*, the host ID never. Not a secret, but per device: `data.json` syncs, and each device needs its own host ID |
-| `chat-state.json` in the plugin folder | `{ version: 3, activeConversationId, conversations: [{ id, title, customTitle, createdAt, updatedAt, chatHistory, agentMessages }] }`. Per conversation the visible history (last 100 entries) and API history (last 80 messages, complete turns, with native replay items). Image data only in the API history; the visible history keeps each image's ID, name, type and size. Older versions are migrated once on load (`chat-state.ts`): 1 → 2 turn IDs and images once, 2 → 3 the single chat becomes the first conversation | Written after every turn, Stop, Clear, new chat, switch, rename, delete and unload; never before it has been read at start. Empty conversations other than the active one aren't saved |
+| `chat-state.json` in the plugin folder | `{ version: 3, activeConversationId, conversations: [{ id, title, customTitle, createdAt, updatedAt, chatHistory, agentMessages }] }`. Per conversation the visible history (last 100 entries) and API history (last 80 messages, complete turns, with native replay items). Image data only in the API history; the visible history keeps each image's ID, name, type and size. Older versions are migrated once on load (`chat-state.ts`): 1 → 2 turn IDs and images once, 2 → 3 the single chat becomes the first conversation | Written after every turn, Stop, Clear, new chat, switch, rename, delete and unload; never before it has been read at start. Empty conversations other than the active one aren't saved. A file that can't be read is renamed to `chat-state.corrupt-<time>.json`, never overwritten |
 | `debug.log` in the plugin folder | Requests and errors; voice event types | Only when `DEBUG = true` in `agent/loop.ts` |
 
 Settings and catalogs are checked field by field when loaded; anything
@@ -41,7 +41,7 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   for a ChatGPT usage limit; otherwise
   the error is shown below the partial answer.
 - **Notices** are only for user actions (connection test, model refresh,
-  copy).
+  copy), and for saved chats that couldn't be read at start.
 
 ## Mobile
 

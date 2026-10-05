@@ -140,7 +140,7 @@ for (const provider of ['anthropic', 'openai', 'chatgpt-oauth']) {
 
     // Saved state holds the image once: in the agent history only.
     const writes = [];
-    app.vault.adapter = { read: async () => { throw new Error('ENOENT'); }, write: async (path, data) => { writes.push(data); } };
+    app.vault.adapter = { read: async () => { throw new Error('ENOENT'); }, exists: async () => false, write: async (path, data) => { writes.push(data); } };
     const plugin = new api.ChatPlugin();
     plugin.app = app;
     plugin.agent = agent;

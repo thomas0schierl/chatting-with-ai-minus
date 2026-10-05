@@ -43,8 +43,6 @@ gap or drop.
 - OpenAI: requests no longer ask for encrypted reasoning (`include`), so a
   full history replay relies on OpenAI having stored the reasoning items.
   Check live after a model change or restart.
-- A corrupt `chat-state.json` is silently treated as empty and overwritten
-  on the next save, which now loses every conversation.
 - All conversations, image data included, live in one `chat-state.json`
   that is rewritten after every turn; check size and save time with many
   chats with images (saving attachments as separate files would fix it).

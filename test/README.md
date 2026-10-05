@@ -25,7 +25,8 @@ parsing, rebuilt responses, fallback, Stop and rate-limit retry
 an answer through the chat view with a fake Svelte component
 (`message-actions.test.mjs`), saving each image once with the
 migration of older saved chats (`images-once.test.mjs`), named
-conversations: migration, new chat, switch, rename, delete, restore,
+conversations: migration, new chat, switch, rename, delete, restore, an
+unreadable saved file kept aside,
 titles, and isolation of histories and OpenAI chaining
 (`conversations.test.mjs`), `edit_document` without content
 (`edit-document.test.mjs`), and the ChatGPT plan cues: no retry on a

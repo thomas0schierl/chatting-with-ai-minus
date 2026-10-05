@@ -21,7 +21,11 @@
    image no longer there keeps only its name and is shown as a chip. Make
    the saved active conversation active again and import its API messages
    into the agent loop (trimmed to 40). Until this has finished, `saveChatHistory()` does
-   nothing, so an early unload can't overwrite the saved chat.
+   nothing, so an early unload can't overwrite the saved chat. No file
+   (first run) starts a new chat silently. A file that can't be read or
+   isn't a saved chat is renamed to `chat-state.corrupt-<time>.json` and a
+   notice says so; if renaming fails too, nothing is saved until the next
+   start, so the file is never overwritten.
 5. Register the settings tab, view, ribbon icon, commands and menus.
 
 No network requests happen at start.

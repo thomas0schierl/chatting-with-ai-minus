@@ -224,6 +224,7 @@ export async function chatSetup(provider, saved) {
   app.vault.adapter = {
     append: async () => {},
     read: async () => { if (!saved) throw new Error('ENOENT'); return JSON.stringify(saved); },
+    exists: async () => !!saved,
     write: async (path, data) => { writes.push(JSON.parse(data)); },
   };
   const plugin = new api.ChatPlugin();

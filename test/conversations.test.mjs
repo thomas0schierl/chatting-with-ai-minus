@@ -342,3 +342,54 @@ test('Nothing is saved before the saved conversations have been read', async () 
   assert.deepEqual(writes[0].conversations.map(c => c.chatHistory[0].text), ['First', 'Second']);
   assert.equal(writes[0].activeConversationId, 'b');
 });
+
+// A plugin whose chat-state.json holds `content` (undefined: no file), with a
+// fake adapter that records writes and renames.
+async function loadFrom(content, { renameFails = false } = {}) {
+  const { app } = vaultApp();
+  const writes = [], renames = [];
+  app.vault.adapter = {
+    read: async () => { if (content === undefined) throw new Error('ENOENT'); return content; },
+    exists: async () => content !== undefined,
+    rename: async (from, to) => { if (renameFails) throw new Error('EBUSY'); renames.push([from, to]); },
+    write: async (path, data) => { writes.push(JSON.parse(data)); },
+  };
+  const plugin = new api.ChatPlugin();
+  plugin.app = app;
+  plugin.agent = new api.AgentLoop(app, settings('anthropic'));
+  await plugin.loadChatHistory();
+  return { plugin, writes, renames };
+}
+
+test('An unreadable chat-state.json is kept aside before starting fresh, with one notice', async () => {
+  for (const content of ['{"version": 3, "conversations": [', '[]', 'null']) {
+    globalThis.__notices = [];
+    const { plugin, writes, renames } = await loadFrom(content);
+    assert.equal(renames.length, 1);
+    assert.equal(renames[0][0], '.obsidian/plugins/chatting-with-ai-minus/chat-state.json');
+    assert.match(renames[0][1], /^\.obsidian\/plugins\/chatting-with-ai-minus\/chat-state\.corrupt-\d+\.json$/);
+    assert.equal(globalThis.__notices.length, 1);
+    assert.match(globalThis.__notices[0], /couldn't be read.*chat-state\.corrupt-\d+\.json/);
+    // The fresh chat is saved to a new file; the old one is safe.
+    await plugin.saveChatHistory();
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].conversations[0].chatHistory, []);
+  }
+});
+
+test('An unreadable chat-state.json that can\'t be moved aside is never overwritten', async () => {
+  const { plugin, writes } = await loadFrom('not json', { renameFails: true });
+  assert.equal(globalThis.__notices.length, 1);
+  assert.match(globalThis.__notices[0], /aren't saved until Obsidian restarts/);
+  plugin.chatHistory.push({ type: 'user', text: 'New', turnId: 't' });
+  await plugin.saveChatHistory();
+  assert.deepEqual(writes, []);
+});
+
+test('No chat-state.json yet (first run): no notice, nothing renamed, saving works', async () => {
+  const { plugin, writes, renames } = await loadFrom(undefined);
+  assert.deepEqual(renames, []);
+  assert.deepEqual(globalThis.__notices, []);
+  await plugin.saveChatHistory();
+  assert.equal(writes.length, 1);
+});
