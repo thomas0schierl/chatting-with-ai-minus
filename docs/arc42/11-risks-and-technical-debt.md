@@ -76,5 +76,3 @@ gap or drop.
   acknowledges `delegation.context.append`; two requests ran on the
   ChatGPT plan with vault tools and were spoken. Not yet checked in the
   mobile apps.
-- Stale comments: `tools/registry.ts` says 9 tools, and
-  `ChatContainer.svelte` mentions a `chat-modal.ts` that doesn't exist.
