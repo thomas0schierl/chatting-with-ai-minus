@@ -18,7 +18,7 @@ import type {
 } from "../types";
 import { CHATGPT_OAUTH_DEFAULT_MODEL } from "../types";
 import { buildResponsesInput, fromResponsesOutput, functionTools, sendResponsesRequest, CHATGPT_TOOL_NAMESPACE, type ResponsesFailure } from "./responses-format";
-import { oauthReasoning, oauthParallelTools, cachedCatalog, catalogIdentity } from "./model-catalog";
+import { oauthReasoning, oauthParallelTools, cachedCatalog, catalogIdentity, secretIdentity } from "./model-catalog";
 import type { StreamResult } from "./stream";
 import { ProviderError } from "./errors";
 import { asRecord, getNestedString } from "../json";
@@ -72,7 +72,7 @@ export async function sendChatGPTOAuthMessage(
     );
   }
 
-  const identity = await catalogIdentity("chatgpt-oauth", credential.accountId || credential.accessToken);
+  const identity = await catalogIdentity("chatgpt-oauth", secretIdentity("chatgpt-oauth", settings.apiKey, () => credential));
   cachedCatalog(settings.modelCatalog, "chatgpt-oauth", identity);
   const model = settings.model || CHATGPT_OAUTH_DEFAULT_MODEL;
 

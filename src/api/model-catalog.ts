@@ -142,6 +142,21 @@ function anthropicCapabilities(capabilities: unknown): Pick<ModelOption, "thinki
     ? Object.entries(effort).filter(([key, value]) => key !== "supported" && supported(value)).map(([key]) => key) : undefined;
   return { thinkingType, reasoningEfforts };
 }
+/**
+ * Which account a provider's requests run as: the API key, or for ChatGPT
+ * the signed-in account (its access token until the account ID is known;
+ * `chatgpt` is asked only then). Empty when not set up. Only its hash
+ * (`catalogIdentity`) is ever stored or compared.
+ */
+export function secretIdentity(
+  provider: Provider,
+  apiKey: string,
+  chatgpt: () => { accountId?: string; accessToken: string } | null | undefined,
+): string {
+  if (provider !== "chatgpt-oauth") return apiKey;
+  const credential = chatgpt();
+  return credential ? credential.accountId || credential.accessToken : "";
+}
 export async function catalogIdentity(provider: Provider, secretIdentity: string): Promise<string> {
   // Pure JS hashing also works in mobile WebViews without SubtleCrypto.
   const digest = sha256(new TextEncoder().encode(`${provider}:${secretIdentity}`));
@@ -172,7 +187,7 @@ export async function refreshCatalog(state: CatalogState, provider: Provider, id
     if (provider === "chatgpt-oauth") {
       const credential = await oauth.getUsableCredential();
       if (!credential) throw new Error("Continue with ChatGPT first");
-      if (await catalogIdentity(provider, credential.accountId || credential.accessToken) !== identity) {
+      if (await catalogIdentity(provider, secretIdentity(provider, apiKey, () => credential)) !== identity) {
         throw new Error("ChatGPT account changed while loading models; retry for the current account");
       }
       // Same URL as the API-key provider, but this token gets `{models: [...]}`.

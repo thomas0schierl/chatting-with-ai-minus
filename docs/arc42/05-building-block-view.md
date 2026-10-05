@@ -55,7 +55,7 @@ All modules share types from `types.ts` and the JSON readers in `json.ts`;
 | `api/openai.ts` | OpenAI Responses API adapter (`previous_response_id` chaining, full replay as fallback). |
 | `api/chatgpt-oauth.ts` | ChatGPT adapter (`api.openai.com/v1/responses` with the ChatGPT-plan token): `store: false`, full replay each turn, tools in a namespace. |
 | `api/responses-format.ts` | The Responses API path shared by the OpenAI and ChatGPT adapters: function tools, sending a streamed request (errors built by the adapter), unified messages to input items and back, the response rebuilt from its stream events. Also `canReplay()`, the one rule all three adapters use for sending native items back: same provider, and the model and account they were recorded for (items recorded without them replay too). |
-| `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account; thinking and parallel-tool capabilities, and the thinking parameters built from them. |
+| `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account (`secretIdentity()`: which account, the API key or the ChatGPT account, only ever stored hashed); thinking and parallel-tool capabilities, and the thinking parameters built from them. |
 | `auth/chatgptOAuth.ts` | ChatGPT sign-in (authorize URL, pasted callback, token exchange, ID token check), refresh and revocation against `auth.openai.com`. |
 | `auth/chatgptOAuthStore.ts` | Reads and writes the ChatGPT credential, registration and pending sign-in in SecretStorage. |
 | `auth/rs256.ts` | RS256 signature check for ID tokens in plain JS (BigInt, `@noble/hashes`), since SubtleCrypto may be missing on mobile. |

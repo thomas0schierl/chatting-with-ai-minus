@@ -14,7 +14,7 @@ import {
 import { LIVE_VOICES, hasLiveAccess } from "./voice/openai-live";
 import { CODEX_VOICES, codexAccountSetting, codexRouteSetting } from "./voice/codex";
 
-import { type ModelOption, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
+import { type ModelOption, secretIdentity, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
 
 const CUSTOM_MODEL_OPTION = "__custom__";
 
@@ -435,8 +435,7 @@ export class ChatSettingTab extends PluginSettingTab {
         });
       });
 
-    const canFetchModels = s.provider === "chatgpt-oauth" ? !!this.plugin.chatgptOAuth.getCredential() : !!s.apiKey;
-    if (canFetchModels) {
+    if (this.credentialIdentity()) {
       modelSetting.addButton(btn => btn.setIcon("refresh-cw").setTooltip("Refresh models now")
         .setDisabled(this.loadingCatalog).onClick(async () => {
           await this.loadCatalog(true);
@@ -494,11 +493,10 @@ export class ChatSettingTab extends PluginSettingTab {
       });
   }
 
+  /** The account the settings are for (see `secretIdentity()`); empty when not set up. */
   private credentialIdentity(): string {
     const s = this.plugin.settings;
-    if (s.provider !== "chatgpt-oauth") return s.apiKey;
-    const credential = this.plugin.chatgptOAuth.getCredential();
-    return credential ? credential.accountId || credential.accessToken : "";
+    return secretIdentity(s.provider, s.apiKey, () => this.plugin.chatgptOAuth.getCredential());
   }
 
   private async loadCatalog(force: boolean): Promise<void> {

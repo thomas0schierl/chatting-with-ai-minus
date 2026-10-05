@@ -490,6 +490,15 @@ test('Responses: model changes rebuild text and tool pairs without encrypted rea
   assert.deepEqual(input.map(i=>i.type),['message','function_call','function_call_output']);
 });
 
+test('Which account: the API key, or the ChatGPT account (its token until the ID is known)', () => {
+  const noCredential = () => assert.fail('only asked for ChatGPT');
+  assert.equal(api.secretIdentity('openai', 'sk-key', noCredential), 'sk-key');
+  assert.equal(api.secretIdentity('anthropic', '', noCredential), '');
+  assert.equal(api.secretIdentity('chatgpt-oauth', 'ignored', () => ({ accountId: 'acct', accessToken: 'tok' })), 'acct');
+  assert.equal(api.secretIdentity('chatgpt-oauth', 'ignored', () => ({ accessToken: 'tok' })), 'tok');
+  assert.equal(api.secretIdentity('chatgpt-oauth', 'ignored', () => null), '');
+});
+
 test('One replay rule for all adapters: recorded model and account must match; unrecorded items replay', () => {
   const native = { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Native', annotations: [] }] };
   const message = (provider, recorded) => ({ role: 'assistant', content: [text('Plain')], replay: { provider, items: [native], ...recorded } });

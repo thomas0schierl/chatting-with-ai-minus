@@ -28,7 +28,7 @@ import {
 } from "./chat-state";
 import { ChatGPTOAuthStore } from "./auth/chatgptOAuthStore";
 import { ChatGPTOAuthService } from "./auth/chatgptOAuth";
-import { cachedCatalog, catalogIdentity, codexClientVersion, normalizeCatalogState } from "./api/model-catalog";
+import { cachedCatalog, catalogIdentity, codexClientVersion, normalizeCatalogState, secretIdentity } from "./api/model-catalog";
 import { setChatGPTOAuthService } from "./api/chatgpt-oauth";
 import { PLUGIN_ID } from "./plugin-id";
 import { runCapabilityCheck } from "./diagnostics/capability-check";
@@ -243,15 +243,17 @@ export default class ChatPlugin extends Plugin {
   // ─── Chat operations ────────────────────────────────────────────────
 
   /**
-   * True if the active provider is configured enough to send a message.
-   * - anthropic / openai: an API key is set.
-   * - chatgpt-oauth: a credential is present in SecretStorage.
+   * Which account the current provider runs as (API key or ChatGPT
+   * account); empty when it isn't set up. See `secretIdentity()`.
    */
+  secretIdentity(): string {
+    const { provider, apiKey } = this.settings;
+    return secretIdentity(provider, apiKey, () => this.chatgptOAuth?.getCredential());
+  }
+
+  /** The active provider can send a message: an API key, or a ChatGPT sign-in. */
   private isProviderConfigured(): boolean {
-    if (this.settings.provider === "chatgpt-oauth") {
-      return !!this.chatgptOAuth?.getCredential();
-    }
-    return !!this.settings.apiKey;
+    return !!this.secretIdentity();
   }
 
   private notConfiguredMessage(): string {
@@ -584,11 +586,10 @@ export default class ChatPlugin extends Plugin {
 
   /** Activate the saved model catalog of the current provider and account (no network). */
   private async activateModelCatalog(): Promise<void> {
-    const { provider, apiKey, modelCatalog } = this.settings;
-    const credential = provider === "chatgpt-oauth" ? this.chatgptOAuth.getCredential() : null;
-    const secretIdentity = provider === "chatgpt-oauth" ? credential?.accountId || credential?.accessToken : apiKey;
-    if (!secretIdentity) return;
-    cachedCatalog(modelCatalog, provider, await catalogIdentity(provider, secretIdentity));
+    const { provider, modelCatalog } = this.settings;
+    const account = this.secretIdentity();
+    if (!account) return;
+    cachedCatalog(modelCatalog, provider, await catalogIdentity(provider, account));
   }
 
   /** Load the correct API key when provider changes */
