@@ -14,55 +14,32 @@ Runs every `test/*.test.mjs` (`scripts/test.mjs`). `test/harness.mjs`
 bundles the real plugin modules with a fake Obsidian API, an in-memory
 vault and a mocked `requestUrl()`; new test files import from it. Its
 `fetch` fails like a CORS block unless a test sets `globalThis.__fetch`, so
-chat requests take the `requestUrl()` fallback and receive SSE. No
-credentials or network needed. They cover history encoding and replay per
-provider (one replay rule; Anthropic web search in the documented stream shape), tool
-flows, cancellation, model catalogs and caching, thinking
-parameters, the ChatGPT sign-in and its refresh (also one ending after
-Disconnect) and retry after a 401
-(`chatgpt-signin.test.mjs`), canvas tools
-(`canvas.test.mjs`), image tools, leaving older tool images out of
-requests, and canvas drawing (`view-tools.test.mjs`),
-math conversion (`math-markdown.test.mjs`), streamed answers: SSE
-parsing, rebuilt responses, fallback and when `fetch` is skipped, Stop
-and the rate-limit retry (also Anthropic errors inside the stream;
-Retry-After; none for other errors that mention 429)
-(`streaming.test.mjs`), editing a message, regenerating and copying
-an answer through the chat view with a fake Svelte component
-(`message-actions.test.mjs`, also Stop and Clear while `ask_user`
-waits), saving each image once with the
-migration of older saved chats (`images-once.test.mjs`), named
-conversations: migration, new chat, switch (the API history keeps up to 80
-messages), rename, delete, restore, an
-unreadable saved file kept aside, saves one at a time, tool card inputs after a reload,
-titles, and isolation of histories and OpenAI chaining
-(`conversations.test.mjs`), `edit_document` without content and where it
-inserts (after the frontmatter)
-(`edit-document.test.mjs`), the local date of `get_current_datetime` and a
-multi-line selection quoted line by line, saved settings checked on load,
-`set_properties` (and refusing a list), and that every tool offered to the
-model has a handler (`tools.test.mjs`); the Codex CLI version sent as
-`client_version`: cached, stable releases only, fallback
-(`client-version.test.mjs`); coming back from the background
-(`background.test.mjs`): the lifecycle hints, the save on leaving, a
-request that failed or (mobile) stalled in the background resent in the
-same turn without duplicated text, at most twice, not for a failure in
-the foreground and without marking `fetch` blocked, and Continue for a
-turn cut off mid-way (marker saved, tool results not run again);
-and the ChatGPT plan cues: no retry on a
-usage limit, its own message, the one-time welcome
-(`chatgpt-usage.test.mjs`), and live voice with fake WebRTC, microphone
-and audio (`voice.test.mjs`): session creation on both routes, both event
-dialects, delegation through the chat view with progress, chunked
-answers and a stopped older turn, hold to talk, ending, the background
-on mobile (microphone off, reconnect, end after 60 s; desktop unchanged), the device
-check's GPT-Live session (closed at once), and the Codex
-sign-in. The harness builds with `__CODEX_VOICE__` true;
-`voice-build.test.mjs` runs the real build config and checks that the
-public bundle has no Codex voice code, and that both builds write all CSS
-into `styles.css`. They don't prove live-service or mobile behaviour.
+chat requests take the `requestUrl()` fallback and receive SSE. The
+harness builds with `__CODEX_VOICE__` true. No credentials or network
+needed. They don't prove live-service or mobile behaviour.
+
+| File | Covers |
+|---|---|
+| `background.test.mjs` | Lifecycle hints; saving on leaving; a request failed or (mobile) stalled in the background resent in the same turn without duplicated text, with a limit; Continue for a turn cut off, without running tools again. |
+| `canvas.test.mjs` | `read_canvas`, `edit_canvas` (placement, groups, validation), canvas text in search. |
+| `chatgpt-signin.test.mjs` | ChatGPT sign-in, ID token check, refresh, sign-out, another account, retry after a 401, the request shape. |
+| `chatgpt-usage.test.mjs` | Usage limit: not retried, its own message; the one-time plan welcome. |
+| `client-version.test.mjs` | The Codex CLI version sent as `client_version`: cached, stable releases only, fallback. |
+| `conversations.test.mjs` | New chat, switch, rename, delete, restore, titles, caps, saves one at a time, an unreadable saved file kept aside, history isolation and OpenAI chaining. |
+| `debug-log.test.mjs` | The *Debug log* setting: nothing written while off; Copy and Clear. |
+| `edit-document.test.mjs` | `edit_document` without content, and where it inserts. |
+| `images-once.test.mjs` | Each image saved once; the migration of older saved chats. |
+| `math-markdown.test.mjs` | Math delimiters converted, code untouched. |
+| `message-actions.test.mjs` | Edit, regenerate and copy through the chat view; Stop and Clear while `ask_user` waits. |
+| `provider-history.test.mjs` | History encoding and replay per provider (one replay rule), tool pairs, thinking parameters, model catalogs and caching, Anthropic web search. |
+| `stream-desktop.test.mjs` | Desktop streams through Node's `https` (errors, Stop); on mobile a blocked `fetch` switches only that URL. |
+| `streaming.test.mjs` | SSE parsing, rebuilt responses, the `requestUrl()` fallback and when `fetch` is skipped, Stop, the rate-limit retry. |
+| `tools.test.mjs` | Every offered tool has a handler; `set_properties`; local date; selection quoting; saved settings checked on load. |
+| `view-tools.test.mjs` | `view_image`, `view_canvas` drawing, older tool images left out of requests. |
+| `voice-build.test.mjs` | The real build config: no Codex voice code in the public bundle; all CSS in `styles.css`. |
+| `voice.test.mjs` | Live voice with fake WebRTC, microphone and audio: both routes and event dialects, delegation, chunked answers, the live caption, steering (nothing stopped; answers `ask_user`; a late request runs as the next turn), hold to talk, ending, the background on mobile, the device check's session, the Codex sign-in. |
 
 ## Live checks
 
-Live provider behaviour (sign-in, chat, model lists) is checked in
-Obsidian itself, on desktop and on a phone.
+Live provider behaviour is checked in Obsidian itself, on desktop and on a
+phone ([arc42 §10](../docs/arc42/10-quality-requirements.md#live-checks-before-a-release)).

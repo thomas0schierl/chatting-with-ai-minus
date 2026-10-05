@@ -5,7 +5,7 @@
 
 | Document | Holds |
 |---|---|
-| [README.md](../README.md) | For users: features, install, setup, privacy. |
+| [README.md](../README.md) | For users: features, commands, install, setup, use on a phone, troubleshooting, privacy. |
 | [AGENTS.md](../AGENTS.md) | For developers and coding agents: commands, rules, where to look. `CLAUDE.md` only imports it. |
 | [test/README.md](../test/README.md) | How to run the tests. |
 | [arc42/](arc42/) | The architecture, in the 12 arc42 sections below. |
