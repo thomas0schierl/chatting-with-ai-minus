@@ -19,6 +19,15 @@ test('Loaded settings: the iteration limit is kept within 1 to 100, the catalog 
   fresh.loadApiKey = () => '';
   await fresh.loadSettings();
   assert.deepEqual(fresh.settings.modelCatalog, { entries: [] });
+  assert.equal(fresh.settings.model, 'claude-sonnet-4-6');
+  // No model saved: the provider's default, so adapters never need one of their own.
+  for (const [provider, model] of [['openai', 'gpt-6.1-sol'], ['chatgpt-oauth', 'gpt-5.5']]) {
+    const plugin = new api.ChatPlugin();
+    plugin.loadData = async () => ({ provider, model: '' });
+    plugin.loadApiKey = () => '';
+    await plugin.loadSettings();
+    assert.equal(plugin.settings.model, model);
+  }
 });
 
 // A note with frontmatter `properties`, edited through processFrontMatter.

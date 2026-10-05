@@ -43,7 +43,7 @@ export async function sendOpenAIMessage(
   stream: StreamOptions = {},
 ): Promise<UnifiedResponse> {
   const baseUrl = DEFAULT_OPENAI_URL;
-  const model = settings.model || "gpt-6.1-sol";
+  const model = settings.model;
 
   const identity = await catalogIdentity("openai", settings.apiKey);
   const previous = conversations.get(messages);

@@ -34,6 +34,11 @@ export interface ChatSettings {
 export type VoiceRouteId = "openai" | "codex";
 export type VoiceMicMode = "hands-free" | "hold";
 
+/**
+ * Each provider's default model: for a new setup, after switching
+ * providers, and when no model is saved (`loadSettings()` guarantees one).
+ * ChatGPT's applies until the account's own list from `/v1/models` loads.
+ */
 export const DEFAULT_PROVIDER_MODELS: Record<Provider, string> = {
   anthropic: "claude-sonnet-4-6",
   openai: "gpt-6.1-sol",
@@ -44,7 +49,7 @@ export const DEFAULT_PROVIDER_MODELS: Record<Provider, string> = {
 export const DEFAULT_SETTINGS: Omit<ChatSettings, "modelCatalog"> = {
   provider: "anthropic",
   apiKey: "",
-  model: "claude-sonnet-4-6",
+  model: DEFAULT_PROVIDER_MODELS.anthropic,
   thinkingLevel: "",
   maxIterations: 20,
   enableWebSearch: true,
@@ -55,11 +60,6 @@ export const DEFAULT_SETTINGS: Omit<ChatSettings, "modelCatalog"> = {
   voiceMicMode: "hands-free",
 };
 
-/**
- * Default model for the ChatGPT provider until the account's own list from
- * `/v1/models` has loaded.
- */
-export const CHATGPT_OAUTH_DEFAULT_MODEL = "gpt-5.5";
 
 // ─── Unified Message Format ─────────────────────────────────────────────────
 

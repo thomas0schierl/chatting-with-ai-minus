@@ -32,7 +32,7 @@ export async function sendAnthropicMessage(
   systemPrompt: string,
   stream: StreamOptions = {},
 ): Promise<UnifiedResponse> {
-  const model = settings.model || "claude-sonnet-4-6";
+  const model = settings.model;
   const identity = await catalogIdentity("anthropic", settings.apiKey);
   cachedCatalog(settings.modelCatalog, "anthropic", identity);
   const body: Record<string, unknown> = {
