@@ -2,7 +2,6 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { requestUrl } from "obsidian";
 import type { Provider } from "../types";
 import type { ChatGPTOAuthService } from "../auth/chatgptOAuth";
-import { PLUGIN_ID } from "../plugin-id";
 
 export interface ModelOption {
   value: string;
@@ -22,17 +21,12 @@ export interface CatalogEntry {
 }
 export interface CatalogState {
   entries: CatalogEntry[];
-  clientVersion?: { value: string; checkedAt: number };
 }
 export const CATALOG_TTL = 24 * 60 * 60 * 1000;
 const RETRY_DELAY = 5 * 60 * 1000;
-const FALLBACK_CLIENT_VERSION = "0.160.0";
-let clientVersion = FALLBACK_CLIENT_VERSION;
 const activeModels = new Map<Provider, ModelOption[]>();
 const pending = new Map<string, Promise<ModelOption[]>>();
 const failedAt = new Map<string, number>();
-let versionRequest: Promise<string> | undefined;
-let versionAttempt = 0;
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
 /** Validate untrusted persisted data; never persist credentials. */
@@ -54,16 +48,10 @@ export function normalizeCatalogState(value: unknown): CatalogState {
       state.entries.push({ identity: entry.identity, provider: entry.provider as Provider, fetchedAt: entry.fetchedAt, models });
     }
   }
-  if (record(value.clientVersion) && typeof value.clientVersion.value === "string" &&
-      /^\d+\.\d+\.\d+$/.test(value.clientVersion.value) && typeof value.clientVersion.checkedAt === "number") {
-    state.clientVersion = { value: value.clientVersion.value, checkedAt: value.clientVersion.checkedAt };
-    clientVersion = state.clientVersion.value;
-  }
   return state;
 }
 export function getCatalogModels(provider: Provider): ModelOption[] | undefined { return activeModels.get(provider); }
 export function clearCatalogModels(provider: Provider): void { activeModels.delete(provider); }
-export function getCodexClientVersion(): string { return clientVersion; }
 export function catalogModel(provider: Provider, model: string): ModelOption | undefined {
   return activeModels.get(provider)?.find(m => m.value === model);
 }
@@ -80,7 +68,7 @@ export function thinkingLevelLabel(option: ModelOption | undefined, level: strin
   const fallback = option.defaultReasoningEffort ? `${option.defaultReasoningEffort} (default)` : "default";
   return resolveThinkingLevel(option, level) ?? fallback;
 }
-/** Codex reasoning from catalog data only; models without it get no reasoning parameters. */
+/** ChatGPT reasoning from catalog data only; models without it get no reasoning parameters. */
 export function oauthReasoning(model: string, level: string): Record<string, string> | undefined {
   const option = catalogModel("chatgpt-oauth", model);
   const efforts = option?.reasoningEfforts;
@@ -128,29 +116,11 @@ export function cachedCatalog(state: CatalogState, provider: Provider, identity:
 async function jsonRequest(url: string, headers: Record<string, string> = {}): Promise<Record<string, unknown>> {
   const response = await requestUrl({ url, method: "GET", headers, throw: false });
   if (response.status < 200 || response.status >= 300) throw new Error(`Model catalog request failed (HTTP ${response.status})`);
-  const json: unknown = response.json;
+  let json: unknown;
+  try { json = response.json; } catch { json = undefined; }
   if (!record(json)) throw new Error("Invalid model catalog response");
   return json;
 }
-async function updateClientVersion(state: CatalogState, force: boolean): Promise<string> {
-  if (state.clientVersion) clientVersion = state.clientVersion.value;
-  if (!force && state.clientVersion && Date.now() - state.clientVersion.checkedAt < CATALOG_TTL) return clientVersion;
-  if (versionRequest) return versionRequest;
-  if (!force && Date.now() - versionAttempt < RETRY_DELAY) return clientVersion;
-  versionAttempt = Date.now();
-  versionRequest = (async () => {
-    try {
-      const release = await jsonRequest("https://api.github.com/repos/openai/codex/releases/latest", { Accept: "application/vnd.github+json" });
-      const version = typeof release.tag_name === "string" ? release.tag_name.match(/^rust-v(\d+\.\d+\.\d+)$/)?.[1] : undefined;
-      if (!version || release.prerelease === true || release.draft === true) throw new Error("Invalid stable Codex release");
-      clientVersion = version;
-      state.clientVersion = { value: version, checkedAt: Date.now() };
-    } catch { /* Keep last official stable version when GitHub is unavailable. */ }
-    return clientVersion;
-  })().finally(() => { versionRequest = undefined; });
-  return versionRequest;
-}
-
 /** Dedupe requests; failures retain the last good entry and use a short retry backoff. */
 export async function refreshCatalog(state: CatalogState, provider: Provider, identity: string,
   apiKey: string, oauth: ChatGPTOAuthService, force = false): Promise<ModelOption[]> {
@@ -162,15 +132,14 @@ export async function refreshCatalog(state: CatalogState, provider: Provider, id
     let models: ModelOption[];
     if (provider === "chatgpt-oauth") {
       const credential = await oauth.getUsableCredential();
-      if (!credential) throw new Error("Connect ChatGPT first");
+      if (!credential) throw new Error("Continue with ChatGPT first");
       if (await catalogIdentity(provider, credential.accountId || credential.accessToken) !== identity) {
         throw new Error("ChatGPT account changed while loading models; retry for the current account");
       }
-      const version = await updateClientVersion(state, force);
-      const headers: Record<string, string> = { Authorization: `Bearer ${credential.accessToken}`, originator: "opencode", "User-Agent": `${PLUGIN_ID}/${version}`, version };
-      if (credential.accountId) headers["ChatGPT-Account-Id"] = credential.accountId;
-      const json = await jsonRequest(`https://chatgpt.com/backend-api/codex/models?client_version=${encodeURIComponent(version)}`, headers);
-      if (!Array.isArray(json.models)) throw new Error("Invalid Codex model catalog");
+      // Same URL as the API-key provider, but this token gets `{models: [...]}`.
+      // Reasoning fields aren't in the docs; they are read when present.
+      const json = await jsonRequest("https://api.openai.com/v1/models", { Authorization: `Bearer ${credential.accessToken}` });
+      if (!Array.isArray(json.models)) throw new Error("Invalid ChatGPT model catalog");
       models = json.models.filter(record).filter(m => m.visibility === "list" && typeof m.slug === "string")
         .map(m => ({ value: m.slug as string, label: typeof m.display_name === "string" ? m.display_name : m.slug as string,
           reasoningEfforts: Array.isArray(m.supported_reasoning_levels) ? m.supported_reasoning_levels.filter(record).map(e => e.effort).filter((e): e is string => typeof e === "string") : undefined,

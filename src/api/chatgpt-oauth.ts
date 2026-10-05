@@ -1,22 +1,14 @@
-import { oauthReasoning, oauthParallelTools, getCodexClientVersion, cachedCatalog, catalogIdentity } from "./model-catalog";
 /**
- * ChatGPT OAuth API client.
+ * ChatGPT adapter: OpenAI's Responses API, paid by the user's ChatGPT plan
+ * through "Sign in with ChatGPT" (ADR-13).
  *
- * Talks to the ChatGPT/Codex Responses-style endpoint using a bearer token
- * obtained via the Device Authorization Flow (see ../auth/chatgptOAuth.ts).
- *
- * Transport: always `stream: true`. The Codex backend rejects `stream:false`
- * outright with 400 `"Stream must be set to true"`, and the official Codex
- * CLI / other working OAuth-Codex clients never send anything else either.
- * Obsidian's `requestUrl()` buffers the entire SSE response before returning,
- * so we read the final body as text and parse it client-side — no streaming
- * IO required, which keeps mobile compatibility.
- *
- * Conversation continuity is **client-side**: we always send `store: false`
- * (the Codex backend rejects requests without it) and replay the full
- * conversation history into `input` every turn. We deliberately do NOT use
- * `previous_response_id` — it requires the server to persist the previous
- * response, which is incompatible with `store: false`.
+ * Rules of this route (docs: siwc/token-sharing-open-source, "Models and
+ * inference" and "Preview limitations"):
+ * - `store: false` and `stream: true` on every request; success only after
+ *   `response.completed`. `requestUrl()` buffers the stream, so the SSE
+ *   text is parsed after it ends (ADR-01).
+ * - No `previous_response_id`: the full history is replayed in `input`.
+ * - Function tools must be grouped in a namespace.
  */
 import { requestUrl } from "obsidian";
 import type {
@@ -26,41 +18,17 @@ import type {
   UnifiedResponse,
 } from "../types";
 import { CHATGPT_OAUTH_DEFAULT_MODEL } from "../types";
-import { buildResponsesInput, fromResponsesOutput } from "./responses-format";
+import { buildResponsesInput, fromResponsesOutput, CHATGPT_TOOL_NAMESPACE } from "./responses-format";
+import { oauthReasoning, oauthParallelTools, cachedCatalog, catalogIdentity } from "./model-catalog";
 import {
   ChatGPTOAuthError,
+  USAGE_URL,
   type ChatGPTOAuthService,
 } from "../auth/chatgptOAuth";
-import { PLUGIN_ID } from "../plugin-id";
 
-const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
-
-/**
- * `originator` header value.
- *
- * The Codex backend uses this header to identify which client is calling
- * `/codex/responses`. In practice the value `"opencode"` (the official
- * OpenAI Codex CLI's identifier) is what the backend allows; custom values
- * are rejected with the same generic-looking 400s as malformed bodies.
- *
- * We send `"opencode"` to mirror what the official Codex CLI and other
- * working OAuth-Codex clients send. The user is already authenticated with
- * their own ChatGPT account, so this is purely a client-identity header,
- * not an auth claim.
- */
-const ORIGINATOR = "opencode";
-
-/**
- * `User-Agent` we attach to Codex requests.
- *
- * The OpenAI JS SDK that the official Codex CLI uses sends `OpenAI/JS X.Y.Z`.
- * Obsidian's `requestUrl()` doesn't add an OpenAI-flavored UA on its own,
- * so we set one explicitly. This is defensive — the backend may or may not
- * gate on UA, but matching the SDK's shape avoids surprises.
- */
-const USER_AGENT = `OpenAI/JS 4.x ${PLUGIN_ID}/0.1`;
-
-// Settings uses the account-specific Codex catalog, preserving custom model IDs.
+export const CHATGPT_RESPONSES_URL = "https://api.openai.com/v1/responses";
+/** Error codes that mean the plan's (or this app's) usage limit is reached. */
+const USAGE_LIMIT_CODES = ["subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable"];
 
 /** Held by main.ts; injected via setChatGPTOAuthService(). */
 let oauthService: ChatGPTOAuthService | null = null;
@@ -70,15 +38,11 @@ export function setChatGPTOAuthService(service: ChatGPTOAuthService | null): voi
 }
 
 /**
- * Reset any per-conversation client state (called from AgentLoop.clear()).
- *
- * The Codex backend forces us into stateless mode, so we don't actually
- * keep any cross-turn server identifiers. This function exists so the
- * agent loop can call it uniformly alongside the OpenAI provider's reset
- * — and so we have one place to add new state if we ever introduce it.
+ * Reset per-conversation client state (called from AgentLoop.clear()).
+ * Nothing to reset: history lives entirely in AgentLoop.messages.
  */
 export function clearChatGPTOAuthState(): void {
-  /* no-op: history lives entirely in AgentLoop.messages */
+  /* no-op */
 }
 
 export async function sendChatGPTOAuthMessage(
@@ -88,23 +52,18 @@ export async function sendChatGPTOAuthMessage(
   systemPrompt: string,
 ): Promise<UnifiedResponse> {
   if (!oauthService) {
-    throw new ChatGPTOAuthError(
-      "ChatGPT OAuth service is not initialized. Reload the plugin.",
-    );
+    throw new ChatGPTOAuthError("ChatGPT sign-in isn't initialized. Reload the plugin.");
   }
 
   let credential;
   try {
     credential = await oauthService.getUsableCredential();
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new ChatGPTOAuthError(
-      `ChatGPT OAuth session expired and refresh failed. Please reconnect your ChatGPT account in settings. (${msg})`,
-    );
+    throw new ChatGPTOAuthError(e instanceof Error ? e.message : String(e));
   }
   if (!credential) {
     throw new ChatGPTOAuthError(
-      "ChatGPT OAuth is not connected. Open Settings -> Chatting with AI Minus -> Connect ChatGPT.",
+      "ChatGPT isn't connected. Open Settings -> Chatting with AI Minus -> Continue with ChatGPT.",
     );
   }
 
@@ -114,88 +73,62 @@ export async function sendChatGPTOAuthMessage(
   }
   const model = settings.model || CHATGPT_OAUTH_DEFAULT_MODEL;
 
-  const baseBody: Record<string, unknown> = {
+  const body: Record<string, unknown> = {
     model,
-    // Replay the full conversation each turn — Codex's `store:false` mode
-    // makes server-side `previous_response_id` chaining unavailable.
     input: buildResponsesInput(messages, "chatgpt-oauth", model, identity),
     instructions: systemPrompt,
-    // Required by the Codex backend; omitting it returns
-    // 400 {"detail":"Store must be set to false"}.
     store: false,
-    // Match the request shape used by other working Codex-via-OAuth clients
-    // (verified against the OpenAI Codex CLI and external references). These
-    // fields aren't strictly documented as required, but Codex's response
-    // pipeline expects them and at least one is required for reasoning models.
+    stream: true,
     parallel_tool_calls: oauthParallelTools(model),
   };
 
   const reasoning = oauthReasoning(model, settings.thinkingLevel);
   if (reasoning) {
-    baseBody.reasoning = reasoning;
-    // Codex requires the encrypted reasoning payload to be threaded through
-    // the request when reasoning is enabled. Without this, the backend
-    // sometimes returns 400 on follow-up turns.
-    baseBody.include = ["reasoning.encrypted_content"];
+    body.reasoning = reasoning;
+    // With store:false, reasoning is replayed from its encrypted form.
+    body.include = ["reasoning.encrypted_content"];
   }
 
-  const apiTools: Record<string, unknown>[] = tools.map((t) => ({
-    type: "function",
-    name: t.name,
-    description: t.description,
-    parameters: t.inputSchema,
-    // Codex backend (and the OpenAI Responses API generally) accepts
-    // `strict` on function tools. Setting `false` matches what the
-    // official Codex CLI / other working OAuth-Codex clients send and
-    // avoids unintended structured-output validation on free-form tools.
-    strict: false,
-  }));
+  const apiTools: Record<string, unknown>[] = [];
+  if (tools.length > 0) {
+    apiTools.push({
+      type: "namespace",
+      name: CHATGPT_TOOL_NAMESPACE,
+      description: "Read, search and edit notes in the user's Obsidian vault.",
+      tools: tools.map((t) => ({
+        type: "function",
+        name: t.name,
+        description: t.description,
+        parameters: t.inputSchema,
+        strict: false,
+      })),
+    });
+  }
   if (settings.enableWebSearch) {
-    // Codex backend uses the canonical name `web_search` (per
-    // openai/codex `codex-rs/tools/src/tool_spec.rs`'s
-    // `#[serde(rename = "web_search")]`). The older
-    // `web_search_preview` name from the public Responses-API preview
-    // is rejected with HTTP 400 `"Unsupported tool type: web_search_preview"`.
     apiTools.push({ type: "web_search" });
   }
   if (apiTools.length > 0) {
-    baseBody.tools = apiTools;
+    body.tools = apiTools;
   }
 
-  // Codex backend only accepts streaming requests. We always send
-  // `stream: true` and parse the buffered SSE body client-side.
-  return sendOnce(
-    { ...baseBody, stream: true },
-    credential.accessToken,
-    credential.accountId,
-    identity,
-  );
+  return sendOnce(body, credential.accessToken, identity);
 }
 
 async function sendOnce(
   body: Record<string, unknown>,
   accessToken: string,
-  accountId: string | undefined,
   identity: string,
 ): Promise<UnifiedResponse> {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${accessToken}`,
-    "Content-Type": "application/json",
-    Accept: "text/event-stream, application/json",
-    "User-Agent": USER_AGENT,
-    version: getCodexClientVersion(),
-    originator: ORIGINATOR,
-  };
-  if (accountId) {
-    headers["ChatGPT-Account-Id"] = accountId;
-  }
-
   let response;
   try {
     response = await requestUrl({
-      url: CODEX_RESPONSES_URL,
+      url: CHATGPT_RESPONSES_URL,
       method: "POST",
-      headers,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
       body: JSON.stringify(body),
       throw: false,
     });
@@ -203,24 +136,13 @@ async function sendOnce(
     const err = asRecord(e);
     const status = typeof err.status === "number" || typeof err.status === "string" ? String(err.status) : "";
     const message = typeof err.message === "string" ? err.message : String(e);
-    throw new ChatGPTOAuthError(
-      `ChatGPT OAuth request failed (${status}): ${message}`,
-    );
-  }
-
-  if (response.status === 401 || response.status === 403) {
-    throw new ChatGPTOAuthError(
-      `ChatGPT OAuth session rejected by the server (HTTP ${response.status}). Please reconnect your ChatGPT account in settings.`,
-    );
+    throw new ChatGPTOAuthError(`ChatGPT request failed (${status}): ${message}`);
   }
 
   if (response.status < 200 || response.status >= 300) {
-    // Codex returns errors as either `{detail: "..."}` (FastAPI-style) or
-    // `{error: {message: "..."}}` (OpenAI-style). Extract whichever is
-    // present; fall back to the raw body so the cause is never lost.
-    // The .json access is wrapped in try/catch because iOS Obsidian's
-    // lazy `response.json` getter throws on any non-JSON body — see the
-    // long comment in parseResponseBody().
+    // Errors come as `{error: {code, message}}` or, before the request is
+    // admitted, `{detail: "..."}`. The .json getter throws on iOS for
+    // non-JSON bodies.
     let json: Record<string, unknown> | undefined;
     try {
       json = asOptionalRecord(response.json);
@@ -228,25 +150,22 @@ async function sendOnce(
       json = undefined;
     }
     const detail = json?.detail;
-    const detailText =
-      typeof detail === "string"
-        ? detail
-        : getNestedString(detail, ["message"]);
+    const code = getNestedString(json, ["error", "code"]);
     const apiMsg =
-      detailText ??
+      (typeof detail === "string" ? detail : getNestedString(detail, ["message"])) ??
       getNestedString(json, ["error", "message"]) ??
       response.text?.slice(0, 300) ??
       `HTTP ${response.status}`;
+    const hint = response.status === 401
+      ? " Continue with ChatGPT in settings to sign in again."
+      : code && USAGE_LIMIT_CODES.includes(code) ? ` Manage usage: ${USAGE_URL}` : "";
     const err = new ChatGPTOAuthError(
-      `ChatGPT OAuth request failed (${response.status}): ${apiMsg}. The Codex backend may not accept the selected model or request format. Try reconnecting, picking a different model, or switching to OpenAI API Key.`,
+      `ChatGPT request failed (${response.status}${code ? `, ${code}` : ""}): ${apiMsg}.${hint}`,
     );
     (err as Error & { status?: number }).status = response.status;
     throw err;
   }
 
-  // Two possible response shapes:
-  //   - JSON object (non-streaming or `response.completed` already aggregated)
-  //   - SSE text body (streaming, buffered by requestUrl)
   const data = parseResponseBody(response);
   return fromResponsesOutput(data, "chatgpt-oauth", typeof body.model === "string" ? body.model : undefined, identity);
 }
@@ -257,7 +176,7 @@ function parseResponseBody(response: {
 }): Record<string, unknown> {
   // On iOS Obsidian, `requestUrl()` returns a `response.json` that is a
   // lazy getter calling `JSON.parse(text)` under the hood. When the body
-  // is SSE (which is always true for `/codex/responses`), accessing
+  // is SSE (always, with `stream: true`), accessing
   // `.json` throws a SyntaxError like
   //   `JSON Parse error: Unexpected identifier "event"`
   // because the text starts with `event: ...`. Desktop Electron returns
@@ -276,14 +195,12 @@ function parseResponseBody(response: {
 
   const text = response.text ?? "";
   if (!text) {
-    throw new ChatGPTOAuthError("ChatGPT OAuth response was empty.");
+    throw new ChatGPTOAuthError("ChatGPT response was empty.");
   }
 
-  // SSE: lines beginning with `data: ` are JSON events. We need to do
-  // **client-side reconstruction** of the response, because Codex's
-  // `response.completed` event always has `response.output: []` —
-  // unlike the non-streaming Responses API on `api.openai.com`, the
-  // Codex backend never aggregates the final output server-side.
+  // SSE: lines beginning with `data: ` are JSON events. The response is
+  // rebuilt client-side, because `response.completed` may carry an empty
+  // `output` (as the former Codex route always did).
   //
   // Strategy:
   //   1. Walk every event in order.
@@ -313,7 +230,11 @@ function parseResponseBody(response: {
     } else if (type === "response.incomplete") {
       completedResponse = { ...(asOptionalRecord(evt.response) ?? {}), status: "incomplete" };
     } else if (type === "response.failed") {
-      failureMessage = getNestedString(evt.response, ["error", "message"]) ?? "ChatGPT OAuth response failed";
+      // Usage limits can arrive here after the stream has started.
+      const code = getNestedString(evt.response, ["error", "code"]);
+      const message = getNestedString(evt.response, ["error", "message"]) ?? "ChatGPT response failed";
+      failureMessage = code && USAGE_LIMIT_CODES.includes(code) ? `${message} (${code}). Manage usage: ${USAGE_URL}`
+        : code ? `${message} (${code})` : message;
     } else if (type === "error" && typeof evt.message === "string") {
       failureMessage = evt.message;
     }
@@ -331,7 +252,7 @@ function parseResponseBody(response: {
   }
 
   throw new ChatGPTOAuthError(
-    "ChatGPT OAuth stream ended without a completed response.",
+    "ChatGPT stream ended without a completed response.",
   );
 }
 

@@ -357,16 +357,12 @@ test('Catalog persistence rejects credentials and invalid identities', () => {
   const state = api.normalizeCatalogState({entries:[{provider:'openai',identity:'secret-key',fetchedAt:1,models:[]}],accessToken:'secret'});
   assert.deepEqual(state, {entries:[]});
 });
-test('Catalog: OAuth stable client discovery, hidden filtering, reasoning metadata, TTL, force refresh and dedupe', async () => {
+test('Catalog: OAuth hidden filtering, reasoning metadata, TTL, force refresh and dedupe', async () => {
   const state = {entries:[]};
   const identity = await api.catalogIdentity('chatgpt-oauth', 'catalog-account');
   const requests = [];
-  let releaseCalls = 0;
   globalThis.__providerRequest = async request => {
     requests.push(request);
-    if (request.url.includes('api.github.com')) { releaseCalls++; return {status:200,json:{tag_name:'rust-v0.161.0',prerelease:false,draft:false}}; }
-    assert.ok(request.url.includes('client_version=0.161.0'));
-    assert.equal(request.headers['ChatGPT-Account-Id'], 'catalog-account');
     return {status:200,json:{models:[
       {slug:'gpt-6.1-sol',display_name:'GPT 6.1',visibility:'list',supported_reasoning_levels:[{effort:'low'},{effort:'ultra'}],default_reasoning_level:'ultra'},
       {slug:'hidden-review',visibility:'hide'},
@@ -377,13 +373,12 @@ test('Catalog: OAuth stable client discovery, hidden filtering, reasoning metada
   assert.equal(models,duplicate);
   assert.deepEqual(models.map(m=>m.value),['gpt-6.1-sol']);
   assert.equal(api.oauthReasoning('gpt-6.1-sol','').effort,'ultra');
-  assert.equal(state.clientVersion.value,'0.161.0');
-  assert.equal(releaseCalls,1);
+  assert.equal(requests.length,1);
   const count = requests.length;
   await api.refreshCatalog(state,'chatgpt-oauth',identity,'',oauth);
   assert.equal(requests.length,count);
   await api.refreshCatalog(state,'chatgpt-oauth',identity,'',oauth,true);
-  assert.equal(requests.length,count+2);
+  assert.equal(requests.length,count+1);
   assert.ok(!JSON.stringify(state).includes('fake-token'));
   api.clearCatalogModels('chatgpt-oauth');
 });
@@ -416,15 +411,6 @@ test('Anthropic catalog: pagination and aliases for future generations', async (
   const models = await api.refreshCatalog({entries:[]},'anthropic',identity,'pagination',{},true);
   assert.equal(models.length,2);
   assert.ok(urls[1].includes('after_id=claude-opus-5-5'));
-});
-test('OAuth catalog: GitHub outage retains bundled version without saving a false successful check', async () => {
-  const state = {entries:[]};
-  const identity = await api.catalogIdentity('chatgpt-oauth','outage');
-  globalThis.__providerRequest = async request => request.url.includes('api.github.com') ? {status:503} : {status:200,json:{models:[{slug:'gpt-6.1-sol',visibility:'list'}]}};
-  await api.refreshCatalog(state,'chatgpt-oauth',identity,'',{getUsableCredential:async()=>({accessToken:'fake',accountId:'outage'})},true);
-  assert.equal(state.clientVersion,undefined);
-  assert.equal(state.entries[0].models[0].value,'gpt-6.1-sol');
-  api.clearCatalogModels('chatgpt-oauth');
 });
 test('GPT 6.1: reasoning only from catalog data, encrypted reasoning with it, canonical web search', async () => {
   const models = [{value:'gpt-6.1-sol',label:'GPT 6.1',reasoningEfforts:['low','high'],defaultReasoningEffort:'low'}];
@@ -516,7 +502,7 @@ test('Settings: account change during refresh never displays the former account 
   tab.display=()=>{};
   let finish, started;
   const waiting=new Promise(resolve=>started=resolve);
-  globalThis.__providerRequest=async request=>request.url.includes('github.com') ? {status:200,json:{tag_name:'rust-v0.160.0'}} : (started(),new Promise(resolve=>finish=resolve));
+  globalThis.__providerRequest=async()=>(started(),new Promise(resolve=>finish=resolve));
   const refreshing=tab.loadCatalog(true);
   await waiting;
   account='account-b';

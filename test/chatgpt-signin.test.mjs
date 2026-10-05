@@ -1,9 +1,10 @@
 // ChatGPT provider on OpenAI's official "Sign in with ChatGPT" route (ADR-13):
-// sign-in with a pasted callback address, token refresh and sign-out.
+// sign-in with a pasted callback address, token refresh and sign-out,
+// inference and model list on api.openai.com.
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import { createHash } from 'node:crypto';
-import { api, settings } from './harness.mjs';
+import { api, settings, text, call, result, response, sse, transport } from './harness.mjs';
 
 const { auth } = api;
 const ISSUED = 'oaiapp_test123';
@@ -36,6 +37,11 @@ async function signIn(oauth, tokenResponse) {
   await oauth.completeSignIn(callbackFor(pending, { code: 'fake-code', state: pending.state, client_id: ISSUED, scope: 'openid' }));
   return { pending, request };
 }
+
+beforeEach(() => {
+  for (const provider of ['anthropic', 'openai', 'chatgpt-oauth']) api.clearCatalogModels(provider);
+  api.setChatGPTOAuthService({ getUsableCredential: async () => ({ accessToken: 'fake-token', accountId: 'fake-account' }) });
+});
 
 test('PKCE S256 challenge matches RFC 7636 for a known verifier', () => {
   assert.equal(auth.codeChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'), 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
@@ -174,6 +180,54 @@ test('Sign-out revokes the refresh token and keeps the registration', async () =
   globalThis.__providerRequest = async () => ({ status: 500 });
   assert.equal(await oauth.signOut(), false);
   assert.equal(oauth.getCredential(), null);
+});
+
+test('Inference: api.openai.com/v1/responses, bearer only, store false, stream true, namespaced tools', async () => {
+  const requests = [];
+  globalThis.__providerRequest = async request => { requests.push(request); return response('chatgpt-oauth', [text('OK')]); };
+  const tools = [{ name: 'read_document', description: 'Read', inputSchema: { type: 'object', properties: {} } }];
+  await api.sendChatGPTOAuthMessage(settings('chatgpt-oauth'), [{ role: 'user', content: 'Hi' }], tools, 'System');
+  const [request] = requests;
+  assert.equal(request.url, 'https://api.openai.com/v1/responses');
+  assert.equal(request.method, 'POST');
+  assert.deepEqual(Object.keys(request.headers).sort(), ['Accept', 'Authorization', 'Content-Type']);
+  assert.equal(request.headers.Authorization, 'Bearer fake-token');
+  const body = JSON.parse(request.body);
+  assert.equal(body.store, false);
+  assert.equal(body.stream, true);
+  assert.equal(body.instructions, 'System');
+  assert.equal(body.previous_response_id, undefined);
+  assert.ok(!body.input.some(item => item.role === 'system'));
+  assert.deepEqual(body.tools.map(t => t.type), ['namespace', 'web_search']);
+  assert.equal(body.tools[0].name, 'vault');
+  assert.deepEqual(body.tools[0].tools.map(t => [t.type, t.name]), [['function', 'read_document']]);
+});
+
+test('Replayed function calls carry the tool namespace on the ChatGPT route only', () => {
+  const history = [{ role: 'assistant', content: [call('a', 'read_document', {})] }, { role: 'user', content: [result('a', 'data')] }];
+  assert.equal(api.buildResponsesInput(history, 'chatgpt-oauth')[0].namespace, 'vault');
+  assert.equal(api.buildResponsesInput(history, 'openai')[0].namespace, undefined);
+});
+
+test('Errors: usage limit links to ChatGPT usage, 401 asks to sign in again', async () => {
+  transport(() => sse([{ type: 'response.failed', response: { error: { code: 'subscription_sharing_usage_limit_exceeded', message: 'Limit reached' } } }]));
+  await assert.rejects(api.sendChatGPTOAuthMessage(settings('chatgpt-oauth'), [{ role: 'user', content: 'Hi' }], [], 'S'),
+    /Limit reached \(subscription_sharing_usage_limit_exceeded\)\. Manage usage: https:\/\/chatgpt\.com\/settings\/usage/);
+  transport(() => ({ status: 401, json: { detail: 'Not accepted' } }));
+  await assert.rejects(api.sendChatGPTOAuthMessage(settings('chatgpt-oauth'), [{ role: 'user', content: 'Hi' }], [], 'S'), /Not accepted\. Continue with ChatGPT/);
+});
+
+test('Model list: /v1/models with the bearer token, only visibility "list"', async () => {
+  const requests = [];
+  globalThis.__providerRequest = async request => {
+    requests.push(request);
+    return { status: 200, json: { models: [{ slug: 'gpt-6.1-sol', display_name: 'GPT-6.1 Sol', visibility: 'list' }, { slug: 'internal', visibility: 'hide' }] } };
+  };
+  const identity = await api.catalogIdentity('chatgpt-oauth', 'fake-account');
+  const models = await api.refreshCatalog({ entries: [] }, 'chatgpt-oauth', identity, '', { getUsableCredential: async () => ({ accessToken: 'fake-token', accountId: 'fake-account' }) }, true);
+  assert.equal(requests[0].url, 'https://api.openai.com/v1/models');
+  assert.deepEqual(requests[0].headers, { Authorization: 'Bearer fake-token' });
+  assert.deepEqual(models, [{ value: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', reasoningEfforts: undefined, defaultReasoningEffort: undefined, supportsReasoningSummary: undefined, supportsParallelTools: undefined }]);
 });
 
 test('No sign-in secrets or IDs reach data.json', async () => {

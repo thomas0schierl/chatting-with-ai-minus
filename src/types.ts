@@ -33,10 +33,8 @@ export const DEFAULT_SETTINGS: ChatSettings = {
 };
 
 /**
- * Default model for the ChatGPT OAuth provider.
- *
- * Confirmed working in user reports. Other Codex model IDs may be unavailable
- * to a particular ChatGPT account even when listed in the CLI catalog.
+ * Default model for the ChatGPT provider until the account's own list from
+ * `/v1/models` has loaded.
  */
 export const CHATGPT_OAUTH_DEFAULT_MODEL = "gpt-5.5";
 

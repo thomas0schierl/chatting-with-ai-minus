@@ -1,5 +1,8 @@
 import type { ContentBlock, Provider, UnifiedMessage, UnifiedResponse } from "../types";
 
+/** The ChatGPT route takes function tools only inside a namespace; this is ours. */
+export const CHATGPT_TOOL_NAMESPACE = "vault";
+
 /** Encode both fresh input and restored history without losing tool pairs. */
 export function buildResponsesInput(
   messages: UnifiedMessage[],
@@ -31,7 +34,8 @@ export function buildResponsesInput(
         content.push({ type: "input_image", image_url: `data:${block.image.mediaType};base64,${block.image.data}`, detail: "auto" });
       } else if (block.type === "tool_use" && block.id && block.name) {
         flush();
-        items.push({ type: "function_call", call_id: block.id, name: block.name, arguments: JSON.stringify(block.input ?? {}) });
+        items.push({ type: "function_call", call_id: block.id, name: block.name, arguments: JSON.stringify(block.input ?? {}),
+          ...(provider === "chatgpt-oauth" ? { namespace: CHATGPT_TOOL_NAMESPACE } : {}) });
       } else if (block.type === "tool_result" && block.tool_use_id) {
         flush();
         items.push({ type: "function_call_output", call_id: block.tool_use_id, output: block.content ?? "" });
