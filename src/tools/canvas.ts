@@ -54,11 +54,12 @@ export function parseCanvas(raw: string): CanvasData {
   if (!isRecord(data)) throw new Error("not a JSON Canvas object");
   const nodes = data.nodes ?? [];
   const edges = data.edges ?? [];
-  if (!Array.isArray(nodes) || !Array.isArray(edges)) {
-    throw new Error("'nodes' and 'edges' must be arrays");
+  if (!isRecordList(nodes) || !isRecordList(edges)) {
+    throw new Error("'nodes' and 'edges' must be arrays of objects");
   }
   // Spreading keeps the original key order; missing arrays are appended.
-  return { ...data, nodes, edges } as CanvasData;
+  // The fields the spec requires are trusted, as Obsidian wrote them.
+  return { ...data, nodes: nodes as CanvasNode[], edges: edges as CanvasEdge[] };
 }
 
 /** Serializes like Obsidian: tab indentation, one node or edge per line, no trailing newline. */
@@ -108,13 +109,13 @@ function describeNode(node: CanvasNode): string {
   let content: string;
   switch (node.type) {
     case "text":
-      content = `text ${preview(String(node.text ?? ""))}`;
+      content = `text ${preview(asText(node.text))}`;
       break;
     case "file":
-      content = `file ${String(node.file ?? "")}${typeof node.subpath === "string" ? node.subpath : ""}`;
+      content = `file ${asText(node.file)}${typeof node.subpath === "string" ? node.subpath : ""}`;
       break;
     case "link":
-      content = `link ${String(node.url ?? "")}`;
+      content = `link ${asText(node.url)}`;
       break;
     case "group":
       content = `group ${typeof node.label === "string" && node.label ? JSON.stringify(node.label) : "(no label)"}`;
@@ -122,7 +123,7 @@ function describeNode(node: CanvasNode): string {
     default:
       content = String(node.type);
   }
-  const color = node.color ? `, color ${String(node.color)}` : "";
+  const color = node.color ? `, color ${asText(node.color)}` : "";
   return `[${node.id}] ${content} at ${round(node.x)},${round(node.y)} size ${round(node.width)}×${round(node.height)}${color}`;
 }
 
@@ -131,7 +132,7 @@ function describeEdge(edge: CanvasEdge): string {
   const toArrow = edge.toEnd !== "none";
   const arrow = fromArrow && toArrow ? "↔" : fromArrow ? "←" : toArrow ? "→" : "—";
   const label = typeof edge.label === "string" && edge.label ? `: ${edge.label}` : "";
-  const color = edge.color ? ` (color ${String(edge.color)})` : "";
+  const color = edge.color ? ` (color ${asText(edge.color)})` : "";
   return `[${edge.id}] ${edge.fromNode} ${arrow} ${edge.toNode}${label}${color}`;
 }
 
@@ -181,12 +182,12 @@ export function applyCanvasOperations(
   const findNode = (ref: unknown, field: string): CanvasNode => {
     const id = resolve(ref);
     const node = data.nodes.find((n) => n.id === id);
-    if (!node) throw new Error(`'${field}': no node with id "${String(ref ?? "")}"`);
+    if (!node) throw new Error(`'${field}': no node with id "${asText(ref)}"`);
     return node;
   };
   const findEdge = (ref: unknown): CanvasEdge => {
     const edge = data.edges.find((e) => e.id === ref);
-    if (!edge) throw new Error(`no edge with id "${String(ref ?? "")}"`);
+    if (!edge) throw new Error(`no edge with id "${asText(ref)}"`);
     return edge;
   };
   const newId = (): string => {
@@ -236,7 +237,7 @@ export function applyCanvasOperations(
   return summary;
 
   function addNode(op: Record<string, unknown>): string {
-    const type = String(op.type ?? "");
+    const type = typeof op.type === "string" ? op.type : "";
     if (!NODE_TYPES.includes(type)) throw new Error(`'type' must be one of ${NODE_TYPES.join(", ")}`);
     const content: Record<string, unknown> = {};
     if (type === "text") content.text = requireString(op, "text");
@@ -378,10 +379,11 @@ export function applyCanvasOperations(
     if (op.fromEnd !== undefined) edge.fromEnd = requireEnum(op.fromEnd, "fromEnd", ENDS);
     if (op.toEnd !== undefined) edge.toEnd = requireEnum(op.toEnd, "toEnd", ENDS);
     if (op.color !== undefined && op.color !== "") edge.color = requireColor(op.color);
-    if (optionalText(op.label)) edge.label = op.label;
+    const label = optionalText(op.label) ? op.label : undefined;
+    if (label) edge.label = label;
     data.edges.push(edge);
     if (typeof op.ref === "string" && op.ref) refs.set(op.ref, edge.id);
-    return `Added edge ${edge.id}${refNote(op)}: ${from.id} → ${to.id}${edge.label ? `: ${String(edge.label)}` : ""}.`;
+    return `Added edge ${edge.id}${refNote(op)}: ${from.id} → ${to.id}${label ? `: ${label}` : ""}.`;
   }
 
   function updateEdge(op: Record<string, unknown>): string {
@@ -520,6 +522,16 @@ export function applyCanvasOperations(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRecordList(value: unknown): value is Record<string, unknown>[] {
+  return Array.isArray(value) && value.every(isRecord);
+}
+
+/** A JSON value as text: strings as they are, other values as JSON, none as "". */
+function asText(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 function overlaps(a: Rect, b: Rect, margin = 0): boolean {
