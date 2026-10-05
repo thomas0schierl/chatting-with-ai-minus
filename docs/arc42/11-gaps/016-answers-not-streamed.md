@@ -28,6 +28,10 @@ assumes the provider APIs reject cross-origin requests. Checked on
 streamed body. This needs a device test. Proposed decision:
 [ADR-12](../09-architecture-decisions.md).
 
+**Review risk:** Obsidian's review lint flags every `fetch`. Whether a
+justified exception is accepted for streaming must be clarified before
+building this.
+
 ## Fix
 
 1. **Spike** on desktop, iOS and Android: a streaming `fetch` to Anthropic

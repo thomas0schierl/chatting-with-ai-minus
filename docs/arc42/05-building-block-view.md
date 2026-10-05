@@ -35,7 +35,8 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
 | `main.ts` | Plugin entry. Loads and saves settings (`data.json`) and API keys (SecretStorage), loads and saves chat history (`chat-state.json`), wires the ChatGPT OAuth service, registers the view, ribbon icon, commands and context menus. |
 | `settings.ts` | Settings tab: provider, API key or ChatGPT connect/disconnect, model picker with catalog refresh, thinking level, web search, iteration limit. Also the device-login modal and the chat header label. |
 | `ui/chat-view.ts` | Obsidian `ItemView` that mounts the Svelte component and connects its events to the agent loop callbacks. |
-| `ui/ChatContainer.svelte` | The whole chat UI: messages (rendered as Obsidian Markdown), tool cards, thinking indicator, selection pill, image tray, input with send and stop. |
+| `ui/ChatContainer.svelte` | The whole chat UI: messages (rendered as Obsidian Markdown), tool cards, thinking indicator, selection pill, image tray, input with send and stop. Keeps the latest question at the top while its answer arrives. |
+| `ui/math-markdown.ts` | Converts `\(…\)`, `\[…\]` and math code fences to Obsidian's `$`/`$$` at render time, leaving code untouched. |
 | `agent/loop.ts` | The agent loop: owns the message history, calls the provider, runs tools, handles stop and `ask_user`, writes the debug log. |
 | `agent/history.ts` | Trims history only at the start of a user turn, so a tool call is never separated from its result. |
 | `agent/context.ts` | Collects per-turn context: vault name, note count, active note path, selection. |

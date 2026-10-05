@@ -159,9 +159,12 @@
 - **Consequences:**
   - All three adapters then parse server-sent events, sharing one parser.
   - Two transport paths to test.
-  - Check the Obsidian review lint for rules against `fetch` before
-    adopting.
-  - Supersedes ADR-01 for these two providers.
+  - **Plugin review:** Obsidian's review lint (`eslint-plugin-obsidianmd`)
+    flags every `fetch` (`no-restricted-globals`), and its config forbids
+    switching the rule off in a comment (checked 2026-10-05). Before
+    adopting, find out whether Obsidian accepts a justified exception for
+    streaming, or whether it blocks a listing.
+  - Supersedes ADR-01 for these providers.
 
 ## ADR-13: ChatGPT sign-in through OpenAI's official route, with a pasted callback
 

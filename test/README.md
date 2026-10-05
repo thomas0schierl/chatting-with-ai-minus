@@ -13,11 +13,12 @@ npm test
 Runs every `test/*.test.mjs` (`scripts/test.mjs`). `test/harness.mjs`
 bundles the real plugin modules with a fake Obsidian API, an in-memory
 vault and a mocked `requestUrl()`; new test files import from it. No
-credentials or network needed. They cover
-history encoding and replay per provider, tool flows, cancellation, model
-catalogs and caching, thinking parameters, and the ChatGPT sign-in
-(`chatgpt-signin.test.mjs`). They don't prove live-service or mobile
-behaviour.
+credentials or network needed. They cover history encoding and replay per
+provider, tool flows, cancellation, model catalogs and caching, thinking
+parameters, the ChatGPT sign-in (`chatgpt-signin.test.mjs`), canvas tools
+(`canvas.test.mjs`), image tools and canvas drawing (`view-tools.test.mjs`)
+and math conversion (`math-markdown.test.mjs`). They don't prove
+live-service or mobile behaviour.
 
 ## Live checks
 
