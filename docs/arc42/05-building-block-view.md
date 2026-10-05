@@ -50,7 +50,7 @@ All modules share types from `types.ts` and the JSON readers in `json.ts`;
 | `agent/system-prompt.ts` | The static system prompt and the per-turn context prefix. |
 | `api/client.ts` | Picks the adapter for the current provider; one retry on rate limits while no text has been shown (not on a ChatGPT usage limit), decided from the `ProviderError`'s status and code. |
 | `api/errors.ts` | `ProviderError`, the one error class the adapters throw for a provider's error answer: message, HTTP status (0 inside a stream), error code, `Retry-After` wait. |
-| `api/stream.ts` | The transport for chat: POST with `fetch`, an incremental SSE parser, abort; falls back to `requestUrl()` (and stays there for the session) when `fetch` fails before a response. The only module using `fetch` besides the device check. |
+| `api/stream.ts` | The transport for chat (ADR-12): POST with Node's `https` on desktop (no CORS check) or `fetch` on mobile, an incremental SSE parser, abort; falls back to `requestUrl()` when `fetch` fails before a response (and skips `fetch` for that URL for 10 minutes after a CORS-like failure). Returns the status, and for errors the body and the `Retry-After` wait. The only module using `fetch` (also for the device check) and the only one loading a Node module. |
 | `api/anthropic.ts` | Anthropic Messages API adapter (streamed; thinking, prompt caching, web search, native replay). Rebuilds the message from stream events. |
 | `api/openai.ts` | OpenAI Responses API adapter (`previous_response_id` chaining, full replay as fallback). |
 | `api/chatgpt-oauth.ts` | ChatGPT adapter (`api.openai.com/v1/responses` with the ChatGPT-plan token): `store: false`, full replay each turn, tools in a namespace. |

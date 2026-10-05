@@ -41,8 +41,8 @@ export function buildSystemPrompt(): string {
 }
 
 /**
- * Builds a dynamic context string injected as the first user message (or prepended
- * to the first user message). This changes per turn but sits after the cached prefix.
+ * The per-turn context, prepended to each user message (ADR-05): it
+ * changes every turn, so it stays out of the cached system prompt.
  */
 export function buildContextMessage(context: ConversationContext): string {
   const parts: string[] = [

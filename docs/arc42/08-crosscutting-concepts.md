@@ -51,8 +51,10 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 
 ## Mobile
 
-- HTTP through `requestUrl()`, except chat requests: they stream with
-  `fetch` in `api/stream.ts` (ADR-12). No Node modules, no localhost.
+- HTTP through `requestUrl()`, except chat requests: they stream in
+  `api/stream.ts` (ADR-12), with `fetch` on mobile and Node's `https` on
+  desktop (loaded at runtime only when `Platform.isDesktopApp`). No other
+  Node modules, no localhost.
 - If `fetch` fails before any response (blocked by CORS, network), the same
   request goes through `requestUrl()` and the answer appears when complete;
   if `fetch` failed like a CORS block (`TypeError`) and `requestUrl()`

@@ -22,8 +22,10 @@ scripts/release.sh X.Y.Z  # bump, commit, tag, push; CI drafts the release
 ## Rules
 
 - **Mobile parity:** HTTP through `requestUrl()`, except chat streaming via
-  the transport module `src/api/stream.ts` (ADR-12), the only place for
-  `fetch`; no Node modules. Read `response.json` inside `try`.
+  the transport module `src/api/stream.ts` (ADR-12): the only place for
+  `fetch`, and the only Node module (`https`, desktop only, loaded at
+  runtime; mobile uses `fetch`, both fall back to `requestUrl()`). No other
+  Node modules. Read `response.json` with `readJson()` (`src/json.ts`).
 - **Secrets:** API keys and tokens go only to `SecretStorage`, never to
   `data.json`, logs or chat history.
 - **System prompt stays static:** per-turn context goes into the user
