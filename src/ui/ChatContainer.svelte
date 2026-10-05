@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { App } from "obsidian";
   import { Component, MarkdownRenderer, Notice } from "obsidian";
-  import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary } from "../types";
+  import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind } from "../types";
   import { normalizeMathMarkdown } from "./math-markdown";
+  import { USAGE_URL } from "../auth/chatgptOAuth";
 
   const MAX_IMAGE_COUNT = 4;
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -27,6 +28,8 @@
     selection?: SelectionScope;
     /** Assistant messages: text still arriving (no actions yet). */
     streaming?: boolean;
+    /** Error messages shown in their own way. */
+    errorKind?: ChatErrorKind;
   }
 
   interface Props {
@@ -55,6 +58,7 @@
   }: Props = $props();
 
   let displayModel = $state("");
+  let displayProvider = $state("");
   let displayTitle = $state("");
 
   // ─── History list (a drawer over the chat) ────────────────────────────
@@ -184,6 +188,14 @@
   $effect(() => {
     displayModel = model;
   });
+  $effect(() => {
+    displayProvider = provider;
+  });
+
+  /** ChatGPT usage settings (OpenAI's guidelines for "Sign in with ChatGPT"). */
+  function openUsage(): void {
+    window.open(USAGE_URL, "_blank");
+  }
 
   // ─── Scrolling: the latest question stays at the top ──────────────────
   // When a question is added, it is scrolled to the top of the message
@@ -347,8 +359,8 @@
     if (idx !== -1) messages.splice(idx, 1);
   }
 
-  export function addError(text: string): void {
-    messages.push({ id: nextId++, type: "error", text });
+  export function addError(text: string, kind?: ChatErrorKind): void {
+    messages.push({ id: nextId++, type: "error", text, ...(kind ? { errorKind: kind } : {}) });
   }
 
   export function showAskUser(question: string): Promise<string> {
@@ -392,9 +404,10 @@
     textareaEl?.focus();
   }
 
-  /** Update the model display name in the header */
-  export function setModel(name: string): void {
+  /** Update the model display name in the header, and the provider (ChatGPT plan line) */
+  export function setModel(name: string, newProvider: string): void {
     displayModel = name;
+    displayProvider = newProvider;
   }
 
   /** Update the conversation title in the header */
@@ -896,6 +909,15 @@
           </details>
         </div>
 
+      {:else if msg.type === "error" && msg.errorKind === "usage-limit"}
+        <div class="chatting-minus-msg chatting-minus-usage-limit" role="alert">
+          <div class="chatting-minus-usage-limit-brand">ChatGPT</div>
+          <div class="chatting-minus-usage-limit-title">Usage limit reached</div>
+          <p>You've reached the usage limit of your ChatGPT plan or of this plugin. Review it in ChatGPT settings.</p>
+          <button class="mod-cta" type="button" onclick={openUsage}>Manage usage</button>
+          <div class="chatting-minus-usage-limit-detail">{msg.text}</div>
+        </div>
+
       {:else if msg.type === "error"}
         <div class="chatting-minus-msg chatting-minus-error-msg">
           <div class="chatting-minus-msg-content">{msg.text}</div>
@@ -947,8 +969,15 @@
     </div>
   {/if}
 
+  {#if displayProvider === "chatgpt-oauth"}
+    <div class="chatting-minus-plan-row">
+      <span>Using ChatGPT plan</span>
+      <button class="chatting-minus-link-btn" type="button" onclick={openUsage}>Manage usage</button>
+    </div>
+  {/if}
+
   <!-- Input bar -->
-  <div class="chatting-minus-input-bar">
+  <div class="chatting-minus-input-bar" class:has-plan-row={displayProvider === "chatgpt-oauth"}>
     <input
       bind:this={fileInputEl}
       class="chatting-minus-file-input"
@@ -1400,6 +1429,60 @@
     border-left: 3px solid var(--text-error);
     font-size: var(--font-ui-smaller);
     max-width: 90%;
+  }
+
+  /* Usage limit: the ChatGPT identity stays visible; Manage usage is the main action */
+  .chatting-minus-usage-limit {
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    max-width: 90%;
+  }
+
+  .chatting-minus-usage-limit p {
+    margin: 0;
+  }
+
+  .chatting-minus-usage-limit-brand,
+  .chatting-minus-usage-limit-detail {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+  }
+
+  .chatting-minus-usage-limit-title {
+    font-weight: var(--font-semibold);
+  }
+
+  /* ─── ChatGPT plan line above the input ───────────────────────────── */
+  .chatting-minus-plan-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 12px 0;
+    border-top: 1px solid var(--background-modifier-border);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .chatting-minus-link-btn {
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    height: auto;
+    font-size: inherit;
+    color: var(--text-accent);
+    cursor: pointer;
+  }
+
+  .chatting-minus-input-bar.has-plan-row {
+    border-top: none;
   }
 
   /* ─── Tool Calls ────────────────────────────────────────────────────── */

@@ -431,10 +431,10 @@ test('Replayed function calls carry the tool namespace on the ChatGPT route only
   assert.equal(api.buildResponsesInput(history, 'openai')[0].namespace, undefined);
 });
 
-test('Errors: usage limit links to ChatGPT usage, 401 asks to sign in again', async () => {
+test('Errors: usage limit is its own error, 401 asks to sign in again', async () => {
   transport(() => sse([{ type: 'response.failed', response: { error: { code: 'subscription_sharing_usage_limit_exceeded', message: 'Limit reached' } } }]));
   await assert.rejects(api.sendChatGPTOAuthMessage(settings('chatgpt-oauth'), [{ role: 'user', content: 'Hi' }], [], 'S'),
-    /Limit reached \(subscription_sharing_usage_limit_exceeded\)\. Manage usage: https:\/\/chatgpt\.com\/settings\/usage/);
+    e => e instanceof api.auth.ChatGPTUsageLimitError && e.message === 'Limit reached (subscription_sharing_usage_limit_exceeded)');
   transport(() => ({ status: 401, json: { detail: 'Not accepted' } }));
   await assert.rejects(api.sendChatGPTOAuthMessage(settings('chatgpt-oauth'), [{ role: 'user', content: 'Hi' }], [], 'S'), /Not accepted\. Continue with ChatGPT/);
 });

@@ -3,7 +3,7 @@ import { mount, unmount } from "svelte";
 import type { Component } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
-import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary } from "../types";
+import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind } from "../types";
 import { newTurnId } from "../agent/history";
 
 export const VIEW_TYPE_CHAT = "chatting-minus-view";
@@ -35,7 +35,7 @@ interface ChatContainerApi extends Record<string, unknown> {
   cutMessages(turnId: string): void;
   addToolCall(name: string, input: Record<string, unknown>): number;
   updateToolResult(msgId: number, name: string, result: ToolResult): void;
-  addError(text: string): void;
+  addError(text: string, kind?: ChatErrorKind): void;
   showThinking(): void;
   hideThinking(): void;
   showAskUser(question: string): Promise<string>;
@@ -44,7 +44,7 @@ interface ChatContainerApi extends Record<string, unknown> {
   cancelAskUser(): void;
   clearMessages(): void;
   focus(): void;
-  setModel(name: string): void;
+  setModel(name: string, provider: string): void;
   setTitle(title: string): void;
   setSelection(selection: SelectionScope): void;
   getSelection(): SelectionScope | null;
@@ -139,7 +139,7 @@ export class ObsidianChatView extends ItemView {
           }
           break;
         case "error":
-          chat.addError(msg.text!);
+          chat.addError(msg.text!, msg.errorKind);
           break;
       }
     }
@@ -173,9 +173,9 @@ export class ObsidianChatView extends ItemView {
     this.chatContainer?.focus();
   }
 
-  /** Update the model display name in the header */
-  updateModel(name: string): void {
-    this.chatContainer?.setModel(name);
+  /** Update the model display name in the header (and the ChatGPT plan line) */
+  updateModel(name: string, provider: string): void {
+    this.chatContainer?.setModel(name, provider);
   }
 
   /** Clear conversation */
@@ -340,11 +340,11 @@ export class ObsidianChatView extends ItemView {
           chat.setInputEnabled(false);
           return answer;
         },
-        onError: (error) => {
+        onError: (error, kind) => {
           chat.hideThinking();
           this.endStream(true);
-          chat.addError(error);
-          history.push({ type: "error", text: error });
+          chat.addError(error, kind);
+          history.push({ type: "error", text: error, ...(kind ? { errorKind: kind } : {}) });
         },
       }, selection, images, turnId);
     } catch (e) {

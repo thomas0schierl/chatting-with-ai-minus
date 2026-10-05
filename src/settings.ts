@@ -93,6 +93,18 @@ export class ChatSettingTab extends PluginSettingTab {
     else this.display();
   }
 
+  /** After a ChatGPT sign-in: the one-time plan welcome, later a short notice. */
+  private async afterSignIn(): Promise<void> {
+    this.refreshSettingsTab();
+    if (this.plugin.settings.chatgptPlanWelcomeShown) {
+      new Notice("ChatGPT connected. Chats now use your ChatGPT plan.");
+      return;
+    }
+    this.plugin.settings.chatgptPlanWelcomeShown = true;
+    await this.plugin.saveSettings();
+    new ChatGPTPlanWelcomeModal(this.app).open();
+  }
+
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
@@ -258,7 +270,7 @@ export class ChatSettingTab extends PluginSettingTab {
           window.open(USAGE_URL, "_blank");
         }))
         .addButton((button) => button.setButtonText("Use another account").onClick(() => {
-          new ChatGPTSignInModal(this.app, this.plugin.chatgptOAuth, () => this.refreshSettingsTab(), { newAccount: true }).open();
+          new ChatGPTSignInModal(this.app, this.plugin.chatgptOAuth, () => void this.afterSignIn(), { newAccount: true }).open();
         }))
         .addButton((button) => {
           button
@@ -315,7 +327,7 @@ export class ChatSettingTab extends PluginSettingTab {
             .setButtonText("Continue with ChatGPT")
             .setCta()
             .onClick(() => {
-              new ChatGPTSignInModal(this.app, this.plugin.chatgptOAuth, () => this.refreshSettingsTab()).open();
+              new ChatGPTSignInModal(this.app, this.plugin.chatgptOAuth, () => void this.afterSignIn()).open();
             })
         );
     }
@@ -472,6 +484,26 @@ export class ChatSettingTab extends PluginSettingTab {
 
 // ─── Sign-in modal ──────────────────────────────────────────────────────────
 
+/**
+ * Shown once, after the first ChatGPT sign-in (OpenAI's UI guidelines for
+ * "Sign in with ChatGPT").
+ */
+class ChatGPTPlanWelcomeModal extends Modal {
+  onOpen(): void {
+    const { contentEl } = this;
+    new Setting(contentEl).setName("You're using your ChatGPT plan").setHeading();
+    const text = contentEl.createEl("p", { text: "Chats in this plugin now use your ChatGPT plan. You can review and manage usage in " });
+    text.createEl("a", { text: "ChatGPT settings", href: USAGE_URL });
+    text.appendText(".");
+    const ok = contentEl.createEl("button", { text: "Got it", cls: "mod-cta" });
+    ok.addEventListener("click", () => this.close());
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 class ChatGPTSignInModal extends Modal {
   /** Set by a press on the dimmed background, whose close request is ignored. */
   private backgroundPressed = false;
@@ -557,9 +589,8 @@ class ChatGPTSignInModal extends Modal {
       consent.hide();
       this.oauth.completeSignIn(input.value)
         .then(() => {
-          new Notice("ChatGPT connected. Chats now use your ChatGPT plan.");
-          this.onComplete();
           this.close();
+          this.onComplete();
         })
         .catch((e: unknown) => {
           status.setText(e instanceof Error ? e.message : String(e));

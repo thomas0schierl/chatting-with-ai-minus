@@ -22,13 +22,15 @@ import { oauthReasoning, oauthParallelTools, cachedCatalog, catalogIdentity } fr
 import { streamSSE } from "./stream";
 import {
   ChatGPTOAuthError,
-  USAGE_URL,
+  ChatGPTUsageLimitError,
   type ChatGPTOAuthService,
 } from "../auth/chatgptOAuth";
 
 export const CHATGPT_RESPONSES_URL = "https://api.openai.com/v1/responses";
-/** Error codes that mean the plan's (or this app's) usage limit is reached. */
-const USAGE_LIMIT_CODES = ["subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable"];
+/** The plan's (or this app's) usage limit is reached. */
+const USAGE_LIMIT_CODE = "subscription_sharing_usage_limit_exceeded";
+/** Usage couldn't be checked; temporary. */
+const USAGE_UNAVAILABLE_CODE = "subscription_sharing_usage_unavailable";
 
 /** Held by main.ts; injected via setChatGPTOAuthService(). */
 let oauthService: ChatGPTOAuthService | null = null;
@@ -150,9 +152,10 @@ async function sendOnce(
       getNestedString(json, ["error", "message"]) ??
       response.text?.slice(0, 300) ??
       `HTTP ${response.status}`;
+    if (code === USAGE_LIMIT_CODE) throw new ChatGPTUsageLimitError(`${apiMsg} (${code})`);
     const hint = response.status === 401
       ? " Continue with ChatGPT in settings to sign in again."
-      : code && USAGE_LIMIT_CODES.includes(code) ? ` Manage usage: ${USAGE_URL}` : "";
+      : code === USAGE_UNAVAILABLE_CODE ? " Try again in a moment." : "";
     const err = new ChatGPTOAuthError(
       `ChatGPT request failed (${response.status}${code ? `, ${code}` : ""}): ${apiMsg}.${hint}`,
     );
@@ -164,7 +167,8 @@ async function sendOnce(
   if (failure) {
     // Usage limits can arrive here after the stream has started.
     const { message, code } = failure;
-    throw new ChatGPTOAuthError(code && USAGE_LIMIT_CODES.includes(code) ? `${message} (${code}). Manage usage: ${USAGE_URL}`
+    if (code === USAGE_LIMIT_CODE) throw new ChatGPTUsageLimitError(`${message} (${code})`);
+    throw new ChatGPTOAuthError(code === USAGE_UNAVAILABLE_CODE ? `${message} (${code}). Try again in a moment.`
       : code ? `${message} (${code})` : message);
   }
   if (!data) throw new ChatGPTOAuthError("ChatGPT stream ended without a completed response.");

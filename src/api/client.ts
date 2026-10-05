@@ -1,12 +1,14 @@
-import type { ChatSettings, UnifiedMessage, UnifiedToolDef, UnifiedResponse, StreamOptions } from "../types";
+import type { ChatErrorKind, ChatSettings, UnifiedMessage, UnifiedToolDef, UnifiedResponse, StreamOptions } from "../types";
 import { sendAnthropicMessage } from "./anthropic";
 import { sendOpenAIMessage } from "./openai";
 import { sendChatGPTOAuthMessage } from "./chatgpt-oauth";
+import { ChatGPTUsageLimitError } from "../auth/chatgptOAuth";
 
 /**
  * Dispatches a message to the appropriate provider adapter.
  * Handles single retry on 429 (rate limit) with exponential backoff, but
  * only while no answer text has been shown: a retry would show it twice.
+ * A ChatGPT usage limit (also 429) is not retried.
  */
 export async function sendMessage(
   settings: ChatSettings,
@@ -49,7 +51,13 @@ export async function sendMessage(
   }
 }
 
+/** How the chat shows an error from `sendMessage`; undefined for a plain error message. */
+export function errorKind(e: unknown): ChatErrorKind | undefined {
+  return e instanceof ChatGPTUsageLimitError ? "usage-limit" : undefined;
+}
+
 function isRateLimitError(e: unknown): boolean {
+  if (e instanceof ChatGPTUsageLimitError) return false;
   if (e instanceof Error) {
     return e.message.includes("429") || e.message.toLowerCase().includes("rate limit");
   }

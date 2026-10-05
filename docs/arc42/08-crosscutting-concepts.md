@@ -9,7 +9,7 @@
 
 | Store | Content | Limits |
 |---|---|---|
-| `data.json` (`saveData`) | Provider, model, thinking level, iteration limit, web search, model catalogs (hashed account key, models with their capabilities, fetch time) | API key always saved as `""`; at most 3 catalog entries |
+| `data.json` (`saveData`) | Provider, model, thinking level, iteration limit, web search, whether the ChatGPT plan welcome was shown, model catalogs (hashed account key, models with their capabilities, fetch time) | API key always saved as `""`; at most 3 catalog entries |
 | SecretStorage `chatting-with-ai-minus-api-key-<provider>` | API key per provider | |
 | SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | ChatGPT credential (JSON): access, refresh and ID token, expiry, granted scopes, account `sub` and email | Cleared by writing `""` on disconnect or an unusable refresh token. A record without `scopes` (former Codex sign-in) is erased on its first read |
 | SecretStorage `chatting-with-ai-minus-chatgpt-sign-in` | The pending sign-in attempt (JSON): authorize URL, PKCE verifier, `state`, `nonce`, redirect URI, client ID, start time | Cleared once its code is exchanged; ignored and cleared when 10 minutes old |
@@ -26,14 +26,18 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   for errors, the body; they throw an error with the provider's message.
   Errors reported inside a stream (`error`, `response.failed`) and a stream
   that ends before its final event are errors too, never partial answers. ChatGPT errors say how to
-  recover: sign in again (401), or manage usage at
-  `chatgpt.com/settings/usage` (usage-limit codes).
+  recover: sign in again (401), or try again later
+  (`subscription_sharing_usage_unavailable`). A usage limit
+  (`subscription_sharing_usage_limit_exceeded`) throws
+  `ChatGPTUsageLimitError`; the chat shows it as its own message with
+  **Manage usage** (`chatgpt.com/settings/usage`), also after a reload.
 - **The agent loop** turns every adapter error into an error bubble that is
   kept in the history.
 - **Tools never throw** to the loop. Failures and invalid arguments return
   an error result to the model.
 - **Rate limits:** one retry after the server's suggested delay (5 s
-  default, 30 s maximum), only if no answer text was shown yet; otherwise
+  default, 30 s maximum), only if no answer text was shown yet, and never
+  for a ChatGPT usage limit; otherwise
   the error is shown below the partial answer.
 - **Notices** are only for user actions (connection test, model refresh,
   copy).

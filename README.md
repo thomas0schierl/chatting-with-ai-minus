@@ -48,8 +48,9 @@ Until the plugin is listed in Obsidian's community plugins:
 3. Open the chat from the ribbon icon or the command palette.
 
 ChatGPT sign-in uses OpenAI's "Sign in with ChatGPT" for open-source apps,
-which is still a preview. Chats then count against your ChatGPT plan;
-**Manage usage** in the settings opens your usage limits. Each device
+which is still a preview. Chats then count against your ChatGPT plan,
+shown as **Using ChatGPT plan** above the chat input; **Manage usage**
+there or in the settings opens your usage limits. Each device
 signs in separately.
 
 ## Privacy

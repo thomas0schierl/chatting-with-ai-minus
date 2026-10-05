@@ -64,6 +64,17 @@ export class ChatGPTOAuthError extends Error {
   }
 }
 
+/**
+ * The usage limit of the ChatGPT plan (or of this app) is reached. Not
+ * retried: OpenAI asks apps to pause and link to the usage settings.
+ */
+export class ChatGPTUsageLimitError extends ChatGPTOAuthError {
+  constructor(message: string) {
+    super(message);
+    this.name = "ChatGPTUsageLimitError";
+  }
+}
+
 export interface SignInOptions {
   /** Register a new client for another ChatGPT account. */
   newAccount?: boolean;

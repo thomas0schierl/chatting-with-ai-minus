@@ -21,13 +21,16 @@ parameters, the ChatGPT sign-in (`chatgpt-signin.test.mjs`), canvas tools
 (`canvas.test.mjs`), image tools and canvas drawing (`view-tools.test.mjs`),
 math conversion (`math-markdown.test.mjs`), streamed answers: SSE
 parsing, rebuilt responses, fallback, Stop and rate-limit retry
-(`streaming.test.mjs`), and editing a message, regenerating and copying
+(`streaming.test.mjs`), editing a message, regenerating and copying
 an answer through the chat view with a fake Svelte component
 (`message-actions.test.mjs`), saving each image once with the
-migration of older saved chats (`images-once.test.mjs`), and named
+migration of older saved chats (`images-once.test.mjs`), named
 conversations: migration, new chat, switch, rename, delete, restore,
 titles, and isolation of histories and OpenAI chaining
-(`conversations.test.mjs`). They don't prove live-service or mobile behaviour.
+(`conversations.test.mjs`), `edit_document` without content
+(`edit-document.test.mjs`), and the ChatGPT plan cues: no retry on a
+usage limit, its own message, the one-time welcome
+(`chatgpt-usage.test.mjs`). They don't prove live-service or mobile behaviour.
 
 ## Live checks
 

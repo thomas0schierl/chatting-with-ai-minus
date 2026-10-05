@@ -8,7 +8,7 @@ import type {
   ImageAttachment,
   ToolResult,
 } from "../types";
-import { sendMessage } from "../api/client";
+import { errorKind, sendMessage } from "../api/client";
 import { clearOpenAIState } from "../api/openai";
 import { clearChatGPTOAuthState } from "../api/chatgpt-oauth";
 import { TOOL_DEFINITIONS } from "../tools/registry";
@@ -260,7 +260,7 @@ export class AgentLoop {
         if (isStopped()) return;
         const msg = e instanceof Error ? e.message : String(e);
         debugLog(this.app, "API_ERROR", { error: msg, model: this.settings.model, provider: this.settings.provider });
-        callbacks.onError(msg);
+        callbacks.onError(msg, errorKind(e));
         return;
       }
 

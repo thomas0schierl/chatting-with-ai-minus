@@ -14,6 +14,8 @@ export interface ChatSettings {
   thinkingLevel: string;
   maxIterations: number;
   enableWebSearch: boolean;
+  /** The one-time "You're using your ChatGPT plan" welcome was shown. */
+  chatgptPlanWelcomeShown: boolean;
   modelCatalog?: import("./api/model-catalog").CatalogState;
 }
 
@@ -30,6 +32,7 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   thinkingLevel: "",
   maxIterations: 20,
   enableWebSearch: true,
+  chatgptPlanWelcomeShown: false,
 };
 
 /**
@@ -141,7 +144,12 @@ export interface ChatHistoryEntry {
   toolName?: string;
   toolInput?: Record<string, unknown>;
   toolResult?: { result: string; isError: boolean };
+  /** Error entries shown in their own way. */
+  errorKind?: ChatErrorKind;
 }
+
+/** Errors the chat shows with their own message and actions. */
+export type ChatErrorKind = "usage-limit";
 
 /** A row of the chat view's history list. */
 export interface ConversationSummary {
@@ -175,5 +183,5 @@ export interface AgentCallbacks {
   onToolResult: (name: string, result: ToolResult) => void;
   onResponse: (text: string) => void;
   onAskUser: (question: string) => Promise<string>;
-  onError: (error: string) => void;
+  onError: (error: string, kind?: ChatErrorKind) => void;
 }

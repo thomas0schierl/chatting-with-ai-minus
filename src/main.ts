@@ -486,7 +486,7 @@ export default class ChatPlugin extends Plugin {
     await this.saveData(toSave);
 
     // Update the chat view header with the new model name and thinking level
-    this.getChatView()?.updateModel(this.modelHeaderLabel());
+    this.getChatView()?.updateModel(this.modelHeaderLabel(), this.settings.provider);
   }
 
   /** Model name and thinking level, as shown in the chat view header. */
