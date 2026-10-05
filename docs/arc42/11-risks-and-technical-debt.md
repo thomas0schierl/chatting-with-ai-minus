@@ -25,15 +25,13 @@
 | [GAP-011](11-gaps/011-images-saved-twice.md) | Saved chat history stores every image twice | Debt | Medium |
 | [GAP-012](11-gaps/012-publishing-tooling.md) | Obsidian lint findings don't fail CI yet | Debt | Low |
 | [GAP-013](11-gaps/013-no-live-voice-conversation.md) | No live voice conversation | Feature | High |
-| [GAP-014](11-gaps/014-edit-message-and-continue.md) | Can't edit an earlier message and continue from there | Feature | High |
-| [GAP-015](11-gaps/015-no-message-actions.md) | No actions on single messages (copy, regenerate) | Feature | Medium |
 | [GAP-020](11-gaps/020-chatgpt-signin-follow-ups.md) | ChatGPT sign-in follow-ups (lost attempt on mobile, account switch, token signature) | Debt | Medium |
 
 Numbers are kept from the first gap analysis. 001, 004 and 005 were fixed
 upstream before the fork (stale ChatGPT model list, reasoning guessed from
 model names, failing follow-up messages). 002 (settings rewritten on every
 load) went away with the legacy migration code (ADR-09). 003, 006, 007,
-009, 010, 016, 017, 018 and 019 were fixed in the fork.
+009, 010, 014, 015, 016, 017, 018 and 019 were fixed in the fork.
 
 ## To investigate
 
@@ -65,6 +63,11 @@ gap or drop.
   retry. A stopped partial answer isn't sent to the model next turn.
 - ChatGPT model list: depends on the undocumented `client_version`
   parameter (without it, newer models are hidden).
+- Message editing: no Retry after a turn that failed without any answer
+  (editing and saving it unchanged works); images can't be added or
+  removed while editing; chats saved before turn IDs existed are paired
+  from the end, which can be off by one if a turn failed before reaching
+  the API history.
 - Canvas placement (`edit_canvas`) avoids other cards but not edge paths
   or the label above a group. A group that grows can overlap its
   neighbours, and moving a card out of a group doesn't shrink the group.
