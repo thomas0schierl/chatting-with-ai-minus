@@ -128,12 +128,13 @@ test('An ask_user question and its answer stay in the history across a reload; e
     : response('anthropic', [text(`A${index + 1}`)]));
   const asking = view.handleUserMessage('Q1', null);
   while (!chat.askUser) await new Promise(resolve => setTimeout(resolve, 1));
-  chat.addUserMessage('The plan');
   chat.askUser('The plan');
   await asking;
   assert.equal(requests.length, 2);
   assert.deepEqual(plugin.chatHistory.map(e => [e.type, e.text]),
     [['user', 'Q1'], ['assistant', 'Which note?'], ['user', 'The plan'], ['assistant', 'A2']]);
+  // Shown the same way as the history renders after a reload.
+  assert.deepEqual(chat.shown.map(m => [m.type, m.text]), plugin.chatHistory.map(e => [e.type, e.text]));
   // The answer is no turn of its own: not editable, not regenerated.
   assert.equal(plugin.chatHistory[2].turnId, undefined);
   assert.deepEqual(plugin.chatHistory.filter(e => e.turnId).map(e => e.turnId), turnIdsOf(plugin).agent);

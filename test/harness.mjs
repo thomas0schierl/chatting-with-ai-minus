@@ -211,7 +211,7 @@ export function fakeChat() {
     updateToolResult(id) { const msg = chat.shown.find(m => m.id === id); if (msg) msg.type = 'tool-result'; },
     addError(value, kind) { chat.shown.push({ id: nextId++, type: 'error', text: value, ...(kind ? { errorKind: kind } : {}) }); },
     showThinking() {}, hideThinking() {},
-    showAskUser(question) { chat.addAssistantMessage(question); return new Promise(resolve => { chat.askUser = resolve; }); },
+    showAskUser() { return new Promise(resolve => { chat.askUser = resolve; }); },
     cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
     setInputEnabled() {}, setBusy(value) { chat.busy = value; },
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle(value) { chat.title = value; }, setSelection() {}, getSelection: () => null,

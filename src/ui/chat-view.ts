@@ -3,7 +3,7 @@ import { mount, unmount } from "svelte";
 import type { Component } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
-import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind } from "../types";
+import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind, ChatHistoryEntry } from "../types";
 import { newTurnId } from "../agent/history";
 import { savedToolInput } from "../chat-state";
 import { debugLog } from "../agent/loop";
@@ -46,7 +46,7 @@ interface ChatContainerApi extends Record<string, unknown> {
   addError(text: string, kind?: ChatErrorKind): void;
   showThinking(): void;
   hideThinking(): void;
-  showAskUser(question: string): Promise<string>;
+  showAskUser(): Promise<string>;
   setInputEnabled(enabled: boolean): void;
   setBusy(busy: boolean): void;
   cancelAskUser(): void;
@@ -135,28 +135,41 @@ export class ObsidianChatView extends ItemView {
 
   /** Show the plugin's chat history in the UI, replacing what it shows. */
   renderHistory(): void {
+    this.chatContainer?.clearMessages();
+    for (const entry of this.plugin.chatHistory) this.render(entry);
+  }
+
+  /** Show one history entry at the end of the chat. */
+  private render(entry: ChatHistoryEntry): void {
     const chat = this.chatContainer;
     if (!chat) return;
-    chat.clearMessages();
-    for (const msg of this.plugin.chatHistory) {
-      switch (msg.type) {
-        case "user":
-          chat.addUserMessage(msg.text ?? "", msg.images, msg.turnId, msg.selection);
-          break;
-        case "assistant":
-          chat.addAssistantMessage(msg.text!);
-          break;
-        case "tool-result":
-          if (msg.toolName && msg.toolResult) {
-            const id = chat.addToolCall(msg.toolName, msg.toolInput || {});
-            chat.updateToolResult(id, msg.toolName, msg.toolResult);
-          }
-          break;
-        case "error":
-          chat.addError(msg.text!, msg.errorKind);
-          break;
-      }
+    switch (entry.type) {
+      case "user":
+        chat.addUserMessage(entry.text ?? "", entry.images, entry.turnId, entry.selection);
+        break;
+      case "assistant":
+        chat.addAssistantMessage(entry.text ?? "");
+        break;
+      case "tool-result":
+        if (entry.toolName && entry.toolResult) {
+          const id = chat.addToolCall(entry.toolName, entry.toolInput ?? {});
+          chat.updateToolResult(id, entry.toolName, entry.toolResult);
+        }
+        break;
+      case "error":
+        chat.addError(entry.text ?? "", entry.errorKind);
+        break;
     }
+  }
+
+  /**
+   * Add `entry` to a conversation's history (the running turn's) and show
+   * it the way a reload would. Only a streamed answer and a tool card, which
+   * are shown while they arrive, are added to the history on their own.
+   */
+  private append(history: ChatHistoryEntry[], entry: ChatHistoryEntry): void {
+    history.push(entry);
+    this.render(entry);
   }
 
   async onClose(): Promise<void> {
@@ -221,8 +234,7 @@ export class ObsidianChatView extends ItemView {
       turnRunning: () => this.running,
       history: () => this.plugin.chatHistory,
       showError: (message) => {
-        this.chatContainer?.addError(message);
-        this.plugin.chatHistory.push({ type: "error", text: message });
+        this.append(this.plugin.chatHistory, { type: "error", text: message });
         void this.plugin.saveChatHistory();
       },
       render: (state) => {
@@ -353,13 +365,13 @@ export class ObsidianChatView extends ItemView {
       return;
     }
 
-    const chat = this.chatContainer!;
+    const chat = this.chatContainer;
+    if (!chat) return;
     const history = this.plugin.chatHistory;
 
     this.running = true;
     const turn = ++this.turnCount;
-    chat.addUserMessage(text, images, turnId, selection ?? undefined);
-    history.push({ type: "user", text, images, turnId, ...(selection ? { selection } : {}) });
+    this.append(history, { type: "user", text, images, turnId, ...(selection ? { selection } : {}) });
     this.plugin.touchConversation();
     chat.setTitle(this.plugin.activeConversation.title);
     chat.setInputEnabled(false);
@@ -401,10 +413,13 @@ export class ObsidianChatView extends ItemView {
         onResponse: (text) => {
           chat.hideThinking();
           // The whole text replaces the streamed one: same message as unstreamed.
-          if (this.streaming) chat.updateAssistantMessage(this.streaming.id, text, true);
-          else chat.addAssistantMessage(text);
+          if (this.streaming) {
+            chat.updateAssistantMessage(this.streaming.id, text, true);
+            history.push({ type: "assistant", text });
+          } else {
+            this.append(history, { type: "assistant", text });
+          }
           this.streaming = null;
-          history.push({ type: "assistant", text });
           voice?.onText(text);
         },
         onAskUser: async (question) => {
@@ -414,25 +429,23 @@ export class ObsidianChatView extends ItemView {
           voice?.onAskUser(question);
           // Question and answer stay in the history, the answer without a
           // turn ID: it isn't a turn of its own, so it can't be edited.
-          history.push({ type: "assistant", text: question });
-          const answer = await chat.showAskUser(question);
+          this.append(history, { type: "assistant", text: question });
+          const answer = await chat.showAskUser();
           // Empty: the question was dropped (Stop, Clear, switching).
-          if (answer) history.push({ type: "user", text: answer });
+          if (answer) this.append(history, { type: "user", text: answer });
           chat.setInputEnabled(false);
           return answer;
         },
         onError: (error, kind) => {
           chat.hideThinking();
           this.endStream(true);
-          chat.addError(error, kind);
-          history.push({ type: "error", text: error, ...(kind ? { errorKind: kind } : {}) });
+          this.append(history, { type: "error", text: error, ...(kind ? { errorKind: kind } : {}) });
           voice?.onError(error);
         },
       }, selection, images, turnId, { voice: !!voice });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      chat.addError(`Unexpected error: ${msg}`);
-      history.push({ type: "error", text: `Unexpected error: ${msg}` });
+      this.append(history, { type: "error", text: `Unexpected error: ${msg}` });
     } finally {
       // A stopped turn can end after a newer one has started (edit, or Stop
       // and send again); only the latest turn ends the running state.

@@ -419,8 +419,8 @@
     messages.push({ id: nextId++, type: "error", text, ...(kind ? { errorKind: kind } : {}) });
   }
 
-  export function showAskUser(question: string): Promise<string> {
-    addAssistantMessage(question);
+  /** The next input answers an `ask_user` question (the view shows the question). */
+  export function showAskUser(): Promise<string> {
     placeholder = "Type your answer...";
     inputEnabled = true;
     textareaEl?.focus();
@@ -503,7 +503,7 @@
     attachments = [];
 
     if (askUserResolve) {
-      addUserMessage(text);
+      // The view shows the answer and keeps it in the history.
       const resolve = askUserResolve;
       askUserResolve = null;
       resolve(text);

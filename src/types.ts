@@ -156,7 +156,7 @@ export interface SelectionScope {
 
 /** One entry of the visible chat history (`plugin.chatHistory`). */
 export interface ChatHistoryEntry {
-  type: string;
+  type: "user" | "assistant" | "tool-result" | "error";
   text?: string;
   images?: ImageAttachment[];
   /** User entries: the turn's ID, shared with the agent history. */
