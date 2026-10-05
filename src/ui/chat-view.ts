@@ -27,7 +27,8 @@ interface ChatContainerApi extends Record<string, unknown> {
   addToolCall(name: string, input: Record<string, unknown>): number;
   updateToolResult(msgId: number, name: string, result: ToolResult): void;
   addError(text: string, kind?: ChatErrorKind): void;
-  showThinking(): void;
+  /** The thinking indicator, with a short label such as "Resuming…". */
+  showThinking(label?: string): void;
   hideThinking(): void;
   showAskUser(): Promise<string>;
   setInputEnabled(enabled: boolean): void;
@@ -374,6 +375,11 @@ export class ObsidianChatView extends ItemView {
         onThinking: () => {
           this.endStream(false);
           chat.showThinking();
+        },
+        // The failed attempt's streamed text goes; the answer streams anew.
+        onResuming: () => {
+          this.endStream(false);
+          chat.showThinking("Resuming…");
         },
         onTextDelta: (delta) => {
           chat.hideThinking();

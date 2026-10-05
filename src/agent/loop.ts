@@ -1,7 +1,8 @@
-import { App } from "obsidian";
+import { App, Platform } from "obsidian";
 import type {
   ChatSettings,
   UnifiedMessage,
+  UnifiedResponse,
   ContentBlock,
   AgentCallbacks,
   SelectionScope,
@@ -9,6 +10,8 @@ import type {
   ToolResult,
 } from "../types";
 import { errorKind, resetProviderState, sendMessage } from "../api/client";
+import { lastChunkAt } from "../api/stream";
+import { appLifecycle } from "../platform/lifecycle";
 import { TOOL_DEFINITIONS } from "../tools/registry";
 import { executeTool } from "../tools/executor";
 import { buildContext } from "./context";
@@ -30,6 +33,45 @@ function displayResult(result: ToolResult): ToolResult {
   };
 }
 
+/** Resuming after the background (ADR-15); tests shorten the wait. */
+export const RESUME = {
+  /** Requests resent per turn at most; after that the error is shown. */
+  perTurn: 2,
+  /**
+   * Back in the foreground, an open request is given up after this long
+   * (ms) without data, counted from the return or its last data.
+   */
+  stallMs: 10_000,
+};
+
+/**
+ * Mobile (ADR-15): each time the app comes back while `request` is open,
+ * give it up (abort) if no data arrives for `RESUME.stallMs`. A desktop
+ * window keeps its requests running in the background, so it isn't
+ * watched. Returns the function that stops watching.
+ */
+function watchForStall(request: AbortController): () => void {
+  let timer = 0;
+  let backAt = 0;
+  const check = () => {
+    const quietMs = Date.now() - Math.max(backAt, lastChunkAt(request.signal) ?? 0);
+    if (quietMs >= RESUME.stallMs) request.abort();
+    else timer = window.setTimeout(check, RESUME.stallMs - quietMs);
+  };
+  const offVisible = appLifecycle.onVisible(() => {
+    if (!Platform.isMobileApp) return;
+    backAt = Date.now();
+    window.clearTimeout(timer);
+    timer = window.setTimeout(check, RESUME.stallMs);
+  });
+  const offHidden = appLifecycle.onHidden(() => window.clearTimeout(timer));
+  return () => {
+    offVisible();
+    offHidden();
+    window.clearTimeout(timer);
+  };
+}
+
 /**
  * The core agentic loop:
  * 1. Send user message + history to API
@@ -43,7 +85,11 @@ export class AgentLoop {
   private settings: ChatSettings;
   /** Counts runs and stops; a run whose number is no longer current is stopped. */
   private runVersion = 0;
-  /** Cancels the running turn's HTTP request (streamed answers, ADR-12). */
+  /**
+   * Cancels the open HTTP request (streamed answers, ADR-12). One per
+   * request, so a request that stalled in the background can be given up
+   * without stopping the turn (ADR-15).
+   */
   private request: AbortController | null = null;
 
   constructor(app: App, settings: ChatSettings) {
@@ -88,6 +134,11 @@ export class AgentLoop {
   /** Nothing in the API history yet. */
   isEmpty(): boolean {
     return this.messages.length === 0;
+  }
+
+  /** The history ends in a user message or tool results: the model hasn't answered them. */
+  owesAnswer(): boolean {
+    return this.messages.at(-1)?.role === "user";
   }
 
   /** Export the full conversation as a readable markdown transcript */
@@ -168,12 +219,6 @@ export class AgentLoop {
     { voice = false }: { voice?: boolean } = {}
   ): Promise<void> {
     const version = ++this.runVersion;
-    const isStopped = () => version !== this.runVersion;
-    const request = new AbortController();
-    this.request = request;
-    const onTextDelta = (text: string) => {
-      if (!isStopped()) callbacks.onTextDelta?.(text);
-    };
     // Keep one provider/model/credential configuration for this entire turn.
     const turnSettings = { ...this.settings };
 
@@ -209,9 +254,6 @@ export class AgentLoop {
     // What is sent is capped like what is saved.
     this.messages = trimHistory(this.messages, HISTORY_MESSAGES);
 
-    // System prompt is static (cache-friendly). Built once, identical every call.
-    const systemPrompt = buildSystemPrompt();
-
     debugLog(this.app, "USER_MESSAGE", {
       userMessage,
       hasSelection: !!selection,
@@ -219,7 +261,32 @@ export class AgentLoop {
       imageNames: images.map((image) => image.fileName),
     });
 
+    await this.loop(version, callbacks, turnSettings);
+  }
+
+  /**
+   * Continue the turn the history ends in, cut off before the model
+   * answered (Obsidian was ended in the background, ADR-15): the loop
+   * runs on the history as it is, without a new user message. Tool
+   * results already there are sent, not run again.
+   */
+  async continueTurn(callbacks: AgentCallbacks): Promise<void> {
+    const version = ++this.runVersion;
+    if (!this.owesAnswer()) return;
+    debugLog(this.app, "CONTINUE_TURN", { messages: this.messages.length });
+    await this.loop(version, callbacks, { ...this.settings });
+  }
+
+  /** The agentic loop on the current history, for run `version`. */
+  private async loop(version: number, callbacks: AgentCallbacks, turnSettings: ChatSettings): Promise<void> {
+    const isStopped = () => version !== this.runVersion;
+    const onTextDelta = (text: string) => {
+      if (!isStopped()) callbacks.onTextDelta?.(text);
+    };
+    // System prompt is static (cache-friendly). Built once, identical every call.
+    const systemPrompt = buildSystemPrompt();
     const maxIterations = turnSettings.maxIterations || 20;
+    let resumes = 0;
 
     for (let i = 0; i < maxIterations; i++) {
       if (isStopped()) return;
@@ -227,22 +294,29 @@ export class AgentLoop {
       callbacks.onThinking();
       if (isStopped()) return;
 
-      let response;
-      try {
-        response = await sendMessage(
-          turnSettings,
-          this.messages,
-          TOOL_DEFINITIONS,
-          systemPrompt,
-          isStopped,
-          { onTextDelta, signal: request.signal }
-        );
-      } catch (e) {
-        if (isStopped()) return;
-        const msg = e instanceof Error ? e.message : String(e);
-        debugLog(this.app, "API_ERROR", { error: msg, model: this.settings.model, provider: this.settings.provider });
-        callbacks.onError(msg, errorKind(e));
-        return;
+      let response: UnifiedResponse | undefined;
+      while (!response) {
+        const startedAt = Date.now();
+        try {
+          response = await this.send(turnSettings, systemPrompt, isStopped, onTextDelta);
+        } catch (e) {
+          if (isStopped()) return;
+          const msg = e instanceof Error ? e.message : String(e);
+          // Failed or given up while Obsidian was in the background: send
+          // the same request again once it's back (ADR-15). The history
+          // holds every completed step, so nothing runs twice.
+          if (resumes < RESUME.perTurn && appLifecycle.hiddenSince(startedAt)) {
+            resumes++;
+            debugLog(this.app, "API_RESUME", { error: msg, resume: resumes });
+            await appLifecycle.whenVisible();
+            if (isStopped()) return;
+            callbacks.onResuming?.();
+            continue;
+          }
+          debugLog(this.app, "API_ERROR", { error: msg, model: this.settings.model, provider: this.settings.provider });
+          callbacks.onError(msg, errorKind(e));
+          return;
+        }
       }
 
       debugLog(this.app, "API_RESPONSE", { stopReason: response.stopReason, contentTypes: response.content.map(b => b.type), usage: response.usage });
@@ -329,5 +403,30 @@ export class AgentLoop {
     callbacks.onError(
       `Reached maximum iterations (${maxIterations}). The task may be too complex for a single conversation turn.`
     );
+  }
+
+  /** One request with its own abort controller, watched for a stall after the background. */
+  private async send(
+    settings: ChatSettings,
+    systemPrompt: string,
+    isStopped: () => boolean,
+    onTextDelta: (text: string) => void,
+  ): Promise<UnifiedResponse> {
+    const request = new AbortController();
+    this.request = request;
+    const unwatch = watchForStall(request);
+    try {
+      return await sendMessage(settings, this.messages, TOOL_DEFINITIONS, systemPrompt, isStopped,
+        { onTextDelta, signal: request.signal });
+    } catch (e) {
+      // Aborted, but not by Stop: the watchdog gave it up.
+      if (request.signal.aborted && !isStopped()) {
+        throw new Error("No answer arrived after Obsidian came back from the background. Please try again.");
+      }
+      throw e;
+    } finally {
+      unwatch();
+      if (this.request === request) this.request = null;
+    }
   }
 }

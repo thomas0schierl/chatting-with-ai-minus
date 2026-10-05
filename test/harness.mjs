@@ -11,7 +11,7 @@ export const bundled = await build({
     export { Setting, Platform } from 'obsidian';
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';
-    export { AgentLoop } from './src/agent/loop';
+    export { AgentLoop, RESUME } from './src/agent/loop';
     export { trimHistory, withoutOldToolImages } from './src/agent/history';
     export * as chatState from './src/chat-state';
     export { sendAnthropicMessage } from './src/api/anthropic';
@@ -212,7 +212,8 @@ export function fakeChat() {
     addToolCall(name, input) { chat.shown.push({ id: nextId, type: 'tool-call', toolName: name, toolInput: input }); return nextId++; },
     updateToolResult(id) { const msg = chat.shown.find(m => m.id === id); if (msg) msg.type = 'tool-result'; },
     addError(value, kind) { chat.shown.push({ id: nextId++, type: 'error', text: value, ...(kind ? { errorKind: kind } : {}) }); },
-    showThinking() {}, hideThinking() {},
+    thinkingLabels: [],
+    showThinking(label = '') { chat.thinkingLabels.push(label); }, hideThinking() {},
     showAskUser() { return new Promise(resolve => { chat.askUser = resolve; }); },
     cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
     setInputEnabled() {}, setBusy(value) { chat.busy = value; },

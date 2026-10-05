@@ -389,11 +389,11 @@
     }
   }
 
-  export function showThinking(): void {
-    // Only add if not already showing
-    if (!messages.some((m) => m.type === "thinking")) {
-      messages.push({ id: nextId++, type: "thinking" });
-    }
+  /** The thinking dots, with a short label next to them (e.g. "Resuming…"). */
+  export function showThinking(label = ""): void {
+    const shown = messages.find((m) => m.type === "thinking");
+    if (shown) shown.text = label;
+    else messages.push({ id: nextId++, type: "thinking", text: label });
   }
 
   export function hideThinking(): void {
@@ -975,6 +975,7 @@
           <span class="chatting-minus-dot"></span>
           <span class="chatting-minus-dot"></span>
           <span class="chatting-minus-dot"></span>
+          {#if msg.text}<span class="chatting-minus-thinking-label" aria-live="polite">{msg.text}</span>{/if}
         </div>
       {/if}
     {/each}
@@ -1664,8 +1665,15 @@
   .chatting-minus-thinking {
     align-self: flex-start;
     display: flex;
+    align-items: center;
     gap: 4px;
     padding: 8px 12px;
+  }
+
+  .chatting-minus-thinking-label {
+    margin-left: 4px;
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
   }
 
   .chatting-minus-dot {

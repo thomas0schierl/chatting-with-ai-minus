@@ -3,14 +3,17 @@
 // same turn, and Continue after the phone ended Obsidian mid-turn.
 import assert from 'node:assert/strict';
 import { test, beforeEach, afterEach } from 'node:test';
-import { api, chatSetup } from './harness.mjs';
+import { api, chatSetup, text, streamEvents, sseText, sse, transport } from './harness.mjs';
 
 const { AppLifecycle, appLifecycle } = api.lifecycle;
 
-beforeEach(() => {
+beforeEach(async () => {
   api.clearOpenAIState();
   api.resetStreamTransport();
   appLifecycle.markVisible();
+  // Times are in ms: a request started in the ms the app went away counts
+  // as hidden, so start a test's requests a little later.
+  await new Promise(resolve => setTimeout(resolve, 2));
 });
 afterEach(() => {
   delete globalThis.__fetch;
@@ -97,3 +100,211 @@ test('Leaving Obsidian saves the chats (the phone may end it in the background)'
   await new Promise(resolve => setTimeout(resolve, 2));
   assert.equal(writes.length, 1);
 });
+
+// ─── Resuming a request ─────────────────────────────────────────────────────
+
+const tick = () => new Promise(resolve => setTimeout(resolve, 1));
+async function until(condition, ms = 3000) {
+  const end = Date.now() + ms;
+  while (!condition()) {
+    if (Date.now() > end) throw new Error('Timed out waiting');
+    await tick();
+  }
+}
+
+/**
+ * A streamed fetch body: `head` first; then the rest (`tail`), a failure
+ * from `fail()`, or with `hold` nothing more until cancelled.
+ */
+function body(head, { tail = '', fail, hold = false, onCancel } = {}) {
+  const encoder = new TextEncoder();
+  let step = 0;
+  return new Response(new ReadableStream({
+    pull(controller) {
+      step++;
+      if (step === 1) return controller.enqueue(encoder.encode(head));
+      if (fail) return controller.error(fail());
+      if (hold) return new Promise(() => {});
+      if (tail) controller.enqueue(encoder.encode(tail));
+      controller.close();
+    },
+    cancel() { onCancel?.(); },
+  }), { status: 200, headers: { 'content-type': 'text/event-stream' } });
+}
+
+const answer = streamEvents('anthropic', [text('The whole answer')]);
+// Up to the first text delta ("The whol").
+const partial = sseText(answer.slice(0, 3));
+
+/** Fetch answers from `handler(index)`; returns the request bodies. */
+function fakeFetch(handler) {
+  const requests = [];
+  globalThis.__fetch = async (url, init) => {
+    requests.push(JSON.parse(init.body));
+    return handler(requests.length - 1, init);
+  };
+  transport(() => assert.fail('requestUrl must not be used'));
+  return requests;
+}
+
+const shown = chat => chat.shown.map(m => [m.type, m.text]);
+
+test('A request that fails in the background is sent again when Obsidian is back: same turn, the partial text replaced', async () => {
+  const { plugin, view, chat } = await chatSetup('anthropic');
+  const requests = fakeFetch(index => index === 0
+    ? body(partial, { fail: () => { appLifecycle.markHidden(); return new TypeError('Load failed'); } })
+    : body(sseText(answer)));
+  const turn = view.handleUserMessage('Question', null);
+  await until(() => appLifecycle.isHidden());
+  await tick();
+  // The loop waits for the return; the partial text is still shown.
+  assert.deepEqual(shown(chat), [['user', 'Question'], ['assistant', 'The whol']]);
+  assert.equal(view.running, true);
+
+  appLifecycle.markVisible();
+  await turn;
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[1].messages, requests[0].messages);
+  assert.equal(requests[1].messages.length, 1);
+  assert.deepEqual(shown(chat), [['user', 'Question'], ['assistant', 'The whole answer']]);
+  assert.deepEqual(plugin.chatHistory.map(e => [e.type, e.text]), [['user', 'Question'], ['assistant', 'The whole answer']]);
+  assert.deepEqual(plugin.agent.exportMessages().map(m => m.role), ['user', 'assistant']);
+  assert.ok(chat.thinkingLabels.includes('Resuming…'));
+});
+
+test('A turn resumes at most twice; then the error shows as usual', async () => {
+  const { view, chat } = await chatSetup('anthropic');
+  const requests = fakeFetch(() => {
+    appLifecycle.markHidden();
+    throw new TypeError('Load failed');
+  });
+  const off = appLifecycle.onHidden(() => setTimeout(() => appLifecycle.markVisible(), 1));
+  try {
+    await view.handleUserMessage('Question', null);
+  } finally {
+    off();
+  }
+  assert.equal(requests.length, 3);
+  assert.equal(chat.thinkingLabels.filter(label => label === 'Resuming…').length, 2);
+  assert.deepEqual(shown(chat), [['user', 'Question'], ['error', 'Load failed']]);
+});
+
+test('A request failing while Obsidian is in the foreground errors as before, without resuming', async () => {
+  const { view, chat } = await chatSetup('anthropic');
+  let fetches = 0;
+  globalThis.__fetch = async () => { fetches++; throw new TypeError('Failed to fetch'); };
+  transport(() => { throw new Error('offline'); });
+  await view.handleUserMessage('Question', null);
+  assert.equal(fetches, 1);
+  assert.deepEqual(shown(chat), [['user', 'Question'], ['error', 'offline']]);
+  assert.equal(chat.thinkingLabels.includes('Resuming…'), false);
+});
+
+test('A fetch failing in the background neither falls back to requestUrl nor marks the URL fetch-blocked', async () => {
+  const url = 'https://api.anthropic.com/v1/messages';
+  let fetches = 0;
+  globalThis.__fetch = async () => {
+    fetches++;
+    if (fetches === 1) appLifecycle.markHidden();
+    throw new TypeError('Load failed');
+  };
+  const fallbacks = transport(() => sse([]));
+  await assert.rejects(api.streamSSE(url, { headers: {}, body: '{}' }, () => {}), /Load failed/);
+  assert.equal(fallbacks.length, 0);
+  appLifecycle.markVisible();
+  // Times are in ms: a request started in the ms the app went away counts as hidden.
+  await new Promise(resolve => setTimeout(resolve, 2));
+  // In the foreground the fallback runs, and only now is fetch skipped.
+  await api.streamSSE(url, { headers: {}, body: '{}' }, () => {});
+  await api.streamSSE(url, { headers: {}, body: '{}' }, () => {});
+  assert.equal(fetches, 2);
+  assert.equal(fallbacks.length, 2);
+});
+
+/** Run `fn` with the platform a phone and the stall wait `ms`. */
+async function onPhone(ms, fn, { mobile = true } = {}) {
+  api.Platform.isMobileApp = mobile;
+  const stall = api.RESUME.stallMs;
+  api.RESUME.stallMs = ms;
+  try {
+    await fn();
+  } finally {
+    api.RESUME.stallMs = stall;
+  }
+}
+
+test('Mobile: a request that stays silent after the return is given up and sent again', () => onPhone(30, async () => {
+  const { plugin, view, chat } = await chatSetup('anthropic');
+  let cancelled = false;
+  const requests = fakeFetch(index => index === 0
+    ? body(partial, { hold: true, onCancel: () => { cancelled = true; } })
+    : body(sseText(answer)));
+  const turn = view.handleUserMessage('Question', null);
+  await until(() => chat.shown.some(m => m.text === 'The whol'));
+  appLifecycle.markHidden();
+  appLifecycle.markVisible();
+  await turn;
+  assert.equal(cancelled, true);
+  assert.equal(requests.length, 2);
+  assert.deepEqual(shown(chat), [['user', 'Question'], ['assistant', 'The whole answer']]);
+  assert.deepEqual(plugin.agent.exportMessages().map(m => m.role), ['user', 'assistant']);
+}));
+
+test('Mobile: data arriving after the return keeps the request', () => onPhone(150, async () => {
+  const { view, chat } = await chatSetup('anthropic');
+  let cancelled = false;
+  let more;
+  fakeFetch(() => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(partial));
+      more = (events, end) => {
+        controller.enqueue(new TextEncoder().encode(sseText(events)));
+        if (end) controller.close();
+      };
+    },
+    cancel() { cancelled = true; },
+  }), { status: 200 }));
+  const turn = view.handleUserMessage('Question', null);
+  await until(() => chat.shown.some(m => m.text === 'The whol'));
+  appLifecycle.markHidden();
+  appLifecycle.markVisible();
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  // Data 75 ms after the return; the rest 165 ms after it, which is more
+  // than 150 ms after the return but not after that data.
+  await sleep(75);
+  more(answer.slice(3, 4));
+  await sleep(90);
+  assert.equal(cancelled, false);
+  more(answer.slice(4), true);
+  await turn;
+  assert.equal(cancelled, false);
+  assert.deepEqual(shown(chat), [['user', 'Question'], ['assistant', 'The whole answer']]);
+}));
+
+test('Mobile: a requestUrl() request hung in the background is abandoned after the return and sent again', () => onPhone(30, async () => {
+  const { view, chat } = await chatSetup('anthropic');
+  globalThis.__fetch = async () => { throw new TypeError('Failed to fetch'); };
+  const requests = transport((body, index) => index === 0 ? new Promise(() => {}) : sse(answer));
+  const turn = view.handleUserMessage('Question', null);
+  await until(() => requests.length === 1);
+  appLifecycle.markHidden();
+  appLifecycle.markVisible();
+  await turn;
+  assert.equal(requests.length, 2);
+  assert.deepEqual(shown(chat), [['user', 'Question'], ['assistant', 'The whole answer']]);
+}));
+
+test('Desktop: a minimised window keeps its open request (no watchdog)', () => onPhone(10, async () => {
+  const { view, chat } = await chatSetup('anthropic');
+  let cancelled = false;
+  fakeFetch(() => body(partial, { hold: true, onCancel: () => { cancelled = true; } }));
+  const turn = view.handleUserMessage('Question', null);
+  await until(() => chat.shown.some(m => m.text === 'The whol'));
+  appLifecycle.markHidden();
+  appLifecycle.markVisible();
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.equal(cancelled, false);
+  view.handleStop();
+  await turn;
+  assert.equal(cancelled, true);
+}, { mobile: false }));

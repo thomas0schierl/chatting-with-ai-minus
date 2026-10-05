@@ -13,10 +13,16 @@
  * request goes through `requestUrl()`, which buffers the whole stream; its
  * events are then delivered at once. When `fetch` failed like a CORS block
  * and that fallback reached the server, later requests to the URL skip
- * `fetch` for 10 minutes.
+ * `fetch` for 10 minutes. A `fetch` that failed while Obsidian was in the
+ * background (ADR-15) just fails: the agent loop sends it again once the
+ * app is back.
+ *
+ * Each request records when its last data arrived (`lastChunkAt()`), so
+ * the agent loop can tell a request that stalled in the background.
  */
 import { Platform, requestUrl } from "obsidian";
 import { isRecord, readJson } from "../json";
+import { appLifecycle } from "../platform/lifecycle";
 
 export interface StreamRequest {
   headers: Record<string, string>;
@@ -47,6 +53,18 @@ const FETCH_BLOCK_MS = 10 * 60_000;
  */
 const fetchBlockedUntil = new Map<string, number>();
 
+/** When data last arrived for the request with this signal. */
+const lastChunk = new WeakMap<AbortSignal, number>();
+
+/** When data last arrived for the request with `signal`; undefined before any. */
+export function lastChunkAt(signal: AbortSignal): number | undefined {
+  return lastChunk.get(signal);
+}
+
+function received(signal?: AbortSignal): void {
+  if (signal) lastChunk.set(signal, Date.now());
+}
+
 /**
  * The plugin's only `fetch` (ADR-12). Called as `window.fetch`: Obsidian's
  * review lint flags the bare global and forbids switching that rule off in
@@ -73,10 +91,14 @@ export async function streamSSE(
   if ((fetchBlockedUntil.get(url) ?? 0) <= Date.now()) {
     let response: Response | undefined;
     let failure: unknown;
+    const startedAt = Date.now();
     try {
       response = await browserFetch(url, { method: "POST", headers: request.headers, body: request.body, signal });
     } catch (error) {
       throwIfAborted(signal);
+      // In the background the network is cut, not blocked: no fallback
+      // now, no block for later; the loop retries when the app is back.
+      if (appLifecycle.hiddenSince(startedAt)) throw error;
       // No response at all: try requestUrl() below.
       failure = error;
     }
@@ -134,6 +156,7 @@ function viaNode(https: NodeHttps, url: string, request: StreamRequest, onEvent:
       let errorText = "";
       res.on("data", (chunk) => {
         if (signal?.aborted) return;
+        received(signal);
         if (parser) parser.push(chunk);
         else errorText += chunk;
       });
@@ -177,6 +200,7 @@ async function readFetchResponse(response: Response, onEvent: SSEHandler, signal
     // No readable body: take it whole.
     const text = await response.text();
     throwIfAborted(signal);
+    received(signal);
     parser.push(text);
     parser.end();
     return { status: response.status };
@@ -191,6 +215,7 @@ async function readFetchResponse(response: Response, onEvent: SSEHandler, signal
       const { done, value } = await reader.read();
       throwIfAborted(signal);
       if (done) break;
+      received(signal);
       parser.push(decoder.decode(value, { stream: true }));
     }
     parser.push(decoder.decode());
@@ -201,10 +226,16 @@ async function readFetchResponse(response: Response, onEvent: SSEHandler, signal
   return { status: response.status };
 }
 
-/** `requestUrl()` can't be cancelled; a stopped request's result is dropped. */
+/**
+ * `requestUrl()` can't be cancelled: an abort settles this at once (the
+ * native request goes on, its result is dropped), so a request hung in
+ * the background can be given up.
+ */
 async function viaRequestUrl(url: string, request: StreamRequest, onEvent: SSEHandler, signal?: AbortSignal): Promise<StreamResult> {
-  const response = await requestUrl({ url, method: "POST", headers: request.headers, body: request.body, throw: false });
+  const sent = requestUrl({ url, method: "POST", headers: request.headers, body: request.body, throw: false });
+  const response = await untilAborted(sent, signal);
   throwIfAborted(signal);
+  received(signal);
   let text: string | undefined;
   try {
     text = response.text;
@@ -297,6 +328,17 @@ function parseJson(text: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+/** `promise`, or a "Request cancelled." error as soon as `signal` aborts. */
+function untilAborted<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new Error("Request cancelled."));
+    if (signal.aborted) abort();
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
