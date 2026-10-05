@@ -119,13 +119,20 @@ export function oauthReasoning(model: string, level: string): Record<string, str
   if (option.supportsReasoningSummary !== false) reasoning.summary = "auto";
   return Object.keys(reasoning).length ? reasoning : undefined;
 }
+/**
+ * Anthropic: an answer's token limit (`max_tokens`), and the thinking
+ * budget of models that take one, which must stay below it.
+ */
+export const ANTHROPIC_MAX_TOKENS = 16384;
+const ANTHROPIC_THINKING_BUDGET = ANTHROPIC_MAX_TOKENS / 2;
+
 /** Anthropic thinking from catalog data only; effort is sent only when chosen and offered. */
 export function anthropicThinking(model: string, level: string): Record<string, unknown> {
   const option = catalogModel("anthropic", model);
   const params: Record<string, unknown> = {};
   // Adaptive lets Claude decide how much to think; the budget form must stay below max_tokens.
   if (option?.thinkingType === "adaptive") params.thinking = { type: "adaptive" };
-  else if (option?.thinkingType === "enabled") params.thinking = { type: "enabled", budget_tokens: 8192 };
+  else if (option?.thinkingType === "enabled") params.thinking = { type: "enabled", budget_tokens: ANTHROPIC_THINKING_BUDGET };
   const effort = resolveThinkingLevel(option, level);
   if (effort) params.output_config = { effort };
   return params;

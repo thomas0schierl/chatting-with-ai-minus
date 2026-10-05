@@ -231,6 +231,8 @@ for (const [model, level, thinking, effort] of [
     await api.sendAnthropicMessage(config, [{ role: 'user', content: 'Hello' }], [{ name: 'read', description: 'read', inputSchema: { type: 'object' } }], 'System');
     assert.deepEqual(requests[0].thinking, thinking);
     assert.deepEqual(requests[0].output_config, effort && { effort });
+    assert.equal(requests[0].max_tokens, 16384);
+    if (thinking?.budget_tokens) assert.ok(thinking.budget_tokens < requests[0].max_tokens);
     assert.equal(requests[0].tools.at(-1).cache_control.type, 'ephemeral');
   });
 }

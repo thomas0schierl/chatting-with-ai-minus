@@ -1,4 +1,4 @@
-import { anthropicThinking, cachedCatalog, catalogIdentity } from "./model-catalog";
+import { ANTHROPIC_MAX_TOKENS, anthropicThinking, cachedCatalog, catalogIdentity } from "./model-catalog";
 import type {
   ChatSettings,
   UnifiedMessage,
@@ -37,7 +37,7 @@ export async function sendAnthropicMessage(
   cachedCatalog(settings.modelCatalog, "anthropic", identity);
   const body: Record<string, unknown> = {
     model,
-    max_tokens: 16384,
+    max_tokens: ANTHROPIC_MAX_TOKENS,
     stream: true,
     // System prompt as a content block with cache_control breakpoint.
     // Anthropic caches everything up to the breakpoint across requests.
