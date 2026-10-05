@@ -41,3 +41,36 @@ test('edit_document with an explicit empty content deletes on purpose', async ()
   assert.equal(result.isError, false);
   assert.equal(files.get('Note.md'), 'keep text');
 });
+
+test('insert after_frontmatter goes after the closing --- line, not a --- inside a value', async () => {
+  const cases = [
+    ['---\ntitle: a---b\ntags: x\n---\nBody', '---\ntitle: a---b\ntags: x\n---\nNEW\nBody'],
+    ['---\r\nkey: v\r\n---\r\nBody', '---\r\nkey: v\r\n---\nNEW\r\nBody'],
+    ['---\n---\nBody', '---\n---\nNEW\nBody'],
+    ['---\nkey: v\n---', '---\nkey: v\n---\nNEW'],
+    // No frontmatter: a rule further down or an unclosed block doesn't count.
+    ['Intro\n---\nMore', 'NEW\nIntro\n---\nMore'],
+    ['----\nkey: v\n---\nBody', 'NEW\n----\nkey: v\n---\nBody'],
+    ['---\nnot closed', 'NEW\n---\nnot closed'],
+  ];
+  for (const [before, after] of cases) {
+    const { app, files } = noteVault(before);
+    const result = await run(app, { operation: 'insert', position: 'after_frontmatter', content: 'NEW' });
+    assert.equal(result.isError, false, before);
+    assert.equal(files.get('Note.md'), after, JSON.stringify(before));
+  }
+});
+
+test('insert at the beginning and end; an unknown position is refused before the note is touched', async () => {
+  const { app, files } = noteVault('---\nk: v\n---\nBody');
+  await run(app, { operation: 'insert', position: 'beginning', content: 'TOP' });
+  await run(app, { operation: 'insert', position: 'end', content: 'END' });
+  assert.equal(files.get('Note.md'), 'TOP\n---\nk: v\n---\nBody\nEND');
+
+  let processed = false;
+  app.vault.process = async () => { processed = true; };
+  const result = await run(app, { operation: 'insert', position: 'middle', content: 'X' });
+  assert.equal(result.isError, true);
+  assert.match(result.result, /Unknown position: middle/);
+  assert.equal(processed, false);
+});

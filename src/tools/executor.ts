@@ -96,11 +96,12 @@ async function ensureParentFolder(app: App, filePath: string): Promise<void> {
   }
 }
 
+/** A `---` line at the very start, up to the next `---` line (Obsidian's frontmatter). */
+const FRONTMATTER = /^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?=\r?\n|$)/;
+
+/** Where the frontmatter's closing `---` ends, or -1 without frontmatter. */
 function findFrontmatterEnd(content: string): number {
-  if (!content.startsWith("---")) return -1;
-  const secondDash = content.indexOf("---", 3);
-  if (secondDash === -1) return -1;
-  return secondDash + 3;
+  return FRONTMATTER.exec(content)?.[0].length ?? -1;
 }
 
 function optionalString(value: unknown): string | undefined {
@@ -216,26 +217,16 @@ async function editDocument(
       if (!position) {
         return { result: "'position' parameter is required for insert.", isError: true };
       }
+      if (position !== "beginning" && position !== "end" && position !== "after_frontmatter") {
+        return { result: `Unknown position: ${position}. Use beginning, end or after_frontmatter.`, isError: true };
+      }
 
       await app.vault.process(file, (data) => {
-        switch (position) {
-          case "beginning":
-            return content + "\n" + data;
-          case "end":
-            return data + "\n" + content;
-          case "after_frontmatter": {
-            const fmEnd = findFrontmatterEnd(data);
-            if (fmEnd === -1) return content + "\n" + data;
-            return data.substring(0, fmEnd) + "\n" + content + data.substring(fmEnd);
-          }
-          default:
-            return data; // Unknown position, return unchanged
-        }
+        if (position === "end") return data + "\n" + content;
+        const fmEnd = position === "after_frontmatter" ? findFrontmatterEnd(data) : -1;
+        if (fmEnd === -1) return content + "\n" + data;
+        return data.substring(0, fmEnd) + "\n" + content + data.substring(fmEnd);
       });
-
-      if (position !== "beginning" && position !== "end" && position !== "after_frontmatter") {
-        return { result: `Unknown position: ${position}`, isError: true };
-      }
 
       return { result: `Inserted content at ${position} of ${file.path}.`, isError: false };
     }
