@@ -9,7 +9,8 @@
  *   2. The user signs in, the browser lands on that URL and fails to load
  *      it; the user pastes the address into the plugin.
  *   3. completeSignIn(): check state, keep the issued client ID, exchange
- *      the code, validate the ID token and the plan scope, store tokens.
+ *      the code, verify the ID token (RS256 signature against OpenAI's
+ *      JWKS, then claims) and the plan scope, store tokens.
  *   4. getUsableCredential() refreshes near expiry; signOut() revokes.
  *
  * The pending attempt is saved in SecretStorage, so the paste still works
@@ -19,6 +20,7 @@
  */
 import { requestUrl } from "obsidian";
 import { sha256 } from "@noble/hashes/sha2.js";
+import { base64UrlDecode, verifyRs256, type RsaJwk } from "./rs256";
 import type {
   ChatGPTOAuthCredential,
   ChatGPTOAuthStore,
@@ -28,6 +30,8 @@ import type {
 export type { PendingSignIn } from "./chatgptOAuthStore";
 
 export const ISSUER = "https://auth.openai.com";
+/** OIDC discovery document; its `jwks_uri` holds the ID token signing keys. */
+export const DISCOVERY_URL = `${ISSUER}/.well-known/openid-configuration`;
 export const AUTHORIZE_URL = `${ISSUER}/api/accounts/authorize`;
 export const TOKEN_URL = `${ISSUER}/api/accounts/oauth/token`;
 /** `revocation_endpoint` from `${ISSUER}/.well-known/openid-configuration`. */
@@ -91,14 +95,14 @@ export function codeChallenge(verifier: string): string {
   return base64Url(sha256(new TextEncoder().encode(verifier)));
 }
 
-/** Decode a JWT payload without checking its signature (see validateIdToken). */
-export function decodeJwt(token: string): Record<string, unknown> | undefined {
-  const part = token.split(".")[1];
-  if (!part) return undefined;
+export { verifyRs256 } from "./rs256";
+
+/** Decode one JWT part (0 header, 1 payload) as a JSON object, without checking the signature. */
+export function decodeJwt(token: string, index = 1): Record<string, unknown> | undefined {
+  const bytes = base64UrlDecode(token.split(".")[index] ?? "");
+  if (!bytes?.length) return undefined;
   try {
-    const padded = part.replace(/-/g, "+").replace(/_/g, "/");
-    const binary = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
-    const json: unknown = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, c => c.charCodeAt(0))));
+    const json: unknown = JSON.parse(new TextDecoder().decode(bytes));
     return typeof json === "object" && json !== null ? json as Record<string, unknown> : undefined;
   } catch {
     return undefined;
@@ -147,11 +151,7 @@ export function parseCallback(input: string, pending: PendingSignIn): { code: st
   return { code, clientId: pending.clientId };
 }
 
-/**
- * Check issuer, audience, expiry and nonce. The signature isn't checked:
- * the token comes straight from the token endpoint over TLS, which OIDC
- * Core 3.1.3.7 accepts in place of the signature check.
- */
+/** Check issuer, audience, expiry and nonce. The signature is checked before (see verifySignature). */
 export function validateIdToken(idToken: string | undefined, clientId: string, nonce: string): IdTokenClaims & { sub: string } {
   const claims = idToken ? decodeJwt(idToken) as IdTokenClaims | undefined : undefined;
   if (!claims) throw new ChatGPTOAuthError("Sign-in returned no valid ID token.");
@@ -221,6 +221,8 @@ async function revoke(refreshToken: string, clientId: string): Promise<boolean> 
 export class ChatGPTOAuthService {
   /** The sign-in attempt whose callback we're waiting for; undefined until read from SecretStorage. */
   private pending: PendingSignIn | null | undefined;
+  /** OpenAI's ID token signing keys, cached for this session. */
+  private signingKeys: RsaJwk[] | null = null;
   /** Serializes refreshes: refresh tokens rotate, so two refreshes would race. */
   private refreshing: Promise<ChatGPTOAuthCredential> | null = null;
 
@@ -287,6 +289,9 @@ export class ChatGPTOAuthService {
     const pending = this.currentAttempt();
     if (!pending) throw new ChatGPTOAuthError("No sign-in is waiting (attempts expire after 10 minutes). Open the sign-in page again.");
     const { code, clientId } = parseCallback(callbackUrl, pending);
+    // Load the signing keys before the single-use code is spent: without
+    // them the ID token can't be verified, and the attempt stays open.
+    await this.loadSigningKeys(false);
     const registration = this.store.getRegistration();
     // Keep the issued client ID even if the exchange fails: retries reuse it.
     if (registration.clientId !== clientId) this.store.setRegistration({ ...registration, clientId });
@@ -307,6 +312,7 @@ export class ChatGPTOAuthService {
         : `Token exchange failed (${describe(response)}).`);
     }
     const tokens = readJson(response) as TokenResponse | undefined;
+    await this.verifySignature(tokens?.id_token);
     const claims = validateIdToken(tokens?.id_token, clientId, pending.nonce);
     if (registration.subject && registration.subject !== claims.sub) {
       throw new ChatGPTOAuthError("This is a different ChatGPT account than the one registered on this device.");
@@ -319,6 +325,44 @@ export class ChatGPTOAuthService {
       ...(claims.email ? { email: claims.email } : {}) });
     this.store.set(credential);
     return credential;
+  }
+
+  /**
+   * OpenAI's signing keys: from the cache, or through the discovery
+   * document's `jwks_uri`. Fails closed when they can't be loaded.
+   */
+  private async loadSigningKeys(refetch: boolean): Promise<RsaJwk[]> {
+    if (this.signingKeys && !refetch) return this.signingKeys;
+    const unavailable = "Couldn't load OpenAI's keys to check the sign-in. Check your connection and paste the address again.";
+    try {
+      const discovery = readJson(await requestUrl({ url: DISCOVERY_URL, throw: false })) as { jwks_uri?: unknown } | undefined;
+      const jwksUri = discovery?.jwks_uri;
+      if (typeof jwksUri !== "string" || !jwksUri.startsWith(`${ISSUER}/`)) throw new ChatGPTOAuthError(unavailable);
+      const jwks = readJson(await requestUrl({ url: jwksUri, throw: false })) as { keys?: unknown } | undefined;
+      if (!Array.isArray(jwks?.keys)) throw new ChatGPTOAuthError(unavailable);
+      this.signingKeys = jwks.keys.filter((key): key is RsaJwk => typeof key === "object" && key !== null);
+      return this.signingKeys;
+    } catch (error) {
+      throw error instanceof ChatGPTOAuthError ? error : new ChatGPTOAuthError(unavailable);
+    }
+  }
+
+  /** Verify the ID token's RS256 signature; an unknown key ID refetches the keys once. */
+  private async verifySignature(idToken: string | undefined): Promise<void> {
+    const parts = idToken?.split(".") ?? [];
+    const header = idToken ? decodeJwt(idToken, 0) : undefined;
+    const signature = base64UrlDecode(parts[2] ?? "");
+    if (parts.length !== 3 || header?.alg !== "RS256" || !signature) {
+      throw new ChatGPTOAuthError("Sign-in returned no valid ID token.");
+    }
+    const kid = typeof header.kid === "string" ? header.kid : undefined;
+    const matching = (keys: RsaJwk[]) => keys.filter(key => !kid || key.kid === kid);
+    let keys = matching(await this.loadSigningKeys(false));
+    if (!keys.length) keys = matching(await this.loadSigningKeys(true));
+    if (!keys.length) throw new ChatGPTOAuthError("The ID token is signed with a key OpenAI doesn't publish.");
+    if (!keys.some(key => verifyRs256(`${parts[0]}.${parts[1]}`, signature, key))) {
+      throw new ChatGPTOAuthError("The ID token's signature is invalid.");
+    }
   }
 
   /**

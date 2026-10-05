@@ -3,7 +3,7 @@
 // inference and model list on api.openai.com.
 import assert from 'node:assert/strict';
 import { test, beforeEach } from 'node:test';
-import { createHash } from 'node:crypto';
+import { createHash, createSign, generateKeyPairSync } from 'node:crypto';
 import { api, settings, text, call, result, response, sse, transport } from './harness.mjs';
 
 const { auth } = api;
@@ -20,7 +20,30 @@ function service(app = secretApp()) {
   return { app, store, oauth: new auth.ChatGPTOAuthService(store) };
 }
 const b64 = value => Buffer.from(JSON.stringify(value)).toString('base64url');
-const jwt = claims => `${b64({ alg: 'RS256' })}.${b64(claims)}.fake-signature`;
+// OpenAI's signing key, played by a test RSA key served as JWKS.
+const rsaKey = () => generateKeyPairSync('rsa', { modulusLength: 2048 });
+const signer = rsaKey();
+const KID = 'test-kid';
+const jwk = (pair, kid) => ({ ...pair.publicKey.export({ format: 'jwk' }), kid, alg: 'RS256', use: 'sig' });
+const sign = (input, privateKey) => createSign('RSA-SHA256').update(input).sign(privateKey).toString('base64url');
+const jwt = (claims, { pair = signer, kid = KID, alg = 'RS256' } = {}) => {
+  const input = `${b64({ alg, kid, typ: 'JWT' })}.${b64(claims)}`;
+  return `${input}.${sign(input, pair.privateKey)}`;
+};
+/** Served at jwks_uri; tests may change it. */
+let jwks;
+let jwksRequests;
+/** Answers discovery and JWKS like auth.openai.com; everything else goes to `handler`. */
+const oauthServer = handler => async request => {
+  if (request.url === 'https://auth.openai.com/.well-known/openid-configuration') {
+    return { status: 200, json: { issuer: 'https://auth.openai.com', jwks_uri: 'https://auth.openai.com/.well-known/jwks.json' } };
+  }
+  if (request.url === 'https://auth.openai.com/.well-known/jwks.json') {
+    jwksRequests++;
+    return { status: 200, json: jwks };
+  }
+  return handler(request);
+};
 const idToken = (nonce, extra = {}) => jwt({ iss: 'https://auth.openai.com', aud: ISSUED, exp: Math.floor(Date.now() / 1000) + 3600, nonce, sub: 'user-sub', email: 'user@example.com', ...extra });
 const callbackFor = (pending, params) => `${pending.redirectUri}?${new URLSearchParams(params)}`;
 const tokens = (nonce, extra = {}) => ({ status: 200, json: {
@@ -34,12 +57,14 @@ function form(request) {
 async function signIn(oauth, tokenResponse) {
   const pending = oauth.beginSignIn();
   let request;
-  globalThis.__providerRequest = async r => { request = r; return tokenResponse ? tokenResponse(pending) : tokens(pending.nonce); };
+  globalThis.__providerRequest = oauthServer(async r => { request = r; return tokenResponse ? tokenResponse(pending) : tokens(pending.nonce); });
   await oauth.completeSignIn(callbackFor(pending, { code: 'fake-code', state: pending.state, client_id: ISSUED, scope: 'openid' }));
   return { pending, request };
 }
 
 beforeEach(() => {
+  jwks = { keys: [jwk(signer, KID)] };
+  jwksRequests = 0;
   for (const provider of ['anthropic', 'openai', 'chatgpt-oauth']) api.clearCatalogModels(provider);
   api.setChatGPTOAuthService({ getUsableCredential: async () => ({ accessToken: 'fake-token', accountId: 'fake-account' }) });
 });
@@ -138,6 +163,63 @@ test('Sign-in is refused without the plan scope, with a wrong nonce, or with a r
   await assert.rejects(oauth.completeSignIn('http://127.0.0.1:50000/auth/callback?code=c&state=s'), /No sign-in is waiting/);
 });
 
+test('RS256 check matches node:crypto, refuses tampering and short keys', () => {
+  const key = jwk(signer, KID);
+  const signature = new Uint8Array(Buffer.from(sign('header.payload', signer.privateKey), 'base64url'));
+  assert.equal(auth.verifyRs256('header.payload', signature, key), true);
+  assert.equal(auth.verifyRs256('header.payloaX', signature, key), false);
+  const flipped = signature.slice();
+  flipped[100] ^= 1;
+  assert.equal(auth.verifyRs256('header.payload', flipped, key), false);
+  assert.equal(auth.verifyRs256('header.payload', signature, jwk(rsaKey(), KID)), false);
+  assert.equal(auth.verifyRs256('header.payload', signature, { ...key, alg: 'RS512' }), false);
+  const short = generateKeyPairSync('rsa', { modulusLength: 1024 });
+  assert.equal(auth.verifyRs256('m', new Uint8Array(Buffer.from(sign('m', short.privateKey), 'base64url')), jwk(short, 'short')), false);
+});
+
+test('ID token signature: forged, unsigned or HMAC tokens are refused', async () => {
+  const forged = rsaKey();
+  for (const [options, message] of [[{ pair: forged }, /signature is invalid/], [{ alg: 'HS256' }, /no valid ID token/], [{ alg: 'none' }, /no valid ID token/]]) {
+    const { oauth } = service();
+    await assert.rejects(signIn(oauth, pending => tokens(pending.nonce, { id_token: jwt({ iss: 'https://auth.openai.com', aud: ISSUED,
+      exp: Math.floor(Date.now() / 1000) + 3600, nonce: pending.nonce, sub: 'user-sub' }, options) })), message);
+    assert.equal(oauth.getCredential(), null);
+  }
+});
+
+test('Signing keys: cached, refetched once for an unknown key ID, fail closed when unreachable', async () => {
+  const { oauth } = service();
+  await signIn(oauth);
+  await signIn(oauth);
+  assert.equal(jwksRequests, 1);
+  // OpenAI rotates its key: the new key ID triggers one refetch.
+  const rotated = rsaKey();
+  jwks = { keys: [jwk(signer, KID), jwk(rotated, 'rotated')] };
+  const withKey = (pair, kid) => pending => tokens(pending.nonce, { id_token: jwt({ iss: 'https://auth.openai.com', aud: ISSUED,
+    exp: Math.floor(Date.now() / 1000) + 3600, nonce: pending.nonce, sub: 'user-sub' }, { pair, kid }) });
+  await signIn(oauth, withKey(rotated, 'rotated'));
+  assert.equal(jwksRequests, 2);
+  await assert.rejects(signIn(oauth, withKey(rsaKey(), 'unknown')), /key OpenAI doesn't publish/);
+  assert.equal(jwksRequests, 3);
+
+  // Keys unreachable: refused before the code is spent, so the same
+  // address works once the network is back.
+  const fresh = service().oauth;
+  const pending = fresh.beginSignIn();
+  const address = callbackFor(pending, { code: 'fake-code', state: pending.state, client_id: ISSUED });
+  let tokenRequests = 0;
+  globalThis.__providerRequest = async () => { throw new Error('offline'); };
+  await assert.rejects(fresh.completeSignIn(address), /Couldn't load OpenAI's keys/);
+  globalThis.__providerRequest = oauthServer(async () => ({ status: 200, json: { keys: 'none' } }));
+  jwks = { nope: true };
+  await assert.rejects(fresh.completeSignIn(address), /Couldn't load OpenAI's keys/);
+  jwks = { keys: [jwk(signer, KID)] };
+  globalThis.__providerRequest = oauthServer(async () => { tokenRequests++; return tokens(pending.nonce); });
+  await fresh.completeSignIn(address);
+  assert.equal(tokenRequests, 1);
+  assert.ok(fresh.getCredential());
+});
+
 test('Refresh: issued client and resource, rotated tokens, one request at a time', async () => {
   const { store, oauth } = service();
   await signIn(oauth);
@@ -215,7 +297,7 @@ test('The pending attempt survives a restart until it is used or 10 minutes old'
   // ...and completes the pasted address with its verifier.
   const { oauth } = service(app);
   let request;
-  globalThis.__providerRequest = async r => { request = r; return tokens(first.nonce); };
+  globalThis.__providerRequest = oauthServer(async r => { request = r; return tokens(first.nonce); });
   await oauth.completeSignIn(callbackFor(first, { code: 'fake-code', state: first.state, client_id: ISSUED }));
   assert.equal(form(request).code_verifier, first.codeVerifier);
   assert.equal(form(request).redirect_uri, first.redirectUri);

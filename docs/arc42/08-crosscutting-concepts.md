@@ -66,8 +66,9 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   to 200 characters of selection), and note content and images the model
   reads through tools.
 - ChatGPT sign-in: PKCE, `state` and `nonce` per attempt; only the full
-  callback address is accepted. The ID token's issuer, audience, expiry
-  and nonce are checked; tokens never go into URLs, logs or `data.json`.
+  callback address is accepted. The ID token's RS256 signature (against
+  OpenAI's JWKS), issuer, audience, expiry and nonce are checked; tokens
+  never go into URLs, logs or `data.json`.
 - API keys and tokens travel in request headers from the user's own
   device straight to the provider, with `fetch` as with `requestUrl()`.
   Anthropic's `anthropic-dangerous-direct-browser-access` header only

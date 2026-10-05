@@ -103,11 +103,15 @@ OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
    `parseCallback()` requires the full address with the same redirect URI
    and `state`, handles `error=access_denied`, and takes `code` and the
    issued `client_id` (`oaiapp_…`), which is saved at once.
-4. **Exchange:** `completeSignIn()` posts the code, verifier, redirect URI
-   and resource to `/oauth/token`. It checks the ID token (issuer,
-   audience, expiry, nonce; no signature check, the token comes straight
-   from the token endpoint over TLS) and that `chatgpt.tokens.use.direct`
-   was granted, then stores the credential.
+4. **Exchange:** `completeSignIn()` loads OpenAI's signing keys (discovery
+   document → `jwks_uri`, cached in memory) before it spends the code, then
+   posts the code, verifier, redirect URI and resource to `/oauth/token`.
+   It verifies the ID token's RS256 signature (`auth/rs256.ts`, BigInt
+   and `@noble/hashes`, so it runs without SubtleCrypto; an unknown `kid`
+   refetches the keys once), then issuer, audience, expiry and nonce, and
+   that `chatgpt.tokens.use.direct` was granted, and stores the
+   credential. Without the keys sign-in fails closed and the attempt stays
+   open for another paste.
 5. **Refresh:** `getUsableCredential()` refreshes within a minute of
    expiry, with the issued client ID and resource; one refresh at a time,
    since refresh tokens rotate. An unusable refresh token clears the

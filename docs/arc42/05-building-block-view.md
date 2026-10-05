@@ -49,8 +49,9 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
 | `api/chatgpt-oauth.ts` | ChatGPT adapter (`api.openai.com/v1/responses` with the ChatGPT-plan token): `store: false`, full replay each turn, tools in a namespace. |
 | `api/responses-format.ts` | Converts unified messages to and from the Responses API format, and rebuilds a response from its stream events (shared by the OpenAI and ChatGPT adapters). |
 | `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account; thinking and parallel-tool capabilities, and the thinking parameters built from them. |
-| `auth/chatgptOAuth.ts` | Device login, token exchange and refresh against `auth.openai.com`. |
-| `auth/chatgptOAuthStore.ts` | Reads and writes the OAuth credential in SecretStorage. |
+| `auth/chatgptOAuth.ts` | ChatGPT sign-in (authorize URL, pasted callback, token exchange, ID token check), refresh and revocation against `auth.openai.com`. |
+| `auth/chatgptOAuthStore.ts` | Reads and writes the ChatGPT credential, registration and pending sign-in in SecretStorage. |
+| `auth/rs256.ts` | RS256 signature check for ID tokens in plain JS (BigInt, `@noble/hashes`), since SubtleCrypto may be missing on mobile. |
 | `tools/registry.ts` | The 18 tool definitions (JSON Schema) offered to the model. |
 | `tools/executor.ts` | Runs a tool call against the Obsidian vault and returns a result (text, and images for `view_image` and `view_canvas`) or an error for the model. |
 | `tools/canvas.ts` | JSON Canvas 1.0 without vault access: parse, write in Obsidian's format, the outline for `read_canvas`, the `edit_canvas` operations (IDs, placement without overlap, validation) and the searchable canvas text. |
