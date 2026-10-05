@@ -42,6 +42,33 @@ function propertiesVault(properties = {}) {
   return { app, frontmatter, edits: () => edits };
 }
 
+test('Every tool offered to the model has a handler in the executor', async () => {
+  const names = api.TOOL_DEFINITIONS.map(tool => tool.name);
+  assert.equal(new Set(names).size, names.length);
+  assert.equal(names.length, 18); // the count in arc42 section 5
+  // A fake vault without files: each tool fails its own way, never as unknown.
+  const app = { workspace: { getActiveFile: () => null }, vault: { getFileByPath: () => null, getAbstractFileByPath: () => null } };
+  for (const name of names) {
+    const result = await api.executeTool(app, name, {}, async () => '');
+    assert.doesNotMatch(result.result, /^Unknown tool/, name);
+  }
+  assert.match((await api.executeTool(app, 'not_a_tool', {}, async () => '')).result, /^Unknown tool: not_a_tool/);
+});
+
+test('set_properties sets and removes keys through processFrontMatter, on the path or the active note', async () => {
+  const { app, frontmatter } = propertiesVault({ status: 'draft', old: 'x', keep: 1 });
+  const result = await run(app, 'set_properties', { path: 'Note.md', properties: { status: 'done', tags: ['a', 'b'], old: null } });
+  assert.equal(result.isError, false);
+  assert.deepEqual(frontmatter, { status: 'done', tags: ['a', 'b'], keep: 1 });
+  assert.equal(result.result, 'Updated properties in Note.md. Set: status, tags. Removed: old.');
+
+  assert.match((await run(app, 'set_properties', { path: 'Missing.md', properties: { a: 1 } })).result, /File not found: Missing\.md/);
+  assert.match((await run(app, 'set_properties', { properties: { a: 1 } })).result, /No active document open/);
+  app.workspace.getActiveFile = () => ({ path: 'Note.md' });
+  await run(app, 'set_properties', { properties: { status: 'active' } });
+  assert.equal(frontmatter.status, 'active');
+});
+
 test('set_properties refuses a list or a missing object and leaves the note alone', async () => {
   for (const properties of [['tag'], 'tag: x', undefined, null]) {
     const { app, frontmatter, edits } = propertiesVault({ keep: 1 });

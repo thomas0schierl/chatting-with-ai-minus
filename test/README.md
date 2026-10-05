@@ -40,8 +40,11 @@ titles, and isolation of histories and OpenAI chaining
 inserts (after the frontmatter)
 (`edit-document.test.mjs`), the local date of `get_current_datetime` and a
 multi-line selection quoted line by line, saved settings checked on load,
-`set_properties` refusing a list
-(`tools.test.mjs`), and the ChatGPT plan cues: no retry on a
+`set_properties` (and refusing a list), and that every tool offered to the
+model has a handler (`tools.test.mjs`); the Codex CLI version sent as
+`client_version`: cached, stable releases only, fallback
+(`client-version.test.mjs`);
+and the ChatGPT plan cues: no retry on a
 usage limit, its own message, the one-time welcome
 (`chatgpt-usage.test.mjs`), and live voice with fake WebRTC, microphone
 and audio (`voice.test.mjs`): session creation on both routes, both event

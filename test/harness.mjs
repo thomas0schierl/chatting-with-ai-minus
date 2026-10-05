@@ -22,6 +22,7 @@ export const bundled = await build({
     export { default as ChatPlugin } from './src/main';
     export { ObsidianChatView } from './src/ui/chat-view';
     export { executeTool } from './src/tools/executor';
+    export { TOOL_DEFINITIONS } from './src/tools/registry';
     export * as canvasRender from './src/tools/canvas-render';
     export * as auth from './src/auth/chatgptOAuth';
     export { ChatGPTOAuthStore } from './src/auth/chatgptOAuthStore';
