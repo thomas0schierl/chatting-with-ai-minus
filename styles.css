@@ -17,45 +17,11 @@
   min-width: 280px;
 }
 
-.chatting-minus-oauth-explainer {
-  padding: 0.75em;
-  margin-bottom: 0.75em;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  background: var(--background-secondary);
+/* ChatGPT sign-in modal */
+.chatting-minus-signin-input {
+  width: 100%;
 }
 
-.chatting-minus-device-link-row {
-  margin: 0.4em 0 0.8em;
-}
-
-.chatting-minus-device-code-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  margin: 0.4em 0 1em;
-}
-
-.chatting-minus-device-code {
-  font-size: 1.4em;
-  padding: 0.3em 0.6em;
-  border-radius: 6px;
-  background: var(--background-secondary);
-  user-select: all;
-}
-
-.chatting-minus-device-status {
-  font-style: italic;
-  color: var(--text-muted);
-}
-
-.chatting-minus-device-status-error {
-  font-style: italic;
+.chatting-minus-signin-error {
   color: var(--text-error);
-}
-
-.chatting-minus-device-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5em;
 }

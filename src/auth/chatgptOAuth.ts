@@ -1,37 +1,46 @@
 /**
- * ChatGPT OAuth service.
- *
- * Implements the Device Authorization Flow only — no localhost callback
- * server, so it works on mobile Obsidian where Node modules and local
- * sockets aren't available.
+ * ChatGPT sign-in through OpenAI's "Sign in with ChatGPT" for open-source
+ * apps (ADR-13). Docs: developers.openai.com/siwc/token-sharing-open-source
  *
  * Flow:
- *   1. beginDeviceAuthorization()  → POST /api/accounts/deviceauth/usercode
- *      Returns { deviceAuthId, userCode, verificationUri, intervalMs }.
- *      The user opens `verificationUri` in any browser and enters `userCode`.
- *   2. pollDeviceAuthorization()   → POST /api/accounts/deviceauth/token
- *      Polls until success (200 with authorization_code), then exchanges
- *      for access/refresh tokens via /oauth/token. Stores the credential.
- *   3. refreshCredential()         → POST /oauth/token with grant_type=refresh_token
- *      Used transparently by getUsableCredential() when the access token
- *      is about to expire.
+ *   1. beginSignIn(): authorize URL with PKCE (S256), state and nonce. The
+ *      redirect goes to a loopback URL on 127.0.0.1 where nothing listens
+ *      (mobile can't run a server).
+ *   2. The user signs in, the browser lands on that URL and fails to load
+ *      it; the user pastes the address into the plugin.
+ *   3. completeSignIn(): check state, keep the issued client ID, exchange
+ *      the code, validate the ID token and the plan scope, store tokens.
+ *   4. getUsableCredential() refreshes near expiry; signOut() revokes.
  *
- * All HTTP goes through Obsidian's `requestUrl()`, which is the only
- * cross-platform fetch API available in mobile Obsidian.
+ * All HTTP goes through `requestUrl()` (mobile parity).
  */
 import { requestUrl } from "obsidian";
+import { sha256 } from "@noble/hashes/sha2.js";
 import type {
   ChatGPTOAuthCredential,
   ChatGPTOAuthStore,
 } from "./chatgptOAuthStore";
-import { PLUGIN_ID } from "../plugin-id";
 
-const ISSUER = "https://auth.openai.com";
-const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-const DEVICE_VERIFICATION_URI = `${ISSUER}/codex/device`;
-const DEVICE_REDIRECT_URI = `${ISSUER}/deviceauth/callback`;
-const POLL_MARGIN_MS = 3000;
-const USER_AGENT = `${PLUGIN_ID}/chatgpt-oauth`;
+export const ISSUER = "https://auth.openai.com";
+export const AUTHORIZE_URL = `${ISSUER}/api/accounts/authorize`;
+export const TOKEN_URL = `${ISSUER}/api/accounts/oauth/token`;
+/** `revocation_endpoint` from `${ISSUER}/.well-known/openid-configuration`. */
+export const REVOKE_URL = `${ISSUER}/api/accounts/oauth/revoke`;
+export const RESOURCE = "https://api.openai.com/v1";
+export const SCOPES = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
+export const PLAN_SCOPE = "chatgpt.tokens.use.direct";
+/** First-registration entry point; never saved or used for token exchange. */
+export const NEW_REGISTRATION_CLIENT_ID = "dynamic_agent_client";
+export const AGENT_NAME = "Chatting with AI Minus";
+export const USAGE_URL = "https://chatgpt.com/settings/usage";
+const CALLBACK_PATH = "/auth/callback";
+/** Dynamic port range; only the port of the redirect URI may vary. */
+const PORT_MIN = 49152;
+const PORT_MAX = 65535;
+const CLOCK_SKEW_MS = 5 * 60_000;
+/** Refresh error codes after which the refresh token can't be used again. */
+const TERMINAL_REFRESH_ERRORS = ["invalid_grant", "invalid_refresh_token", "token_expired",
+  "refresh_token_expired", "refresh_token_invalidated", "refresh_token_reused"];
 
 export class ChatGPTOAuthError extends Error {
   constructor(message: string) {
@@ -40,100 +49,160 @@ export class ChatGPTOAuthError extends Error {
   }
 }
 
-export interface ChatGPTDeviceAuthorization {
-  deviceAuthId: string;
-  userCode: string;
-  verificationUri: string;
-  intervalMs: number;
-}
-
-/** Public surface: a `cancel()` callback that aborts a running poll. */
-export interface PollHandle {
-  /** Resolves with the credential once the user authorizes. */
-  promise: Promise<ChatGPTOAuthCredential>;
-  /** Cancel the poll loop. */
-  cancel: () => void;
-}
-
-interface IdTokenClaims {
-  chatgpt_account_id?: string;
-  organizations?: Array<{ id?: string }>;
-  "https://api.openai.com/auth"?: { chatgpt_account_id?: string };
+/** One authorization attempt; kept in memory until the callback is pasted. */
+export interface PendingSignIn {
+  url: string;
+  state: string;
+  nonce: string;
+  codeVerifier: string;
+  redirectUri: string;
+  /** `dynamic_agent_client` for a new registration, else the issued client ID. */
+  clientId: string;
 }
 
 interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  expires_in?: number;
+  access_token?: string;
+  refresh_token?: string;
   id_token?: string;
+  expires_in?: number;
+  scope?: string;
 }
 
-interface DeviceAuthorizationResponse {
-  device_auth_id: string;
-  user_code: string;
-  interval?: string | number;
+interface IdTokenClaims {
+  iss?: string;
+  aud?: string | string[];
+  exp?: number;
+  nonce?: string;
+  sub?: string;
+  email?: string;
 }
 
-interface DeviceTokenSuccess {
-  authorization_code: string;
-  code_verifier: string;
+const base64Url = (bytes: Uint8Array): string =>
+  btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+const randomToken = (): string => base64Url(crypto.getRandomValues(new Uint8Array(32)));
+
+/** PKCE S256: base64url(SHA-256(verifier)) without padding. */
+export function codeChallenge(verifier: string): string {
+  return base64Url(sha256(new TextEncoder().encode(verifier)));
 }
 
-const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-
-const base64UrlDecode = (input: string): string => {
-  const padded = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padding = padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4));
-  return atob(padded + padding);
-};
-
-const parseJwtClaims = (token: string): IdTokenClaims | undefined => {
-  const parts = token.split(".");
-  if (parts.length !== 3) return undefined;
+/** Decode a JWT payload without checking its signature (see validateIdToken). */
+export function decodeJwt(token: string): Record<string, unknown> | undefined {
+  const part = token.split(".")[1];
+  if (!part) return undefined;
   try {
-    return JSON.parse(base64UrlDecode(parts[1])) as IdTokenClaims;
+    const padded = part.replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
+    const json: unknown = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, c => c.charCodeAt(0))));
+    return typeof json === "object" && json !== null ? json as Record<string, unknown> : undefined;
   } catch {
     return undefined;
   }
-};
+}
 
-const extractAccountIdFromClaims = (claims: IdTokenClaims): string | undefined => {
-  return (
-    claims.chatgpt_account_id ||
-    claims["https://api.openai.com/auth"]?.chatgpt_account_id ||
-    claims.organizations?.[0]?.id
-  );
-};
-
-const extractAccountId = (
-  tokens: Pick<TokenResponse, "id_token" | "access_token">,
-): string | undefined => {
-  if (tokens.id_token) {
-    const claims = parseJwtClaims(tokens.id_token);
-    if (claims) {
-      const accountId = extractAccountIdFromClaims(claims);
-      if (accountId) return accountId;
+/**
+ * Read the pasted callback address. Only the full address is accepted: a
+ * bare code can't be checked against `state` and lacks the issued client ID.
+ */
+export function parseCallback(input: string, pending: PendingSignIn): { code: string; clientId: string } {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    throw new ChatGPTOAuthError("Paste the whole address, starting with http://127.0.0.1.");
+  }
+  if (`${url.origin}${url.pathname}` !== pending.redirectUri) {
+    throw new ChatGPTOAuthError("That isn't the address of this sign-in. Paste the address of the page you land on after signing in.");
+  }
+  const params = url.searchParams;
+  if (params.get("state") !== pending.state) {
+    throw new ChatGPTOAuthError("This address belongs to another sign-in attempt. Open the sign-in page again.");
+  }
+  const error = params.get("error");
+  if (error === "access_denied") {
+    throw new ChatGPTOAuthError("Sign-in was cancelled, or use of your ChatGPT plan was declined.");
+  }
+  if (error) {
+    throw new ChatGPTOAuthError(`Sign-in failed: ${params.get("error_description") || error}`);
+  }
+  const code = params.get("code");
+  if (!code) {
+    throw new ChatGPTOAuthError("The address has no sign-in code. Copy the full address after signing in.");
+  }
+  const returned = params.get("client_id");
+  if (pending.clientId === NEW_REGISTRATION_CLIENT_ID) {
+    if (!returned || returned === NEW_REGISTRATION_CLIENT_ID) {
+      throw new ChatGPTOAuthError("Registration is incomplete: the address has no client ID. Open the sign-in page again.");
     }
+    return { code, clientId: returned };
   }
-  const accessClaims = parseJwtClaims(tokens.access_token);
-  return accessClaims ? extractAccountIdFromClaims(accessClaims) : undefined;
-};
+  if (returned && returned !== pending.clientId) {
+    throw new ChatGPTOAuthError("The address belongs to another app registration. Open the sign-in page again.");
+  }
+  return { code, clientId: pending.clientId };
+}
 
-const describeError = (response: { status: number; text?: string; json?: unknown }): string => {
-  if (typeof response.text === "string" && response.text.trim()) {
-    return ` — ${response.text.trim().slice(0, 300)}`;
+/**
+ * Check issuer, audience, expiry and nonce. The signature isn't checked:
+ * the token comes straight from the token endpoint over TLS, which OIDC
+ * Core 3.1.3.7 accepts in place of the signature check.
+ */
+export function validateIdToken(idToken: string | undefined, clientId: string, nonce: string): IdTokenClaims & { sub: string } {
+  const claims = idToken ? decodeJwt(idToken) as IdTokenClaims | undefined : undefined;
+  if (!claims) throw new ChatGPTOAuthError("Sign-in returned no valid ID token.");
+  const audience = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if (claims.iss !== ISSUER) throw new ChatGPTOAuthError("The ID token has the wrong issuer.");
+  if (!audience.includes(clientId)) throw new ChatGPTOAuthError("The ID token was issued for another client.");
+  if (typeof claims.exp !== "number" || claims.exp * 1000 < Date.now() - CLOCK_SKEW_MS) {
+    throw new ChatGPTOAuthError("The ID token has expired.");
   }
-  if (response.json && typeof response.json === "object") {
-    try {
-      return ` — ${JSON.stringify(response.json)}`;
-    } catch {
-      return "";
-    }
+  if (claims.nonce !== nonce) throw new ChatGPTOAuthError("The ID token doesn't match this sign-in attempt.");
+  if (typeof claims.sub !== "string" || !claims.sub) throw new ChatGPTOAuthError("The ID token has no account.");
+  return { ...claims, sub: claims.sub };
+}
+
+/** Error text from an OAuth or API error body (`error`, `error.code`, `detail`). */
+function errorCode(json: unknown): string | undefined {
+  if (typeof json !== "object" || json === null) return undefined;
+  const error = (json as Record<string, unknown>).error;
+  if (typeof error === "string") return error;
+  if (typeof error === "object" && error !== null) {
+    const code = (error as Record<string, unknown>).code;
+    if (typeof code === "string") return code;
   }
-  return "";
-};
+  return undefined;
+}
+
+function describe(response: { status: number; text?: string }): string {
+  const text = typeof response.text === "string" ? response.text.trim().slice(0, 300) : "";
+  return text ? `HTTP ${response.status}: ${text}` : `HTTP ${response.status}`;
+}
+
+function readJson(response: { json?: unknown }): unknown {
+  try {
+    return response.json;
+  } catch {
+    return undefined;
+  }
+}
+
+async function postForm(url: string, form: Record<string, string>) {
+  return requestUrl({
+    url,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body: new URLSearchParams(form).toString(),
+    throw: false,
+  });
+}
 
 export class ChatGPTOAuthService {
+  /** The sign-in attempt whose callback we're waiting for. */
+  private pending: PendingSignIn | null = null;
+  /** Serializes refreshes: refresh tokens rotate, so two refreshes would race. */
+  private refreshing: Promise<ChatGPTOAuthCredential> | null = null;
+
   constructor(private readonly store: ChatGPTOAuthStore) {}
 
   /** Synchronous read of the stored credential (whether or not it's expired). */
@@ -141,148 +210,107 @@ export class ChatGPTOAuthService {
     return this.store.get();
   }
 
-  /** Wipe the stored credential. */
-  clearCredential(): void {
-    this.store.clear();
-  }
-
-  /**
-   * Start the device authorization flow.
-   * Returns the user-facing code + verification URL the user must visit.
-   */
-  async beginDeviceAuthorization(): Promise<ChatGPTDeviceAuthorization> {
-    const response = await requestUrl({
-      url: `${ISSUER}/api/accounts/deviceauth/usercode`,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": USER_AGENT,
-      },
-      body: JSON.stringify({ client_id: CLIENT_ID }),
-      throw: false,
+  /** Start an authorization attempt: fresh PKCE, state, nonce and port. */
+  beginSignIn(): PendingSignIn {
+    const registration = this.store.getRegistration();
+    const clientId = registration.clientId ?? NEW_REGISTRATION_CLIENT_ID;
+    const port = PORT_MIN + Math.floor(Math.random() * (PORT_MAX - PORT_MIN + 1));
+    const redirectUri = `http://127.0.0.1:${port}${CALLBACK_PATH}`;
+    const state = randomToken();
+    const nonce = randomToken();
+    const codeVerifier = randomToken();
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: "code",
+      redirect_uri: redirectUri,
+      scope: SCOPES,
+      resource: RESOURCE,
+      state,
+      nonce,
+      code_challenge_method: "S256",
+      code_challenge: codeChallenge(codeVerifier),
+      ext_agent_host_id: registration.hostId,
     });
+    // The name hint belongs only to the first registration.
+    if (clientId === NEW_REGISTRATION_CLIENT_ID) params.set("agent_name_hint", AGENT_NAME);
+    else if (registration.email) params.set("login_hint", registration.email);
+    this.pending = { url: `${AUTHORIZE_URL}?${params.toString()}`, state, nonce, codeVerifier, redirectUri, clientId };
+    return this.pending;
+  }
 
+  /** Finish the pending attempt with the pasted callback address. */
+  async completeSignIn(callbackUrl: string): Promise<ChatGPTOAuthCredential> {
+    const pending = this.pending;
+    if (!pending) throw new ChatGPTOAuthError("Open the sign-in page first.");
+    const { code, clientId } = parseCallback(callbackUrl, pending);
+    const registration = this.store.getRegistration();
+    // Keep the issued client ID even if the exchange fails: retries reuse it.
+    if (registration.clientId !== clientId) this.store.setRegistration({ ...registration, clientId });
+
+    const response = await postForm(TOKEN_URL, {
+      grant_type: "authorization_code",
+      client_id: clientId,
+      code,
+      code_verifier: pending.codeVerifier,
+      redirect_uri: pending.redirectUri,
+      resource: RESOURCE,
+    });
+    // A code is single-use: any result ends this attempt.
+    this.pending = null;
     if (response.status < 200 || response.status >= 300) {
-      throw new ChatGPTOAuthError(
-        `Failed to start ChatGPT device authorization: HTTP ${response.status}${describeError(response)}`,
-      );
+      throw new ChatGPTOAuthError(errorCode(readJson(response)) === "invalid_grant"
+        ? "The sign-in code was rejected or has expired. Open the sign-in page again."
+        : `Token exchange failed (${describe(response)}).`);
     }
-
-    const data = response.json as DeviceAuthorizationResponse;
-    if (!data?.device_auth_id || !data?.user_code) {
-      throw new ChatGPTOAuthError("Device authorization response was missing required fields.");
+    const tokens = readJson(response) as TokenResponse | undefined;
+    const claims = validateIdToken(tokens?.id_token, clientId, pending.nonce);
+    if (registration.subject && registration.subject !== claims.sub) {
+      throw new ChatGPTOAuthError("This is a different ChatGPT account than the one registered on this device.");
     }
-
-    const intervalSec = Math.max(parseInt(String(data.interval ?? "5"), 10) || 5, 1);
-
-    return {
-      deviceAuthId: data.device_auth_id,
-      userCode: data.user_code,
-      verificationUri: DEVICE_VERIFICATION_URI,
-      intervalMs: intervalSec * 1000,
-    };
+    const credential = this.toCredential(tokens, claims.sub, claims.email);
+    if (!credential.scopes.includes(PLAN_SCOPE)) {
+      throw new ChatGPTOAuthError("Use of your ChatGPT plan wasn't allowed. Continue with ChatGPT again and allow it.");
+    }
+    this.store.setRegistration({ ...this.store.getRegistration(), clientId, subject: claims.sub,
+      ...(claims.email ? { email: claims.email } : {}) });
+    this.store.set(credential);
+    return credential;
   }
 
   /**
-   * Poll for completion of a device authorization. Resolves with the stored
-   * credential when the user finishes authorizing, or rejects on cancel /
-   * unrecoverable error. Use `cancel()` from the returned handle to stop.
+   * Revoke the refresh token, then clear the tokens. Keeps the registration
+   * (host and client ID) for the next sign-in. Returns whether OpenAI
+   * confirmed the revocation.
    */
-  pollDeviceAuthorization(authorization: ChatGPTDeviceAuthorization): PollHandle {
-    let cancelled = false;
-    const cancel = () => {
-      cancelled = true;
-    };
-
-    const promise = (async (): Promise<ChatGPTOAuthCredential> => {
-      while (true) {
-        if (cancelled) {
-          throw new ChatGPTOAuthError("ChatGPT login was cancelled.");
-        }
-
-        const response = await requestUrl({
-          url: `${ISSUER}/api/accounts/deviceauth/token`,
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "User-Agent": USER_AGENT,
-          },
-          body: JSON.stringify({
-            device_auth_id: authorization.deviceAuthId,
-            user_code: authorization.userCode,
-          }),
-          throw: false,
+  async signOut(): Promise<boolean> {
+    const credential = this.store.get();
+    const clientId = this.store.getRegistration().clientId;
+    let revoked = false;
+    if (credential && clientId) {
+      try {
+        const response = await postForm(REVOKE_URL, {
+          token: credential.refreshToken,
+          token_type_hint: "refresh_token",
+          client_id: clientId,
         });
-
-        if (response.status >= 200 && response.status < 300) {
-          const data = response.json as Partial<DeviceTokenSuccess>;
-          if (
-            typeof data.authorization_code !== "string" ||
-            typeof data.code_verifier !== "string"
-          ) {
-            throw new ChatGPTOAuthError("Device authorization returned an invalid token payload.");
-          }
-
-          const credential = await this.exchangeAuthorizationCode({
-            code: data.authorization_code,
-            codeVerifier: data.code_verifier,
-            redirectUri: DEVICE_REDIRECT_URI,
-          });
-          this.store.set(credential);
-          return credential;
-        }
-
-        // 403/404 = "still pending"; anything else is a hard failure.
-        if (response.status !== 403 && response.status !== 404) {
-          throw new ChatGPTOAuthError(
-            `Device authorization polling failed: HTTP ${response.status}${describeError(response)}`,
-          );
-        }
-
-        await sleep(authorization.intervalMs + POLL_MARGIN_MS);
+        revoked = response.status === 200;
+      } catch {
+        revoked = false;
       }
-    })();
-
-    return { promise, cancel };
-  }
-
-  /**
-   * Refresh an expiring credential. Stores the new credential on success.
-   */
-  async refreshCredential(
-    credential: Pick<ChatGPTOAuthCredential, "refreshToken" | "accountId">,
-  ): Promise<ChatGPTOAuthCredential> {
-    const response = await requestUrl({
-      url: `${ISSUER}/oauth/token`,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": USER_AGENT,
-      },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: credential.refreshToken,
-        client_id: CLIENT_ID,
-      }).toString(),
-      throw: false,
-    });
-
-    if (response.status < 200 || response.status >= 300) {
-      throw new ChatGPTOAuthError(
-        `ChatGPT token refresh failed: HTTP ${response.status}${describeError(response)}`,
-      );
     }
+    this.store.clear();
+    return revoked;
+  }
 
-    const data = response.json as TokenResponse;
-    const next = this.toCredential(data, credential.accountId);
-    this.store.set(next);
-    return next;
+  /** Refresh the access token; replaces all tokens together. */
+  refreshCredential(credential: ChatGPTOAuthCredential): Promise<ChatGPTOAuthCredential> {
+    this.refreshing ??= this.refresh(credential).finally(() => { this.refreshing = null; });
+    return this.refreshing;
   }
 
   /**
-   * Return a credential that is guaranteed to be currently valid, refreshing
-   * if necessary. Returns null if there's no stored credential at all.
-   * Throws if a refresh is needed but fails.
+   * A currently valid credential, refreshed if needed. Null when not
+   * connected. Throws if a needed refresh fails.
    */
   async getUsableCredential(): Promise<ChatGPTOAuthCredential | null> {
     const current = this.store.get();
@@ -291,51 +319,54 @@ export class ChatGPTOAuthService {
     return this.refreshCredential(current);
   }
 
-  /** Exchange an authorization code (from device flow) for tokens. */
-  private async exchangeAuthorizationCode(input: {
-    code: string;
-    codeVerifier: string;
-    redirectUri: string;
-  }): Promise<ChatGPTOAuthCredential> {
-    const response = await requestUrl({
-      url: `${ISSUER}/oauth/token`,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": USER_AGENT,
-      },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code: input.code,
-        redirect_uri: input.redirectUri,
-        client_id: CLIENT_ID,
-        code_verifier: input.codeVerifier,
-      }).toString(),
-      throw: false,
-    });
-
-    if (response.status < 200 || response.status >= 300) {
-      throw new ChatGPTOAuthError(
-        `ChatGPT token exchange failed: HTTP ${response.status}${describeError(response)}`,
-      );
+  private async refresh(credential: ChatGPTOAuthCredential): Promise<ChatGPTOAuthCredential> {
+    const clientId = this.store.getRegistration().clientId;
+    if (!clientId) {
+      this.store.clear();
+      throw new ChatGPTOAuthError("ChatGPT sign-in is incomplete. Continue with ChatGPT in settings.");
     }
-
-    return this.toCredential(response.json as TokenResponse);
+    const response = await postForm(TOKEN_URL, {
+      grant_type: "refresh_token",
+      client_id: clientId,
+      refresh_token: credential.refreshToken,
+      resource: RESOURCE,
+    });
+    if (response.status < 200 || response.status >= 300) {
+      const code = errorCode(readJson(response));
+      if (code && TERMINAL_REFRESH_ERRORS.includes(code)) {
+        this.store.clear();
+        throw new ChatGPTOAuthError("Your ChatGPT sign-in has expired. Continue with ChatGPT in settings.");
+      }
+      throw new ChatGPTOAuthError(`ChatGPT token refresh failed (${describe(response)}).`);
+    }
+    const next = this.toCredential(readJson(response) as TokenResponse | undefined, credential.accountId, credential.email, credential);
+    this.store.set(next);
+    return next;
   }
 
   private toCredential(
-    tokens: TokenResponse,
-    fallbackAccountId?: string,
+    tokens: TokenResponse | undefined,
+    accountId: string | undefined,
+    email: string | undefined,
+    previous?: ChatGPTOAuthCredential,
   ): ChatGPTOAuthCredential {
+    if (!tokens?.access_token || !(tokens.refresh_token || previous?.refreshToken)) {
+      throw new ChatGPTOAuthError("The token response is missing tokens.");
+    }
+    // Granted scopes: from the response, else from the access token's claims.
+    const scopeText = tokens.scope ?? decodeJwt(tokens.access_token)?.scope;
+    const scopes = typeof scopeText === "string" ? scopeText.split(" ").filter(Boolean) : previous?.scopes;
     const now = Date.now();
-    const accountId = extractAccountId(tokens) ?? fallbackAccountId;
+    const idToken = tokens.id_token ?? previous?.idToken;
     return {
       accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresAt: now + (tokens.expires_in ?? 3600) * 1000,
+      refreshToken: tokens.refresh_token ?? previous!.refreshToken,
+      expiresAt: now + (typeof tokens.expires_in === "number" ? tokens.expires_in : 3600) * 1000,
       updatedAt: now,
-      ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
       ...(accountId ? { accountId } : {}),
+      ...(email ? { email } : {}),
+      scopes: scopes ?? [],
+      ...(idToken ? { idToken } : {}),
     };
   }
 }

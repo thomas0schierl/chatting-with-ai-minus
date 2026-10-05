@@ -2,7 +2,7 @@ import { App, Modal, Notice, PluginSettingTab, Setting, requireApiVersion, type 
 import type ChatPlugin from "./main";
 import type { Provider } from "./types";
 import { DEFAULT_PROVIDER_MODELS } from "./types";
-import type { ChatGPTDeviceAuthorization, PollHandle } from "./auth/chatgptOAuth";
+import { USAGE_URL, type ChatGPTOAuthService } from "./auth/chatgptOAuth";
 
 import { type ModelOption, type CatalogState, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
 
@@ -19,8 +19,7 @@ const FALLBACK_MODELS: Record<string, ModelOption[]> = {
     { value: "gpt-5.5", label: "GPT-5.5" },
     { value: "gpt-4o", label: "GPT-4o" },
   ],
-  // CLI catalog entries are not guaranteed to be available to every account.
-  // Keep the default confirmed by user reports; other IDs remain customizable.
+  // Shown until the account's own list has loaded.
   "chatgpt-oauth": [
     { value: "gpt-5.5", label: "GPT-5.5 (recommended)" },
   ],
@@ -244,31 +243,18 @@ export class ChatSettingTab extends PluginSettingTab {
   private renderChatGPTOAuthSection(containerEl: HTMLElement, row?: Setting): void {
     const credential = this.plugin.chatgptOAuth.getCredential();
 
-    const explainer = containerEl.createDiv({
-      cls: "setting-item-description chatting-minus-oauth-explainer",
-    });
-    if (row) row.settingEl.before(explainer);
-    explainer.createSpan({
-      text: "Sign in with your ChatGPT account instead of using an OpenAI API key. Requests are routed through the ChatGPT/Codex backend (not ",
-    });
-    explainer.createEl("code", { text: "api.openai.com" });
-    explainer.createSpan({
-      text: ") and require an active ChatGPT plan with Codex access. Refresh the model list to see the catalog for your account. Listed models may still depend on account permissions.",
-    });
-
     if (credential) {
-      const account = credential.accountId
-        ? maskAccountId(credential.accountId)
-        : "(no account id)";
-      const expires = new Date(credential.expiresAt).toLocaleString();
       (row ?? new Setting(containerEl))
         .setName("ChatGPT account")
-        .setDesc(`Connected — account ${account}. Token expires ${expires}.`)
+        .setDesc(credential.email ? `Using your ChatGPT plan as ${credential.email}.` : "Using your ChatGPT plan.")
+        .addButton((button) => button.setButtonText("Manage usage").onClick(() => {
+          window.open(USAGE_URL, "_blank");
+        }))
         .addButton((button) => {
           button
             .setButtonText("Disconnect")
             .onClick(async () => {
-              this.plugin.chatgptOAuth.clearCredential();
+              const revoked = await this.plugin.chatgptOAuth.signOut();
               clearCatalogModels("chatgpt-oauth");
               this.catalogModels = undefined;
               this.catalogIdentity = "";
@@ -276,7 +262,9 @@ export class ChatSettingTab extends PluginSettingTab {
                 this.plugin.settings.modelCatalog.entries = this.plugin.settings.modelCatalog.entries.filter(e => e.provider !== "chatgpt-oauth");
                 await this.plugin.saveSettings();
               }
-              new Notice("ChatGPT OAuth disconnected.");
+              new Notice(revoked
+                ? "ChatGPT disconnected."
+                : "Disconnected on this device. OpenAI didn't confirm the sign-out; you can remove the app in ChatGPT settings.");
               this.refreshSettingsTab();
             });
           if (requireApiVersion("1.13.0")) button.setDestructive();
@@ -311,23 +299,13 @@ export class ChatSettingTab extends PluginSettingTab {
     } else {
       (row ?? new Setting(containerEl))
         .setName("ChatGPT account")
-        .setDesc("Not connected. Sign in with ChatGPT to use this provider.")
+        .setDesc("Use your ChatGPT plan instead of an API key.")
         .addButton((button) =>
           button
-            .setButtonText("Connect ChatGPT")
+            .setButtonText("Continue with ChatGPT")
             .setCta()
-            .onClick(async () => {
-              try {
-                const auth = await this.plugin.chatgptOAuth.beginDeviceAuthorization();
-                const handle = this.plugin.chatgptOAuth.pollDeviceAuthorization(auth);
-                const modal = new ChatGPTDeviceLoginModal(this.app, auth, handle, () => {
-                  this.refreshSettingsTab();
-                });
-                modal.open();
-              } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                new Notice(`Failed to start ChatGPT login: ${msg}`);
-              }
+            .onClick(() => {
+              new ChatGPTSignInModal(this.app, this.plugin.chatgptOAuth, () => this.refreshSettingsTab()).open();
             })
         );
     }
@@ -482,15 +460,12 @@ export class ChatSettingTab extends PluginSettingTab {
 
 }
 
-// ─── Device-flow login modal ────────────────────────────────────────────────
+// ─── Sign-in modal ──────────────────────────────────────────────────────────
 
-class ChatGPTDeviceLoginModal extends Modal {
-  private cancelled = false;
-
+class ChatGPTSignInModal extends Modal {
   constructor(
     app: App,
-    private readonly authorization: ChatGPTDeviceAuthorization,
-    private readonly handle: PollHandle,
+    private readonly oauth: ChatGPTOAuthService,
     private readonly onComplete: () => void,
   ) {
     super(app);
@@ -499,82 +474,44 @@ class ChatGPTDeviceLoginModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    new Setting(contentEl).setName("Connect ChatGPT").setHeading();
+    const pending = this.oauth.beginSignIn();
+    new Setting(contentEl).setName("Continue with ChatGPT").setHeading();
+
+    const step1 = contentEl.createEl("p", { text: "1. Sign in on the " });
+    step1.createEl("a", { text: "sign-in page", href: pending.url });
+    step1.appendText(".");
+    const open = contentEl.createEl("button", { text: "Open sign-in page", cls: "mod-cta" });
+    open.addEventListener("click", () => {
+      window.open(pending.url, "_blank");
+    });
 
     contentEl.createEl("p", {
-      text: "1. Open this page in any browser:",
+      text: "2. The browser then shows a page that won't load. Copy its address and paste it here.",
     });
-    const linkRow = contentEl.createDiv({ cls: "chatting-minus-device-link-row" });
-    const link = linkRow.createEl("a", {
-      text: this.authorization.verificationUri,
-      href: this.authorization.verificationUri,
+    const input = contentEl.createEl("input", {
+      type: "text",
+      cls: "chatting-minus-signin-input",
+      attr: { placeholder: "http://127.0.0.1:…/auth/callback?code=…", "aria-label": "Paste the address of the page you land on" },
     });
-    link.setAttr("target", "_blank");
-    link.setAttr("rel", "noopener");
-
-    contentEl.createEl("p", { text: "2. Enter this code on the page:" });
-    const codeRow = contentEl.createDiv({ cls: "chatting-minus-device-code-row" });
-
-    codeRow.createEl("code", {
-      text: this.authorization.userCode,
-      cls: "chatting-minus-device-code",
+    const status = contentEl.createEl("p", { cls: "chatting-minus-signin-error" });
+    const connect = contentEl.createEl("button", { text: "Connect", cls: "mod-cta" });
+    connect.addEventListener("click", () => {
+      connect.disabled = true;
+      status.setText("");
+      this.oauth.completeSignIn(input.value)
+        .then(() => {
+          new Notice("ChatGPT connected. Chats now use your ChatGPT plan.");
+          this.onComplete();
+          this.close();
+        })
+        .catch((e: unknown) => {
+          status.setText(e instanceof Error ? e.message : String(e));
+          connect.disabled = false;
+        });
     });
-
-    const copyBtn = codeRow.createEl("button", { text: "Copy code" });
-    copyBtn.addEventListener("click", () => {
-      navigator.clipboard
-        .writeText(this.authorization.userCode)
-        .then(() => new Notice("Code copied."))
-        .catch(() => new Notice("Failed to copy code."));
-    });
-
-    const status = contentEl.createEl("p", {
-      text: "Waiting for authorization. You can return here after signing in.",
-      cls: "chatting-minus-device-status",
-    });
-
-    const buttons = contentEl.createDiv({ cls: "chatting-minus-device-buttons" });
-
-    const openBtn = buttons.createEl("button", { text: "Open login page" });
-    openBtn.classList.add("mod-cta");
-    openBtn.addEventListener("click", () => {
-      window.open(this.authorization.verificationUri, "_blank");
-    });
-
-    const cancelBtn = buttons.createEl("button", { text: "Cancel" });
-    cancelBtn.addEventListener("click", () => {
-      this.cancelled = true;
-      this.handle.cancel();
-      this.close();
-    });
-
-    // Wait for the poll to finish.
-    this.handle.promise
-      .then(() => {
-        if (this.cancelled) return;
-        new Notice("ChatGPT connected.");
-        this.onComplete();
-        this.close();
-      })
-      .catch((e: unknown) => {
-        if (this.cancelled) return;
-        const msg = e instanceof Error ? e.message : String(e);
-        status.setText(`Login failed: ${msg}`);
-        status.removeClass("chatting-minus-device-status");
-        status.addClass("chatting-minus-device-status-error");
-      });
   }
 
   onClose(): void {
-    if (!this.cancelled) {
-      // If the user closed via Esc / outside click, treat it as cancel.
-      this.handle.cancel();
-    }
     this.contentEl.empty();
   }
-}
-
-function maskAccountId(accountId: string): string {
-  if (accountId.length <= 8) return accountId;
-  return `${accountId.slice(0, 4)}…${accountId.slice(-4)}`;
 }

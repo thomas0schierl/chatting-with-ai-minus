@@ -18,6 +18,8 @@ export const bundled = await build({
     export { buildResponsesInput, fromResponsesOutput } from './src/api/responses-format';
     export { default as ChatPlugin } from './src/main';
     export { executeTool } from './src/tools/executor';
+    export * as auth from './src/auth/chatgptOAuth';
+    export { ChatGPTOAuthStore } from './src/auth/chatgptOAuthStore';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, write: false, platform: 'node', format: 'esm',
   plugins: [{ name: 'obsidian-test-transport', setup(build) {
