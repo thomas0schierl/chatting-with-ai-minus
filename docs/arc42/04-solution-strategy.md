@@ -7,7 +7,7 @@
 
 | Goal | Approach |
 |---|---|
-| Mobile parity | One code path for all platforms: `requestUrl()`, no streaming, no Node APIs, OAuth by device code. |
+| Mobile parity | One code path for all platforms: `requestUrl()`, no streaming, no Node APIs; ChatGPT sign-in by pasting the callback address. |
 | Simplicity | One plugin bundle, one Svelte component for the chat UI, one agent loop for all providers, three providers only. |
 | Provider independence | A unified message format; one small adapter per provider converts it to and from the provider's API. |
 | Agentic vault work | The model acts only through declared tools that call Obsidian's vault APIs; the loop runs tools and resends until the model stops. |

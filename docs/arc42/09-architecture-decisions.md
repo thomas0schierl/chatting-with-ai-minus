@@ -18,6 +18,7 @@
 
 ## ADR-02: ChatGPT sign-in with the Device Authorization Flow
 
+- **Status:** superseded by ADR-13 (2026-10-05).
 - **Context:** a browser-redirect login needs a localhost server, which
   mobile can't run.
 - **Decision:** the user opens a verification URL in any browser and enters
@@ -26,6 +27,7 @@
 
 ## ADR-03: The Codex backend is driven like the Codex CLI
 
+- **Status:** superseded by ADR-13 (2026-10-05).
 - **Context:** the ChatGPT/Codex backend only accepts requests shaped like
   its own CLI's. It requires `store: false` and `stream: true`, rejects
   unknown clients, and hides models newer than the reported client
@@ -160,8 +162,8 @@
 
 ## ADR-13: ChatGPT sign-in through OpenAI's official route, with a pasted callback
 
-- **Status:** accepted 2026-10-05; replaces ADR-02 and ADR-03 once GAP-019
-  ships.
+- **Status:** accepted 2026-10-05; supersedes ADR-02 and ADR-03 (shipped,
+  GAP-019 closed).
 - **Context:**
   - The ChatGPT provider posed as the Codex CLI and called Codex's
     internal backend (GAP-019).

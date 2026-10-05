@@ -9,9 +9,10 @@
 
 | Store | Content | Limits |
 |---|---|---|
-| `data.json` (`saveData`) | Provider, model, thinking level, iteration limit, web search, model catalogs (hashed account key, models with their capabilities, fetch time, Codex version) | API key always saved as `""`; at most 3 catalog entries |
+| `data.json` (`saveData`) | Provider, model, thinking level, iteration limit, web search, model catalogs (hashed account key, models with their capabilities, fetch time) | API key always saved as `""`; at most 3 catalog entries |
 | SecretStorage `chatting-with-ai-minus-api-key-<provider>` | API key per provider | |
-| SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | OAuth credential (JSON) | Cleared by writing `""` |
+| SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | ChatGPT credential (JSON): access, refresh and ID token, expiry, granted scopes, account `sub` and email | Cleared by writing `""` on disconnect or an unusable refresh token. Records without `scopes` (former Codex sign-in) count as not connected |
+| SecretStorage `chatting-with-ai-minus-chatgpt-registration` | This device's `ext_agent_host_id` (`urn:uuid:…`), the issued client ID, the registered account's `sub` and email | Kept on disconnect. Not a secret, but per device: `data.json` syncs, and each device needs its own host ID |
 | `chat-state.json` in the plugin folder | Visible history (last 100 entries) and API history (last 80 messages), including images and native replay items | Written after every turn, Stop, Clear and unload; never before it has been read at start |
 | `debug.log` in the plugin folder | Requests and errors | Only when `DEBUG = true` in `agent/loop.ts` |
 
@@ -22,7 +23,8 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 
 - **Adapters** use `requestUrl({ throw: false })`, check the status and
   throw an error with the provider's message. ChatGPT errors say how to
-  recover (reconnect, other model, API key).
+  recover: sign in again (401), or manage usage at
+  `chatgpt.com/settings/usage` (usage-limit codes).
 - **The agent loop** turns every adapter error into an error bubble that is
   kept in the history.
 - **Tools never throw** to the loop. Failures and invalid arguments return
@@ -53,6 +55,9 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   images, per-turn context (vault name, note count, active note path, up
   to 200 characters of selection), and note content the model reads
   through tools.
+- ChatGPT sign-in: PKCE, `state` and `nonce` per attempt; only the full
+  callback address is accepted. The ID token's issuer, audience, expiry
+  and nonce are checked; tokens never go into URLs, logs or `data.json`.
 - `delete_file` moves files to the trash, as set in Obsidian.
 
 ## UI conventions

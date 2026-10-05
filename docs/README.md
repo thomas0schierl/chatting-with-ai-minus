@@ -7,7 +7,7 @@
 |---|---|
 | [README.md](../README.md) | For users: features, install, setup, privacy. |
 | [AGENTS.md](../AGENTS.md) | For developers and coding agents: commands, rules, where to look. `CLAUDE.md` only imports it. |
-| [test/README.md](../test/README.md) | How to run the tests and the live Codex scripts. |
+| [test/README.md](../test/README.md) | How to run the tests. |
 | [arc42/](arc42/) | The architecture, in the 12 arc42 sections below. |
 
 ## arc42 sections

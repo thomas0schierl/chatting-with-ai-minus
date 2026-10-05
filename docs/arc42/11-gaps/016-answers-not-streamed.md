@@ -20,7 +20,8 @@ assumes the provider APIs reject cross-origin requests. Checked on
   `anthropic-dangerous-direct-browser-access: true`; without the header it
   sends no CORS headers.
 - **OpenAI `/v1/responses`:** allows any origin.
-- **Codex `/backend-api/codex/responses`:** no allow-origin header; browsers
+- **Codex `/backend-api/codex/responses`** (the former ChatGPT route; since
+  ADR-13 ChatGPT uses `/v1/responses` too): no allow-origin header; browsers
   block it.
 
 **Still unverified:** that the Obsidian apps let a plugin `fetch` with a
@@ -37,8 +38,8 @@ streamed body. This needs a device test. Proposed decision:
 2. **If it works:** a new ADR that lets the Anthropic and OpenAI adapters
    stream with `fetch`. The agent loop and UI then render text deltas as
    they arrive, and tool calls still run when complete.
-3. **Codex:** stays buffered unless the spike shows otherwise. Show a
-   clearer "writing…" state there.
+3. **ChatGPT:** uses `/v1/responses` with `stream: true` since ADR-13, so it
+   can stream the same way as OpenAI.
 4. **Stop:** with streaming, Stop can cancel the request itself, not just
    ignore its result.
 5. **Keys in browser requests:** the API key travels in a header from the

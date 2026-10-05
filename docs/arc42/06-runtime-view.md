@@ -11,7 +11,7 @@
    defaults. An empty model becomes the provider's default. The model
    catalog is restored, and the API key is read from SecretStorage.
 2. Create the ChatGPT OAuth store and service, and hand the service to the
-   Codex adapter. Activate the saved model catalog of the current provider
+   ChatGPT adapter. Activate the saved model catalog of the current provider
    and account, so the chat header can show the thinking level.
 3. Create the `AgentLoop` with the shared settings object.
 4. `loadChatHistory()`: read `chat-state.json` and import the messages
@@ -55,25 +55,44 @@ result instead of a new message.
 
 ## Provider requests
 
-| | Anthropic | OpenAI | ChatGPT / Codex |
+| | Anthropic | OpenAI | ChatGPT |
 |---|---|---|---|
-| History sent | All messages; native blocks (thinking signatures, search results) replayed when provider, model and key are unchanged | Only new items, chained with `previous_response_id`; full replay after model or key changes, restore, or trimming | Full replay every turn (`store: false`) |
+| History sent | All messages; native blocks (thinking signatures, search results) replayed when provider, model and key are unchanged | Only new items, chained with `previous_response_id`; full replay after model or key changes, restore, or trimming | Full replay every turn (`store: false`, no `previous_response_id`); function tools inside the `vault` namespace |
 | Thinking | From the model catalog: `thinking` adaptive or fixed budget (8192 tokens); `output_config.effort` only when the chosen level is offered. None without catalog data | None; `/v1/models` reports no reasoning data | From the model catalog: `reasoning.effort` = chosen level if offered, else the model's default; `summary` unless the model rejects it. None without catalog data |
-| Response | JSON | JSON | SSE, buffered by `requestUrl()` and parsed afterwards |
+| Response | JSON | JSON | SSE (`stream: true`), buffered by `requestUrl()` and parsed afterwards; done only at `response.completed` |
 | Caching | `cache_control` on the system prompt and last tool | provider-side | provider-side |
 
 ## ChatGPT sign-in (`auth/chatgptOAuth.ts`)
 
-1. **Connect:** *Connect ChatGPT* calls `beginDeviceAuthorization()`
-   (`POST …/deviceauth/usercode`), which returns a user code.
-2. **Login page:** the modal shows the code and a link to
-   `auth.openai.com/codex/device`.
-3. **Poll:** `pollDeviceAuthorization()` polls `…/deviceauth/token` until
-   the user has signed in. It then exchanges the authorization code at
-   `/oauth/token` and stores the credential (with the account ID from the
-   ID token) in SecretStorage.
-4. **Refresh:** before each request, `getUsableCredential()` refreshes the
-   token if it expires within 30 seconds.
+OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
+
+1. **Start:** *Continue with ChatGPT* opens a modal, and `beginSignIn()`
+   builds the authorize URL:
+   - fresh `state`, `nonce` and PKCE verifier (S256 challenge);
+   - `redirect_uri` `http://127.0.0.1:<random port 49152–65535>/auth/callback`;
+   - `resource` `https://api.openai.com/v1` and the plan scopes;
+   - `ext_agent_host_id`, created once per device;
+   - first sign-in: `client_id=dynamic_agent_client` and
+     `agent_name_hint`; later: the issued client ID and the saved email as
+     `login_hint`.
+2. **Browser:** *Open sign-in page* opens it in the system browser. The
+   user signs in and allows plan use; the browser then lands on the
+   `127.0.0.1` address, which doesn't load.
+3. **Paste:** the user copies that address into the modal.
+   `parseCallback()` requires the full address with the same redirect URI
+   and `state`, handles `error=access_denied`, and takes `code` and the
+   issued `client_id` (`oaiapp_…`), which is saved at once.
+4. **Exchange:** `completeSignIn()` posts the code, verifier, redirect URI
+   and resource to `/oauth/token`. It checks the ID token (issuer,
+   audience, expiry, nonce; no signature check, the token comes straight
+   from the token endpoint over TLS) and that `chatgpt.tokens.use.direct`
+   was granted, then stores the credential.
+5. **Refresh:** `getUsableCredential()` refreshes within a minute of
+   expiry, with the issued client ID and resource; one refresh at a time,
+   since refresh tokens rotate. An unusable refresh token clears the
+   sign-in; network and server errors keep it.
+6. **Disconnect:** `signOut()` revokes the refresh token, then clears the
+   tokens. The host and client ID stay for the next sign-in.
 
 ## Model list refresh (`api/model-catalog.ts`)
 
@@ -82,9 +101,10 @@ result instead of a new message.
 2. **Cache key:** the hash of provider plus API key or ChatGPT account, so
    switching accounts never shows another account's list.
 3. **Fetch:**
-   - **ChatGPT:** first look up the latest stable Codex version on GitHub
-     (cached for 24 hours), then fetch `/codex/models` and keep the models
-     marked `list`.
+   - **ChatGPT:** fetch `/v1/models` with the ChatGPT-plan token; the
+     answer is `{models: [...]}`. Keep the models whose `visibility` is
+     `list`, labelled with `display_name`; reasoning levels are read when
+     the entry has them.
    - **Anthropic, OpenAI:** fetch `/v1/models`. For Anthropic, read each
      model's thinking type (`capabilities.thinking.types`) and effort
      levels (`capabilities.effort`).

@@ -1,8 +1,8 @@
 # Tests
 
-> **Belongs here:** how to run the offline tests and the live Codex scripts,
-> and what each proves. **Elsewhere:** which quality scenarios need checking
-> before a release (→ [arc42 §10](../docs/arc42/10-quality-requirements.md)).
+> **Belongs here:** how to run the offline tests and what they prove.
+> **Elsewhere:** which quality scenarios need checking before a release
+> (→ [arc42 §10](../docs/arc42/10-quality-requirements.md)).
 
 ## Offline regression tests
 
@@ -15,23 +15,11 @@ bundles the real plugin modules with a fake Obsidian API, an in-memory
 vault and a mocked `requestUrl()`; new test files import from it. No
 credentials or network needed. They cover
 history encoding and replay per provider, tool flows, cancellation, model
-catalogs and caching, and thinking parameters. They don't prove live-service
-or mobile behaviour.
+catalogs and caching, thinking parameters, and the ChatGPT sign-in
+(`chatgpt-signin.test.mjs`). They don't prove live-service or mobile
+behaviour.
 
-## Live Codex scripts
+## Live checks
 
-Talk to the real ChatGPT/Codex backend from Node, without Obsidian.
-
-```bash
-node test/codex-login.mjs                   # once: device-code login, saves temp/codex-token.json
-node test/codex-smoke.mjs                   # one request (default model and message)
-node test/codex-smoke.mjs gpt-5.5 "hi" --tools        # also send a function tool
-node test/codex-smoke.mjs gpt-5.5 "hi" --web-search   # also enable web search
-node test/codex-multi-turn.mjs              # function call and its result, over two turns
-node test/codex-debug.mjs                   # print every raw SSE event
-```
-
-- `temp/` is git-ignored; the token never leaves the machine.
-- The scripts build their requests by hand. A pass shows that request shape
-  works for that account today, not that the plugin's code is correct;
-  that's what `npm test` is for.
+Live provider behaviour (sign-in, chat, model lists) is checked in
+Obsidian itself, on desktop and on a phone.

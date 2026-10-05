@@ -35,14 +35,17 @@ Until the plugin is listed in Obsidian's community plugins:
 ## Set up
 
 1. Open **Settings → Chatting with AI Minus** and pick a provider.
-2. Paste an API key, or for ChatGPT click **Connect ChatGPT** and enter the
-   shown code on the login page.
+2. Paste an API key, or for ChatGPT click **Continue with ChatGPT**:
+   1. Click **Open sign-in page** and sign in to ChatGPT in your browser.
+   2. The browser then lands on a `http://127.0.0.1:…` page that won't
+      load. Copy that page's full address, paste it into the plugin and
+      click **Connect**.
 3. Open the chat from the ribbon icon or the command palette.
 
-ChatGPT sign-in needs a ChatGPT plan with Codex access. It uses the same
-backend as OpenAI's Codex CLI, not the public OpenAI API, so it can break
-when OpenAI changes that backend. The API-key providers are the stable
-option.
+ChatGPT sign-in uses OpenAI's "Sign in with ChatGPT" for open-source apps,
+which is still a preview. Chats then count against your ChatGPT plan;
+**Manage usage** in the settings opens your usage limits. Each device
+signs in separately.
 
 ## Privacy
 

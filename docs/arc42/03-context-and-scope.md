@@ -12,10 +12,11 @@
             │  + plugin    │──▶ OS keychain (SecretStorage)
             └──────┬───────┘
                    │ HTTPS via requestUrl()
-   ┌───────────────┼──────────────────────────┬──────────────────┐
-   ▼               ▼                          ▼                  ▼
-Anthropic API   OpenAI API        ChatGPT / Codex backend    GitHub API
-                                  + auth.openai.com          (Codex version)
+   ┌───────────────┼───────────────────────┐
+   ▼               ▼                       ▼
+Anthropic API   OpenAI API              OpenAI auth
+                (API key or             (auth.openai.com,
+                 ChatGPT-plan token)     ChatGPT sign-in)
 ```
 
 ## External interfaces
@@ -26,14 +27,15 @@ Anthropic API   OpenAI API        ChatGPT / Codex backend    GitHub API
 | Anthropic | `GET https://api.anthropic.com/v1/models` (paginated) | Model list | same |
 | OpenAI | `POST https://api.openai.com/v1/responses` | Chat | `Authorization: Bearer <API key>` |
 | OpenAI | `GET https://api.openai.com/v1/models` | Model list | same |
-| ChatGPT / Codex | `POST https://chatgpt.com/backend-api/codex/responses` | Chat | OAuth bearer token, `ChatGPT-Account-Id`, `originator`, `version` |
-| ChatGPT / Codex | `GET https://chatgpt.com/backend-api/codex/models?client_version=…` | Model list for the account | same |
-| OpenAI auth | `POST https://auth.openai.com/api/accounts/deviceauth/usercode`, `…/deviceauth/token`, `…/oauth/token` | Device login, token exchange and refresh | Client ID (+ device code / refresh token) |
-| OpenAI auth | `https://auth.openai.com/codex/device` | Page the user opens to enter the login code | User's browser |
-| GitHub | `GET https://api.github.com/repos/openai/codex/releases/latest` | Current stable Codex CLI version, sent as `client_version` | none |
+| ChatGPT | `POST https://api.openai.com/v1/responses` | Chat on the user's ChatGPT plan | `Authorization: Bearer <ChatGPT-plan access token>` |
+| ChatGPT | `GET https://api.openai.com/v1/models` | Model list for the account (`{models: [...]}`, kept if `visibility` is `list`) | same |
+| OpenAI auth | `https://auth.openai.com/api/accounts/authorize` | Sign-in page, opened in the system browser | User's browser |
+| OpenAI auth | `POST https://auth.openai.com/api/accounts/oauth/token` | Code exchange and refresh | Issued client ID, PKCE verifier or refresh token; no secret |
+| OpenAI auth | `POST https://auth.openai.com/api/accounts/oauth/revoke` | Sign-out (revokes the refresh token) | Issued client ID |
+| Loopback | `http://127.0.0.1:<port>/auth/callback` | Where the sign-in lands; nothing listens there, the user copies the address | none |
 
-Web search runs on the provider's side (Anthropic `web_search`, OpenAI and
-Codex `web_search`); the plugin only enables the tool.
+Web search runs on the provider's side (Anthropic and OpenAI
+`web_search`); the plugin only enables the tool.
 
 ## Scope
 
