@@ -1,4 +1,4 @@
-# TD-011: Saved chat history stores every image twice
+# GAP-011: Saved chat history stores every image twice
 
 `chat-state.json` holds each attached image's base64 data in two places.
 
@@ -18,6 +18,6 @@ base64.
 - Keep image data only in the API history, and only the image names in the
   visible history. Show a placeholder when replaying.
 - Consider writing attachments to separate files and storing references,
-  which matters more once there are many conversations (TD-008).
+  which matters more once there are many conversations (GAP-008).
 - Reference implementation: `writeConversationState()` in
   [nagisa525/obsidian-chatting-plus](https://github.com/nagisa525/obsidian-chatting-plus).

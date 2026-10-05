@@ -1,12 +1,12 @@
 # 11. Risks and technical debt
 
-> **Belongs here:** known risks and known gaps in the current code, as an
-> index. Each debt item has its own file in
-> [11-technical-debt/](11-technical-debt/): the title, one sentence
-> describing the problem, then **Where**, **Impact**, **Problem** and
-> **Fix**. Delete an item's file when it is fixed (git keeps the history).
-> **Elsewhere:** decisions (→ [9](09-architecture-decisions.md)), feature
-> ideas that aren't flaws (→ issues).
+> **Belongs here:** known risks, and known gaps as an index. Gaps are flaws
+> in the current code (debt) or features users expect from comparable AI
+> apps that are missing. Each gap has its own file in [11-gaps/](11-gaps/):
+> the title, one sentence describing the gap, then **Where**, **Impact**,
+> **Problem** and **Fix**. Delete a gap's file when it's closed (git keeps
+> the history). **Elsewhere:** decisions (→ [9](09-architecture-decisions.md)),
+> small one-off ideas (→ issues).
 
 ## Risks
 
@@ -17,20 +17,21 @@
 | Provider APIs change request or response formats | Errors until fixed | Offline regression tests; live checks before releases ([10](10-quality-requirements.md)). |
 | Upstream fixes don't reach the fork automatically | Bugs fixed upstream stay here | Review upstream changes now and then; port what fits. |
 
-## Technical debt
+## Gaps
 
-| ID | Item | Impact |
-|---|---|---|
-| [TD-003](11-technical-debt/003-custom-model-saves-empty-model.md) | "Custom..." saves an empty model | Low |
-| [TD-006](11-technical-debt/006-thinking-level-not-configurable.md) | Thinking level can't be set and is partly guessed from model names | Medium |
-| [TD-007](11-technical-debt/007-chat-history-wiped-on-early-unload.md) | Chat history can be wiped when the plugin unloads early | Medium |
-| [TD-008](11-technical-debt/008-single-conversation-only.md) | Only one conversation | Medium |
-| [TD-009](11-technical-debt/009-math-not-rendered.md) | Math in answers isn't rendered | Low–medium |
-| [TD-010](11-technical-debt/010-answer-scrolls-question-away.md) | New answers scroll the question out of view | Medium (mobile) |
-| [TD-011](11-technical-debt/011-images-saved-twice.md) | Saved chat history stores every image twice | Medium |
-| [TD-012](11-technical-debt/012-publishing-tooling.md) | No Obsidian lint rules or automated releases | Medium (publishing) |
+| ID | Gap | Kind | Impact |
+|---|---|---|---|
+| [GAP-003](11-gaps/003-custom-model-saves-empty-model.md) | "Custom..." saves an empty model | Debt | Low |
+| [GAP-006](11-gaps/006-thinking-level-not-configurable.md) | Thinking level can't be set and is partly guessed from model names | Debt + feature | Medium |
+| [GAP-007](11-gaps/007-chat-history-wiped-on-early-unload.md) | Chat history can be wiped when the plugin unloads early | Debt | Medium |
+| [GAP-008](11-gaps/008-single-conversation-only.md) | Only one conversation | Feature | Medium |
+| [GAP-009](11-gaps/009-math-not-rendered.md) | Math in answers isn't rendered | Debt | Low–medium |
+| [GAP-010](11-gaps/010-answer-scrolls-question-away.md) | New answers scroll the question out of view | Debt | Medium (mobile) |
+| [GAP-011](11-gaps/011-images-saved-twice.md) | Saved chat history stores every image twice | Debt | Medium |
+| [GAP-012](11-gaps/012-publishing-tooling.md) | No Obsidian lint rules or automated releases | Debt | Medium (publishing) |
+| [GAP-013](11-gaps/013-no-live-voice-conversation.md) | No live voice conversation | Feature | High |
 
-Numbers are kept from the gap analysis. 001, 004 and 005 were fixed
+Numbers are kept from the first gap analysis. 001, 004 and 005 were fixed
 upstream before the fork (stale ChatGPT model list, reasoning guessed from
 model names, failing follow-up messages). 002 (settings rewritten on every
 load) went away with the legacy migration code (ADR-09).
@@ -38,7 +39,7 @@ load) went away with the legacy migration code (ADR-09).
 ## To investigate
 
 Found while reading the code, not yet confirmed. Confirm, then turn into a
-debt item or drop.
+gap or drop.
 
 - Stop during `ask_user` may leave the pending answer open, so the next
   message would answer the stopped run instead of starting a new one.

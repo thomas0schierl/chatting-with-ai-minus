@@ -1,4 +1,4 @@
-# TD-006: Thinking level can't be set and is partly guessed from model names
+# GAP-006: Thinking level can't be set and is partly guessed from model names
 
 Users can't choose how much the model thinks, and some providers decide
 thinking support from the model name instead of the provider's data.

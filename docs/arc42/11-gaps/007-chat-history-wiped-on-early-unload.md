@@ -1,4 +1,4 @@
-# TD-007: Chat history can be wiped when the plugin unloads early
+# GAP-007: Chat history can be wiped when the plugin unloads early
 
 If the plugin unloads before it has read the saved conversation, it saves
 an empty one over it.

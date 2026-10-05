@@ -1,4 +1,4 @@
-# TD-010: New answers scroll the question out of view
+# GAP-010: New answers scroll the question out of view
 
 Every new message jumps to the bottom of the chat, so long answers are
 read from their end.

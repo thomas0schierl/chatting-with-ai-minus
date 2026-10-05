@@ -56,7 +56,7 @@ result instead of a new message.
 | | Anthropic | OpenAI | ChatGPT / Codex |
 |---|---|---|---|
 | History sent | All messages; native blocks (thinking signatures, search results) replayed when provider, model and key are unchanged | Only new items, chained with `previous_response_id`; full replay after model or key changes, restore, or trimming | Full replay every turn (`store: false`) |
-| Thinking | Adaptive for Opus/Sonnet 4.6+, fixed budget for older Opus/Sonnet, none otherwise (TD-006) | `reasoning.effort: medium` for reasoning-capable names (TD-006) | From the model catalog; fallback `medium` |
+| Thinking | Adaptive for Opus/Sonnet 4.6+, fixed budget for older Opus/Sonnet, none otherwise (GAP-006) | `reasoning.effort: medium` for reasoning-capable names (GAP-006) | From the model catalog; fallback `medium` |
 | Response | JSON | JSON | SSE, buffered by `requestUrl()` and parsed afterwards |
 | Caching | `cache_control` on the system prompt and last tool | provider-side | provider-side |
 

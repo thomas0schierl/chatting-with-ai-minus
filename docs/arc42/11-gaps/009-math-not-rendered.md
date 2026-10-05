@@ -1,4 +1,4 @@
-# TD-009: Math in answers isn't rendered
+# GAP-009: Math in answers isn't rendered
 
 LaTeX that models write as `\(...\)`, `\[...\]` or ` ```math ` blocks shows
 up as raw text.

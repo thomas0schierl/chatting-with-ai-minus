@@ -1,4 +1,4 @@
-# TD-003: "Custom..." saves an empty model
+# GAP-003: "Custom..." saves an empty model
 
 Choosing "Custom..." in the model dropdown clears the saved model before
 the user types one.

@@ -44,4 +44,4 @@ npm run svelte-check   # Svelte check
 - Start every new document with a sentence saying what belongs in it.
 - Record decisions that are hard to reverse as an ADR in
   [arc42 §9](docs/arc42/09-architecture-decisions.md).
-- Fixing a technical-debt item deletes its file and its row in §11.
+- Closing a gap deletes its file and its row in §11.

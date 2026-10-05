@@ -1,4 +1,4 @@
-# TD-012: No Obsidian lint rules or automated releases
+# GAP-012: No Obsidian lint rules or automated releases
 
 The repo can't check the plugin guidelines before submission, and releases
 are built on a developer machine.
