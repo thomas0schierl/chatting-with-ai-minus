@@ -43,13 +43,19 @@ multi-line selection quoted line by line, saved settings checked on load,
 `set_properties` (and refusing a list), and that every tool offered to the
 model has a handler (`tools.test.mjs`); the Codex CLI version sent as
 `client_version`: cached, stable releases only, fallback
-(`client-version.test.mjs`);
+(`client-version.test.mjs`); coming back from the background
+(`background.test.mjs`): the lifecycle hints, the save on leaving, a
+request that failed or (mobile) stalled in the background resent in the
+same turn without duplicated text, at most twice, not for a failure in
+the foreground and without marking `fetch` blocked, and Continue for a
+turn cut off mid-way (marker saved, tool results not run again);
 and the ChatGPT plan cues: no retry on a
 usage limit, its own message, the one-time welcome
 (`chatgpt-usage.test.mjs`), and live voice with fake WebRTC, microphone
 and audio (`voice.test.mjs`): session creation on both routes, both event
 dialects, delegation through the chat view with progress, chunked
-answers and a stopped older turn, hold to talk, ending, the device
+answers and a stopped older turn, hold to talk, ending, the background
+on mobile (microphone off, reconnect, end after 60 s; desktop unchanged), the device
 check's GPT-Live session (closed at once), and the Codex
 sign-in. The harness builds with `__CODEX_VOICE__` true;
 `voice-build.test.mjs` runs the real build config and checks that the

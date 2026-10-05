@@ -71,6 +71,16 @@ gap or drop.
   live caption, not in the chat history. GPT-Live's delegation carries no
   text; the request is the transcript since the last delegation, which
   may be cut or include words that weren't meant for it.
+- Back from the background (ADR-15), on iOS and Android: leave the app
+  for 10 s and for 60 s during a streamed answer, during a turn with a
+  tool call, and during voice; check that the answer continues
+  ("Resuming…") without duplicated text, that voice comes back
+  ("Reconnecting…") or has ended after 60 s, and, after iOS ended the
+  app, that Continue appears and finishes the turn. With `DEBUG` on,
+  `debug.log` shows each hint (`LIFECYCLE`) and each resend
+  (`API_RESUME`): check whether `pause`/`resume` fire (or only
+  `visibilitychange`), and how long iOS lets an open request finish in
+  the background.
 - Codex voice route (private builds): checked on desktop 2026-10-05.
   The data channel carries Codex's dialect (`delegation.created` with
   the request text, `input_transcript.added`, `turn.done`, …) and

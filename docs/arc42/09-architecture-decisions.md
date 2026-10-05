@@ -280,3 +280,68 @@
   - It can break without notice. Checked on desktop 2026-10-05: the
     data channel carries the events in Codex's dialect, so no WebSocket
     is needed (§11).
+
+## ADR-15: Recover instead of running in the background on mobile
+
+- **Status:** accepted 2026-10-05. Built; not yet verified on phones
+  (§11).
+- **Context:** users switch apps or lock the phone while an answer or a
+  voice conversation runs.
+  - **iOS** suspends a backgrounded app after a few seconds unless it
+    has a background mode or task ([Apple TN2277](https://developer.apple.com/library/archive/technotes/tn2277/_index.html)):
+    no JavaScript runs, requests open then fail or hang when it resumes,
+    and WebRTC drops after about 30 s without its consent checks.
+    WKWebView mutes microphone capture in the background
+    ([WebKit bug 226620](https://bugs.webkit.org/show_bug.cgi?id=226620));
+    Obsidian likely lacks the `audio` background mode. iOS may also end
+    the web view: the next start is a page load, with no event before.
+  - **Android** keeps JavaScript running for a while (Capacitor's
+    default), then freezes or kills the app; Android 14 freezes cached
+    apps about 10 s after they become cached
+    ([cached apps freezer](https://source.android.com/docs/core/perf/cached-apps-freezer)).
+    Without a foreground service the microphone records silence.
+  - **Desktop** (Electron): a minimised window keeps running turns (Node
+    `https`) and WebRTC voice.
+  - Obsidian gives plugins no lifecycle event and no background
+    execution on mobile ([forum request](https://forum.obsidian.md/t/make-obsidian-sync-work-in-background-on-mobile/25906)).
+    Capacitor fires `pause` and `resume` on the document
+    ([CapacitorBridge.swift](https://github.com/ionic-team/capacitor/blob/main/ios/Capacitor/Capacitor/CapacitorBridge.swift));
+    `pause` may not get to run before the suspension. Capacitor's plugin
+    APIs (`window.Capacitor.Plugins`) are undocumented for Obsidian
+    plugins and a review risk.
+  - `requestUrl()` can't be cancelled; its native request is suspended
+    with the app.
+- **Decision:** don't try to keep working in the background; recover when
+  the app is back.
+  - `platform/lifecycle.ts` takes the hints (document
+    `visibilitychange`, `pause`, `resume`, window `focus`, `pageshow`),
+    records when the app went away, and decisions are made on the return.
+  - A request that failed while the app was in the background is sent
+    again on the return, in the same turn from the same history, at most
+    twice per turn. A `fetch` failing in the background neither falls
+    back to `requestUrl()` nor marks the URL fetch-blocked (ADR-12). On
+    mobile, a request with no data for 10 s after the return is aborted
+    (one abort controller per request; `requestUrl()` raced against the
+    abort) and resent.
+  - Leaving the app saves the chats. A running turn marks its
+    conversation (`pendingTurn`); found after a restart with an answer
+    still owed, the chat offers **Continue**, never automatically: the
+    user may have moved on, and the turn may change notes.
+  - Voice on mobile: the microphone is off in the background; back
+    within 20 s with the call connected, it continues; otherwise it is
+    replaced by a new call seeded from the chat; after 60 s in the
+    background it ends. Desktop is unchanged.
+- **Consequences:**
+  - Nothing happens while the phone is away; answers arrive after the
+    return, and completed steps of a turn (tool calls included) aren't
+    repeated.
+  - A resent request costs its tokens again, also when the provider had
+    finished it but the answer never arrived; a slow request may be
+    given up after 10 s of silence and resent.
+  - The hints can come late or not at all; a failure while the app counts
+    as visible is an error as before. Continue covers what the hints miss
+    on iOS.
+  - Desktop: only a request that fails while the window is hidden is
+    resent on the return; no watchdog, voice unchanged.
+  - Whether `pause`/`resume` fire, how long iOS lets a request finish,
+    and voice after the background are to be checked on devices (§11).

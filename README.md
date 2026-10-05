@@ -29,6 +29,11 @@ It works the same on desktop, iPhone, iPad and Android.
 - **Voice:** talk with the assistant in the current chat and hear the
   answer. Requests about your notes run through the same assistant, with
   your chosen provider, and appear in the chat.
+- **Leaving the app on a phone:** an answer that was interrupted
+  continues when you come back ("Resuming…"). If the phone closed
+  Obsidian meanwhile, the chat offers **Continue**. Voice pauses the
+  microphone while you're away, reconnects when you return, and ends
+  after a minute away.
 
 ## Install
 

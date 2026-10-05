@@ -15,7 +15,7 @@
 | SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | ChatGPT credential (JSON): access, refresh and ID token, expiry, granted scopes, account `sub` and email | Cleared by writing `""` on disconnect or an unusable refresh token. A refresh writes or clears only while the stored credential is still the one it started from (likewise for the Codex voice credential). A record without `scopes` (former Codex sign-in) is erased on its first read |
 | SecretStorage `chatting-with-ai-minus-chatgpt-sign-in` | The pending sign-in attempt (JSON): authorize URL, PKCE verifier, `state`, `nonce`, redirect URI, client ID, start time | Cleared once its code is exchanged; ignored and cleared when 10 minutes old |
 | SecretStorage `chatting-with-ai-minus-chatgpt-registration` | This device's `ext_agent_host_id` (`urn:uuid:…`), the issued client ID, the registered account's `sub` and email | Kept on disconnect; client ID, `sub` and email replaced by *Use another account*, the host ID never. Not a secret, but per device: `data.json` syncs, and each device needs its own host ID |
-| `chat-state.json` in the plugin folder | `{ version: 3, activeConversationId, conversations: [{ id, title, customTitle, createdAt, updatedAt, chatHistory, agentMessages }] }`. Per conversation the visible history (last 100 entries) and API history (last 80 messages, complete turns, with native replay items). Image data only in the API history; the visible history keeps each image's ID, name, type and size. Tool cards keep their call's input for display, strings cut to 300 characters and lists to 10 items (`savedToolInput()`); cards saved without it show no parameters. Older versions are migrated once on load (`chat-state.ts`): 1 → 2 turn IDs and images once, 2 → 3 the single chat becomes the first conversation | Written after every turn, Stop, Clear, new chat, switch, rename, delete and unload; never before it has been read at start. One write at a time: saves asked for during a write become one write after it, with the state at that time. Empty conversations other than the active one aren't saved. A file that can't be read is renamed to `chat-state.corrupt-<time>.json`, never overwritten |
+| `chat-state.json` in the plugin folder | `{ version: 3, activeConversationId, conversations: [{ id, title, customTitle, createdAt, updatedAt, chatHistory, agentMessages, pendingTurn? }] }`. `pendingTurn` (`{ turnId, startedAt }`) is set while a turn runs; found at start, the turn was cut off and Continue is offered (ADR-15). Optional, so no new version: an older plugin drops it. Per conversation the visible history (last 100 entries) and API history (last 80 messages, complete turns, with native replay items). Image data only in the API history; the visible history keeps each image's ID, name, type and size. Tool cards keep their call's input for display, strings cut to 300 characters and lists to 10 items (`savedToolInput()`); cards saved without it show no parameters. Older versions are migrated once on load (`chat-state.ts`): 1 → 2 turn IDs and images once, 2 → 3 the single chat becomes the first conversation | Written after every turn, Stop, Clear, new chat, switch, rename, delete and unload, and when the app goes to the background (mid-turn too, with the API history so far); never before it has been read at start. One write at a time: saves asked for during a write become one write after it, with the state at that time. Empty conversations other than the active one aren't saved. A file that can't be read is renamed to `chat-state.corrupt-<time>.json`, never overwritten |
 | `debug.log` in the plugin folder | Requests and errors; voice event types | Only when `DEBUG = true` in `debug.ts` |
 
 Settings and catalogs are checked field by field when loaded; anything
@@ -36,7 +36,9 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   `ChatGPTUsageLimitError`; the chat shows it as its own message with
   **Manage usage** (`chatgpt.com/settings/usage`), also after a reload.
 - **The agent loop** turns every adapter error into an error bubble that is
-  kept in the history.
+  kept in the history, except a request that failed or stalled while the
+  app was in the background: it is sent again once the app is back, at
+  most twice per turn (ADR-15).
 - **Tools never throw** to the loop. Failures and invalid arguments return
   an error result to the model.
 - **Rate limits and overload** (status 429 or 529, or the code
@@ -73,6 +75,17 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 - Voice uses WebRTC and the microphone; both are checked when voice
   starts, and a missing one is shown as an error. Not yet verified in the
   iOS and Android apps.
+- **Background** (ADR-15): Obsidian has no lifecycle event, so
+  `platform/lifecycle.ts` takes hints (document `visibilitychange`,
+  Capacitor's `pause`/`resume`, window `focus` and `pageshow`) and records
+  when the app went away; code decides on the return
+  (`hiddenSince(t)`, `whenVisible()`, listeners), never in the background,
+  where it may not run at all. Undocumented Capacitor plugin APIs
+  (`window.Capacitor.Plugins`) aren't used. The flows are in
+  [6](06-runtime-view.md#back-from-the-background-adr-15): a failed or
+  stalled request is resent, a turn cut off gets Continue, voice is muted
+  and reconnected. Desktop windows keep running in the background; only
+  a request that failed while hidden is resent there.
 
 ## Security and privacy
 

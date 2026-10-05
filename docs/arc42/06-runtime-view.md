@@ -26,7 +26,9 @@
    isn't a saved chat is renamed to `chat-state.corrupt-<time>.json` and a
    notice says so; if renaming fails too, nothing is saved until the next
    start, so the file is never overwritten.
-5. Register the settings tab, view, ribbon icon, commands and menus.
+5. Start the lifecycle hints (`platform/lifecycle.ts`, ADR-15); leaving
+   the app saves the chats from then on.
+6. Register the settings tab, view, ribbon icon, commands and menus.
 
 No network requests happen at start.
 
@@ -70,9 +72,10 @@ No network requests happen at start.
 4. **Finish:** the view re-enables input and saves the chat history after
    every turn.
 
-**Stop:** sets a flag and a new run version and aborts the request: a
-streamed `fetch` stops reading at once. A request on the `requestUrl()`
-fallback can't be cancelled; its result is ignored. Text already shown
+**Stop:** sets a flag and a new run version and aborts the request (each
+request has its own abort controller): a streamed `fetch` stops reading
+at once. A request on the `requestUrl()` fallback can't be cancelled; the
+abort settles it at once and its result is ignored. Text already shown
 stays and is saved in the UI history (not in the API history), as on an
 error. A pending `ask_user` question is dropped. A stopped turn that ends
 after a newer one has started leaves the newer one's state alone.
@@ -202,12 +205,74 @@ it stays active and, being empty, leaves the list.
    `session.closed`, then closes the connection and stops the microphone.
    A running turn finishes in the chat but isn't spoken. If the server
    ends the session (e.g. `expired`) or the connection fails, the chat
-   shows why.
+   shows why (on mobile in the background: see *Back from the
+   background*).
 
 With `DEBUG` on in `debug.ts`, `debug.log` gets every data-channel
 event type and its keys (`VOICE_EVENT`), what was sent (`VOICE_SEND`),
 the call ID, channel and connection states, and `VOICE_NO_EVENTS` when
 nothing arrived within 10 s of the channel opening.
+
+## Back from the background (ADR-15)
+
+A phone suspends or ends Obsidian in the background; nothing tries to
+keep running there. `platform/lifecycle.ts` follows the hints (document
+`visibilitychange`, Capacitor `pause`/`resume`, window `focus` and
+`pageshow`), records when the app went away, and tells listeners when it
+is back and for how long. Leaving saves the chats.
+
+**A turn that was running** (`AgentLoop.loop()`):
+
+1. A request fails, and the app was in the background at some time since
+   it started (`hiddenSince(start)`); the turn wasn't stopped. In
+   `api/stream.ts` a `fetch` that failed that way neither falls back to
+   `requestUrl()` nor marks the URL fetch-blocked; it just fails.
+2. The loop waits for the app to return (`whenVisible()`), then calls
+   `onResuming`: the view removes the failed attempt's streamed text and
+   shows "Resuming…" in the thinking indicator.
+3. It sends the same request again: same messages (the history holds every
+   completed step, tool results included), no new user message, the same
+   turn ID. At most 2 resumes per turn; after that the error shows as
+   usual. A request that fails while the app is in the foreground is an
+   error as before.
+4. **Stall** (mobile only): each request has its own abort controller.
+   When the app returns while a request is open, the loop aborts that
+   request if no data arrives for 10 s (from the return, or from its last
+   data if later; `lastChunkAt()`); step 1 then resends it. A
+   `requestUrl()` request is raced against the abort, so a hung one is
+   abandoned (its native request goes on, its result is ignored). A
+   desktop window keeps its requests running, so it isn't watched.
+
+**Obsidian was ended** (iOS may end the web view in the background; the
+next start is a fresh load):
+
+1. While a turn runs, its conversation carries `pendingTurn` (turn ID,
+   start time); it is saved with the chat when the app goes away, with the
+   API history so far (completed tool results included). The turn's end,
+   Stop, Clear, a new chat and switching remove it.
+2. On load, if the active conversation has the marker and its API history
+   ends in a user message or tool results (the model owes an answer), a
+   bar above the input says "The last answer was interrupted." with
+   **Continue**. Nothing happens automatically.
+3. **Continue** runs `AgentLoop.continueTurn()` through the view's normal
+   turn path (thinking indicator, tool cards, answer, history, save): the
+   loop starts from the saved history; tool results already there are sent,
+   not run again. A new message dismisses the bar.
+
+**Voice** (mobile only; a minimised desktop window keeps the call):
+
+1. Leaving turns the microphone track off (it records only silence in the
+   background) and starts a 60 s timer. A call lost meanwhile isn't
+   reported.
+2. Back within 20 s with the peer connection `connected` and the data
+   channel open: the microphone returns as it was (off for hold to talk).
+3. Back later, or with the call lost: the old call ends quietly and a new
+   one starts, shown as "Reconnecting…", seeded with the chat as it is now
+   (an answer that finished meanwhile is included) and keeping the mute.
+   If it fails, the usual error shows.
+4. After 60 s in the background the call ends, also where JavaScript still
+   runs (Android): nobody hears it, and it is billed by the minute. Coming
+   back later finds no voice bar.
 
 ## Provider requests
 

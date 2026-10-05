@@ -1,6 +1,7 @@
 /**
  * Debug logging to `debug.log` in the plugin folder: the agent loop's
- * requests and errors, and the voice session's data-channel events. Off
+ * requests, errors and resends, the foreground/background hints, and the
+ * voice session's data-channel events. Off
  * unless `DEBUG` is set to true here; never logs keys or tokens.
  */
 import type { App } from "obsidian";
