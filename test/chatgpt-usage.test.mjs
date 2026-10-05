@@ -63,3 +63,11 @@ test('The plan welcome is shown after the first sign-in only', async () => {
   assert.equal(globalThis.__modals.length, 1);
   assert.deepEqual(globalThis.__notices, ['ChatGPT connected. Chats now use your ChatGPT plan.']);
 });
+
+test('The plan welcome flag survives a restart', async () => {
+  const plugin = new api.ChatPlugin();
+  plugin.loadData = async () => ({ ...settings('chatgpt-oauth'), chatgptPlanWelcomeShown: true });
+  plugin.loadApiKey = () => '';
+  await plugin.loadSettings();
+  assert.equal(plugin.settings.chatgptPlanWelcomeShown, true);
+});

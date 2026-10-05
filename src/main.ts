@@ -578,6 +578,7 @@ function normalizeSettings(value: unknown): Partial<ChatSettings> {
   if (typeof value.thinkingLevel === "string") settings.thinkingLevel = value.thinkingLevel;
   if (typeof value.maxIterations === "number") settings.maxIterations = value.maxIterations;
   if (typeof value.enableWebSearch === "boolean") settings.enableWebSearch = value.enableWebSearch;
+  if (typeof value.chatgptPlanWelcomeShown === "boolean") settings.chatgptPlanWelcomeShown = value.chatgptPlanWelcomeShown;
   settings.modelCatalog = normalizeCatalogState(value.modelCatalog);
   if (value.voiceRoute === "openai" || value.voiceRoute === "codex") settings.voiceRoute = value.voiceRoute;
   if (typeof value.voice === "string" && value.voice) settings.voice = value.voice;
