@@ -23,8 +23,11 @@ math conversion (`math-markdown.test.mjs`), streamed answers: SSE
 parsing, rebuilt responses, fallback, Stop and rate-limit retry
 (`streaming.test.mjs`), and editing a message, regenerating and copying
 an answer through the chat view with a fake Svelte component
-(`message-actions.test.mjs`), and saving each image once with the
-migration of older saved chats (`images-once.test.mjs`). They don't prove live-service or mobile behaviour.
+(`message-actions.test.mjs`), saving each image once with the
+migration of older saved chats (`images-once.test.mjs`), and named
+conversations: migration, new chat, switch, rename, delete, restore,
+titles, and isolation of histories and OpenAI chaining
+(`conversations.test.mjs`). They don't prove live-service or mobile behaviour.
 
 ## Live checks
 

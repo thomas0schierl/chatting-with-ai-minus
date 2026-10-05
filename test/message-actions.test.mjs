@@ -149,12 +149,12 @@ test('The cut is saved at once, and the saved chat after the new turn restores c
 
   const editing = view.editMessage(ids[1], 'Edited');
   // Saved before the new turn starts: only the first turn is left.
-  assert.deepEqual(writes[savedBefore].chatHistory.map(e => e.text), ['Q1', 'A1']);
-  assert.deepEqual(writes[savedBefore].agentMessages.filter(m => m.turnId).map(m => m.turnId), [ids[0]]);
+  assert.deepEqual(writes[savedBefore].conversations[0].chatHistory.map(e => e.text), ['Q1', 'A1']);
+  assert.deepEqual(writes[savedBefore].conversations[0].agentMessages.filter(m => m.turnId).map(m => m.turnId), [ids[0]]);
   await editing;
 
   const final = writes.at(-1);
-  assert.deepEqual(final.chatHistory.map(e => e.text), ['Q1', 'A1', 'Edited', 'A4']);
+  assert.deepEqual(final.conversations[0].chatHistory.map(e => e.text), ['Q1', 'A1', 'Edited', 'A4']);
   const restored = await setup('anthropic', JSON.parse(JSON.stringify(final)));
   const restoredIds = turnIdsOf(restored.plugin);
   assert.deepEqual(restoredIds.ui, restoredIds.agent);

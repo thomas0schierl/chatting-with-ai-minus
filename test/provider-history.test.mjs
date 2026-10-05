@@ -699,7 +699,7 @@ test('Chat history is not saved before the saved chat has been read', async () =
   await loading;
   await plugin.saveChatHistory();
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].chatHistory[0].text, 'Saved question');
+  assert.equal(writes[0].conversations[0].chatHistory[0].text, 'Saved question');
   // Without a saved file yet, saving is allowed once the read has failed.
   const fresh = new api.ChatPlugin();
   fresh.app = { vault: { configDir: '.obsidian', adapter: { read: async () => { throw new Error('ENOENT'); }, write: async (path, data) => { writes.push(JSON.parse(data)); } } } };
@@ -707,5 +707,5 @@ test('Chat history is not saved before the saved chat has been read', async () =
   await fresh.loadChatHistory();
   await fresh.saveChatHistory();
   assert.equal(writes.length, 2);
-  assert.deepEqual(writes[1].chatHistory, []);
+  assert.deepEqual(writes[1].conversations[0].chatHistory, []);
 });

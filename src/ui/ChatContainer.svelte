@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { App } from "obsidian";
   import { Component, MarkdownRenderer, Notice } from "obsidian";
-  import type { ToolResult, SelectionScope, ImageAttachment } from "../types";
+  import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary } from "../types";
   import { normalizeMathMarkdown } from "./math-markdown";
 
   const MAX_IMAGE_COUNT = 4;
@@ -40,11 +40,114 @@
     onEdit: (turnId: string, text: string) => void;
     onRegenerate: () => void;
     onCopy: (text: string) => void;
+    /** The current conversation's title. */
+    title: string;
+    onNewChat: () => void;
+    listConversations: () => ConversationSummary[];
+    onOpenConversation: (id: string) => void;
+    onRenameConversation: (id: string, title: string) => void;
+    onDeleteConversation: (id: string) => void;
   }
 
-  let { app, component, provider, model, onSend, onClear, onStop, onEdit, onRegenerate, onCopy }: Props = $props();
+  let {
+    app, component, provider, model, onSend, onClear, onStop, onEdit, onRegenerate, onCopy,
+    title, onNewChat, listConversations, onOpenConversation, onRenameConversation, onDeleteConversation,
+  }: Props = $props();
 
   let displayModel = $state("");
+  let displayTitle = $state("");
+
+  // ─── History list (a drawer over the chat) ────────────────────────────
+  let historyOpen = $state(false);
+  let conversations = $state<ConversationSummary[]>([]);
+  let renamingId = $state<string | null>(null);
+  let renameText = $state("");
+  let deletingId = $state<string | null>(null);
+
+  $effect(() => {
+    displayTitle = title;
+  });
+
+  function refreshConversations(): void {
+    conversations = listConversations();
+  }
+
+  function toggleHistory(): void {
+    historyOpen = !historyOpen;
+    renamingId = null;
+    deletingId = null;
+    if (historyOpen) refreshConversations();
+  }
+
+  function closeHistory(): void {
+    historyOpen = false;
+    renamingId = null;
+    deletingId = null;
+  }
+
+  function newChat(): void {
+    closeHistory();
+    onNewChat();
+  }
+
+  function openConversation(id: string): void {
+    closeHistory();
+    onOpenConversation(id);
+  }
+
+  function startRename(conversation: ConversationSummary): void {
+    deletingId = null;
+    renamingId = conversation.id;
+    renameText = conversation.title;
+  }
+
+  /** Saves the name being edited (Enter, or leaving the field). */
+  function saveRename(id: string): void {
+    if (renamingId !== id) return;
+    renamingId = null;
+    onRenameConversation(id, renameText);
+    refreshConversations();
+  }
+
+  function handleRenameKeydown(e: KeyboardEvent, id: string): void {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveRename(id);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      renamingId = null;
+    }
+  }
+
+  function confirmDelete(id: string): void {
+    deletingId = null;
+    onDeleteConversation(id);
+    refreshConversations();
+  }
+
+  function handleHistoryKeydown(e: KeyboardEvent): void {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeHistory();
+    }
+  }
+
+  /** The rename field: focused with its text selected. */
+  function renameBox(node: HTMLInputElement) {
+    node.focus();
+    node.select();
+  }
+
+  /** Time today, otherwise the date. */
+  function formatDate(time: number): string {
+    if (!time) return "";
+    const date = new Date(time);
+    return date.toDateString() === new Date().toDateString()
+      ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : date.toLocaleDateString();
+  }
   let messages = $state<ChatMessage[]>([]);
   let inputText = $state("");
   let inputEnabled = $state(true);
@@ -292,6 +395,11 @@
   /** Update the model display name in the header */
   export function setModel(name: string): void {
     displayModel = name;
+  }
+
+  /** Update the conversation title in the header */
+  export function setTitle(value: string): void {
+    displayTitle = value;
   }
 
   /** Set the selection scope (shows pill in UI) */
@@ -585,12 +693,95 @@
 <div class="chatting-minus-container">
   <!-- Header -->
   <div class="chatting-minus-header">
+    <button
+      class="chatting-minus-icon-btn"
+      class:is-active={historyOpen}
+      type="button"
+      onclick={toggleHistory}
+      aria-label="Chats"
+      aria-expanded={historyOpen}
+      title="Chats"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>
+    </button>
     <div class="chatting-minus-header-left">
-      <span class="chatting-minus-header-title">Chat</span>
+      <span class="chatting-minus-header-title" title={displayTitle}>{displayTitle || "New chat"}</span>
       <span class="chatting-minus-header-model">{displayModel || "No model"}</span>
     </div>
-    <button class="chatting-minus-clear-btn" onclick={onClear}>Clear</button>
+    <button class="chatting-minus-clear-btn" type="button" onclick={onClear}>Clear</button>
+    <button
+      class="chatting-minus-icon-btn"
+      type="button"
+      onclick={newChat}
+      aria-label="New chat"
+      title="New chat"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"></path></svg>
+    </button>
   </div>
+
+  <div class="chatting-minus-body">
+  {#if historyOpen}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="chatting-minus-history" role="dialog" aria-label="Chats" tabindex="-1" onkeydown={handleHistoryKeydown}>
+      <div class="chatting-minus-history-head">
+        <span class="chatting-minus-history-heading">Chats</span>
+        <button type="button" class="mod-cta" onclick={newChat}>New chat</button>
+      </div>
+      {#if conversations.length === 0}
+        <div class="chatting-minus-history-empty">No saved chats yet.</div>
+      {/if}
+      <ul class="chatting-minus-history-list">
+        {#each conversations as conversation (conversation.id)}
+          <li class="chatting-minus-history-row" class:is-active={conversation.active}>
+            {#if renamingId === conversation.id}
+              <input
+                class="chatting-minus-history-rename"
+                type="text"
+                bind:value={renameText}
+                use:renameBox
+                aria-label="Chat name"
+                onkeydown={(e) => handleRenameKeydown(e, conversation.id)}
+                onblur={() => saveRename(conversation.id)}
+              />
+            {:else if deletingId === conversation.id}
+              <span class="chatting-minus-history-confirm">Delete “{conversation.title}”?</span>
+              <button type="button" onclick={() => deletingId = null}>Cancel</button>
+              <button type="button" class="mod-warning" onclick={() => confirmDelete(conversation.id)}>Delete</button>
+            {:else}
+              <button
+                class="chatting-minus-history-open"
+                type="button"
+                onclick={() => openConversation(conversation.id)}
+                aria-current={conversation.active ? "true" : undefined}
+              >
+                <span class="chatting-minus-history-title">{conversation.title}</span>
+                <span class="chatting-minus-history-date">{formatDate(conversation.updatedAt)}</span>
+              </button>
+              <button
+                class="chatting-minus-icon-btn"
+                type="button"
+                onclick={() => startRename(conversation)}
+                aria-label={`Rename ${conversation.title}`}
+                title="Rename"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+              </button>
+              <button
+                class="chatting-minus-icon-btn"
+                type="button"
+                onclick={() => { renamingId = null; deletingId = conversation.id; }}
+                aria-label={`Delete ${conversation.title}`}
+                title="Delete"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+              </button>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
 
   <!-- Messages -->
   <div class="chatting-minus-messages" bind:this={messagesEl}>
@@ -806,6 +997,7 @@
       </button>
     {/if}
   </div>
+  </div>
 </div>
 
 <style>
@@ -821,16 +1013,16 @@
   .chatting-minus-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
+    gap: 4px;
+    padding: 6px 8px;
     border-bottom: 1px solid var(--background-modifier-border);
     flex-shrink: 0;
   }
 
   .chatting-minus-header-left {
+    flex: 1;
     display: flex;
-    align-items: baseline;
-    gap: 8px;
+    flex-direction: column;
     min-width: 0;
   }
 
@@ -838,6 +1030,151 @@
     font-weight: var(--font-weight-bold, 600);
     font-size: var(--font-ui-medium);
     color: var(--text-normal);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Header and history list icons; 32px for touch. */
+  .chatting-minus-icon-btn {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-s);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .chatting-minus-icon-btn:hover,
+  .chatting-minus-icon-btn.is-active {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
+
+  /* ─── Body: chat, with the history list over it ─────────────────────── */
+  .chatting-minus-body {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chatting-minus-history {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    background: var(--background-primary);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .chatting-minus-history:focus {
+    outline: none;
+  }
+
+  .chatting-minus-history-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 4px 8px;
+  }
+
+  .chatting-minus-history-heading {
+    font-weight: var(--font-weight-bold, 600);
+    color: var(--text-normal);
+  }
+
+  .chatting-minus-history-empty {
+    padding: 12px 4px;
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+  }
+
+  .chatting-minus-history-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .chatting-minus-history-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 44px;
+    padding: 0 4px;
+    border-radius: var(--radius-m);
+  }
+
+  .chatting-minus-history-row.is-active {
+    background: var(--background-modifier-hover);
+  }
+
+  .chatting-minus-history-open {
+    flex: 1;
+    min-width: 0;
+    min-height: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 1px;
+    padding: 4px 6px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    text-align: left;
+    cursor: pointer;
+    height: auto;
+  }
+
+  .chatting-minus-history-title {
+    max-width: 100%;
+    color: var(--text-normal);
+    font-size: var(--font-ui-small);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chatting-minus-history-date {
+    color: var(--text-faint);
+    font-size: var(--font-ui-smaller);
+  }
+
+  .chatting-minus-history-rename {
+    flex: 1;
+    min-width: 0;
+    min-height: 36px;
+  }
+
+  .chatting-minus-history-confirm {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--font-ui-small);
+    color: var(--text-normal);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chatting-minus-history-row button:not(.chatting-minus-icon-btn):not(.chatting-minus-history-open) {
+    min-height: 32px;
   }
 
   .chatting-minus-header-model {
@@ -855,8 +1192,11 @@
     background: none;
     border: none;
     cursor: pointer;
+    min-height: 32px;
     padding: 4px 8px;
     border-radius: var(--radius-s);
+    box-shadow: none;
+    flex-shrink: 0;
   }
 
   .chatting-minus-clear-btn:hover {

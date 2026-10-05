@@ -30,7 +30,8 @@ It is a fork of [Chatting with AI](https://github.com/o1xhack/obsidian-chatting)
 - Selection scope: send selected text to the chat, and edits stay inside it.
 - Image attachments for models that accept images.
 - Model lists loaded from each provider's API.
-- The conversation survives restarts.
+- Named conversations: start a new chat, switch, rename and delete them
+  from a history list; they survive restarts.
 
 ## Quality goals
 

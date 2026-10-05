@@ -3,7 +3,7 @@ import { mount, unmount } from "svelte";
 import type { Component } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
-import type { ToolResult, SelectionScope, ImageAttachment } from "../types";
+import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary } from "../types";
 import { newTurnId } from "../agent/history";
 
 export const VIEW_TYPE_CHAT = "chatting-minus-view";
@@ -19,6 +19,12 @@ interface ChatContainerProps {
   onEdit: (turnId: string, text: string) => void;
   onRegenerate: () => void;
   onCopy: (text: string) => void;
+  title: string;
+  onNewChat: () => void;
+  listConversations: () => ConversationSummary[];
+  onOpenConversation: (id: string) => void;
+  onRenameConversation: (id: string, title: string) => void;
+  onDeleteConversation: (id: string) => void;
 }
 
 interface ChatContainerApi extends Record<string, unknown> {
@@ -39,6 +45,7 @@ interface ChatContainerApi extends Record<string, unknown> {
   clearMessages(): void;
   focus(): void;
   setModel(name: string): void;
+  setTitle(title: string): void;
   setSelection(selection: SelectionScope): void;
   getSelection(): SelectionScope | null;
 }
@@ -99,6 +106,12 @@ export class ObsidianChatView extends ItemView {
         onEdit: (turnId: string, text: string) => void this.editMessage(turnId, text),
         onRegenerate: () => void this.regenerate(),
         onCopy: (text: string) => this.copyAnswer(text),
+        title: this.plugin.activeConversation.title,
+        onNewChat: () => this.newChat(),
+        listConversations: () => this.plugin.listConversations(),
+        onOpenConversation: (id: string) => this.openConversation(id),
+        onRenameConversation: (id: string, title: string) => this.renameConversation(id, title),
+        onDeleteConversation: (id: string) => this.deleteConversation(id),
       },
     });
 
@@ -170,6 +183,52 @@ export class ObsidianChatView extends ItemView {
     this.handleClear();
   }
 
+  // ─── Conversations ──────────────────────────────────────────────────
+  // Switching stops a running turn (as Stop does); what it showed stays in
+  // its conversation.
+
+  /** Start a new conversation (an empty current one is kept instead). */
+  newChat(): void {
+    if (this.running) this.stopTurn();
+    this.plugin.startNewConversation();
+    this.showConversation();
+  }
+
+  /** Switch to conversation `id`. */
+  openConversation(id: string): void {
+    if (id === this.plugin.activeConversationId) return;
+    if (this.running) this.stopTurn();
+    this.plugin.openConversation(id);
+    this.showConversation();
+  }
+
+  /** Rename conversation `id` (empty: back to the automatic title). */
+  renameConversation(id: string, title: string): void {
+    this.plugin.renameConversation(id, title);
+    this.chatContainer?.setTitle(this.plugin.activeConversation.title);
+  }
+
+  /** Delete conversation `id`; for the current one, show the next. */
+  deleteConversation(id: string): void {
+    const active = id === this.plugin.activeConversationId;
+    if (active && this.running) this.stopTurn();
+    this.plugin.deleteConversation(id);
+    if (active) this.showConversation();
+  }
+
+  /** Show the active conversation, ready for input. */
+  private showConversation(): void {
+    const chat = this.chatContainer;
+    this.streaming = null;
+    if (!chat) return;
+    chat.cancelAskUser();
+    this.renderHistory();
+    chat.setTitle(this.plugin.activeConversation.title);
+    chat.setInputEnabled(true);
+    chat.setBusy(false);
+    chat.focus();
+  }
+
   /**
    * Edit and continue: stop a running turn, cut both histories to
    * just before the turn `turnId`, save, and run `text` as a new turn with
@@ -225,6 +284,8 @@ export class ObsidianChatView extends ItemView {
     const turn = ++this.turnCount;
     chat.addUserMessage(text, images, turnId, selection ?? undefined);
     history.push({ type: "user", text, images, turnId, ...(selection ? { selection } : {}) });
+    this.plugin.touchConversation();
+    chat.setTitle(this.plugin.activeConversation.title);
     chat.setInputEnabled(false);
     chat.setBusy(true);
 
@@ -345,6 +406,8 @@ export class ObsidianChatView extends ItemView {
     this.plugin.agent.clear();
     this.streaming = null;
     this.plugin.chatHistory = [];
+    this.plugin.touchConversation();
+    this.chatContainer?.setTitle(this.plugin.activeConversation.title);
     this.chatContainer?.clearMessages();
     this.running = false;
     this.chatContainer?.cancelAskUser();

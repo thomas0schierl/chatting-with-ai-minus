@@ -28,16 +28,17 @@ main.ts ──▶ settings.ts ─────────────┐
 
 All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
 `images.ts` (image limits and re-encoding) serves the image tools;
-`chat-state.ts` (format and migrations of `chat-state.json`) serves `main.ts`.
+`chat-state.ts` (conversation records, format and migrations of
+`chat-state.json`) serves `main.ts`.
 
 ## Modules
 
 | Module | Responsibility |
 |---|---|
-| `main.ts` | Plugin entry. Loads and saves settings (`data.json`) and API keys (SecretStorage), loads and saves chat history (`chat-state.json`, through `chat-state.ts`), wires the ChatGPT OAuth service, registers the view, ribbon icon, commands and context menus. |
+| `main.ts` | Plugin entry. Loads and saves settings (`data.json`) and API keys (SecretStorage), holds the conversations (the active one's API history lives in the agent loop), creates, switches, renames and deletes them, loads and saves them (`chat-state.json`, through `chat-state.ts`), wires the ChatGPT OAuth service, registers the view, ribbon icon, commands and context menus. |
 | `settings.ts` | Settings tab: provider, API key or ChatGPT connect/disconnect, model picker with catalog refresh, thinking level, web search, iteration limit. Also the device-login modal and the chat header label. |
-| `ui/chat-view.ts` | Obsidian `ItemView` that mounts the Svelte component and connects its events to the agent loop callbacks; turns text deltas into a growing assistant message. Gives each user turn its ID; edit and regenerate cut both histories before a turn and run it again; copies an answer's Markdown. |
-| `ui/ChatContainer.svelte` | The whole chat UI: messages (rendered as Obsidian Markdown, a streamed answer at most every 100 ms), tool cards, thinking indicator, selection pill, image tray (an image no longer saved shows as a chip with its name), input with send and stop. An edit action and inline edit box on user messages; Copy under finished answers, Regenerate under the last. Keeps the latest question at the top while its answer arrives. |
+| `ui/chat-view.ts` | Obsidian `ItemView` that mounts the Svelte component and connects its events to the agent loop callbacks; turns text deltas into a growing assistant message. Gives each user turn its ID; edit and regenerate cut both histories before a turn and run it again; copies an answer's Markdown. New chat, switching and deleting the current conversation stop a running turn first, then show the other conversation. |
+| `ui/ChatContainer.svelte` | The whole chat UI: a header with the conversation title, model, history and New chat buttons; the history list (a drawer over the chat: open, rename inline, delete with confirmation); messages (rendered as Obsidian Markdown, a streamed answer at most every 100 ms), tool cards, thinking indicator, selection pill, image tray (an image no longer saved shows as a chip with its name), input with send and stop. An edit action and inline edit box on user messages; Copy under finished answers, Regenerate under the last. Keeps the latest question at the top while its answer arrives. |
 | `ui/math-markdown.ts` | Converts `\(…\)`, `\[…\]` and math code fences to Obsidian's `$`/`$$` at render time, leaving code untouched. |
 | `agent/loop.ts` | The agent loop: owns the message history (each user turn starts with a message carrying its turn ID) and cuts it before a turn, calls the provider, passes text deltas to the view, runs tools, handles stop (aborts the request) and `ask_user`, writes the debug log. |
 | `agent/history.ts` | Trims and cuts history only at the start of a user turn, so a tool call is never separated from its result. Creates turn IDs and adds them to chats saved without them. |
@@ -58,7 +59,7 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
 | `tools/canvas.ts` | JSON Canvas 1.0 without vault access: parse, write in Obsidian's format, the outline for `read_canvas`, the `edit_canvas` operations (IDs, placement without overlap, validation) and the searchable canvas text. |
 | `tools/canvas-render.ts` | Draws a canvas for `view_canvas` with Canvas 2D: layout and scaling (whole canvas or one group or node), groups, cards with plain text, image files, links, edges with arrows and labels, colour presets, an ID tag per node, and the text legend. The drawing surface and image loading are passed in, so tests use fakes. |
 | `images.ts` | Image limits (5 MB, 2048 px long side) and re-encoding via `createImageBitmap` and `<canvas>`, shared by the image tools. Attachments in `ChatContainer.svelte` still have their own copy. |
-| `chat-state.ts` | The saved chat's format and version, the one-time migrations from older versions (turn IDs for chats saved without them; image data dropped from the visible history), and storing each image once: the visible history keeps an image's name, type and size, and gets its data back from the API history on load. |
+| `chat-state.ts` | The conversation record, the saved format and its version, titles (first user message), per-conversation caps, the one-time migrations from older versions (turn IDs for chats saved without them; image data dropped from the visible history; the single chat becoming the first conversation), and storing each image once: the visible history keeps an image's name, type and size, and gets its data back from the API history on load. |
 | `types.ts` | Settings, unified message and response types, defaults. |
 | `plugin-id.ts` | The plugin ID, used for keychain keys, paths and User-Agents. |
 

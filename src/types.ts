@@ -143,6 +143,16 @@ export interface ChatHistoryEntry {
   toolResult?: { result: string; isError: boolean };
 }
 
+/** A row of the chat view's history list. */
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  /** Last use, in ms. */
+  updatedAt: number;
+  /** The conversation shown now. */
+  active: boolean;
+}
+
 // ─── Tool Execution ─────────────────────────────────────────────────────────
 
 export interface ToolResult {

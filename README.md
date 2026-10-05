@@ -16,6 +16,10 @@ It works the same on desktop, iPhone, iPad and Android.
   rename and trash notes, change frontmatter, find backlinks, read and edit
   canvases, look at images and canvases, and ask you when something is
   unclear.
+- **Conversations:** start a new chat at any time; switch, rename and
+  delete earlier chats from the history list. *Chat about this note* and
+  *Send selection to Chat* start a new chat. The chat that was open comes
+  back after a restart.
 - **Selection scope:** select text in a note, choose *Send selection to
   Chat*, and the AI changes only that text.
 - **Images:** attach or paste up to four images per message, for models
@@ -57,8 +61,9 @@ signs in separately.
   Nothing is sent in the background, and there is no vault index.
 - **API keys and ChatGPT tokens:** stored in your OS keychain, never in
   plugin files.
-- **Chat history:** stored locally in `chat-state.json` in the plugin
-  folder.
+- **Chat history:** all conversations are stored locally in
+  `chat-state.json` in the plugin folder; deleting a conversation removes
+  it from there.
 
 ## Credits and licence
 

@@ -7,12 +7,24 @@ import {
   TFile,
   type TAbstractFile,
 } from "obsidian";
-import type { ChatSettings, SelectionScope, ChatHistoryEntry } from "./types";
+import type { ChatSettings, SelectionScope, ChatHistoryEntry, ConversationSummary } from "./types";
 import { DEFAULT_SETTINGS, DEFAULT_PROVIDER_MODELS } from "./types";
 import { ChatSettingTab, getModelHeaderLabel } from "./settings";
 import { ObsidianChatView, VIEW_TYPE_CHAT } from "./ui/chat-view";
 import { AgentLoop } from "./agent/loop";
-import { CHAT_STATE_VERSION, migrateChatState, restoreImages, withoutImageData, type ChatState } from "./chat-state";
+import {
+  CHAT_STATE_VERSION,
+  conversationTitle,
+  isEmptyConversation,
+  migrateChatState,
+  newConversation,
+  newestFirst,
+  restoreImages,
+  savedConversation,
+  SAVED_MESSAGES,
+  type ChatState,
+  type ConversationRecord,
+} from "./chat-state";
 import { ChatGPTOAuthStore } from "./auth/chatgptOAuthStore";
 import { ChatGPTOAuthService } from "./auth/chatgptOAuth";
 import { cachedCatalog, catalogIdentity, normalizeCatalogState } from "./api/model-catalog";
@@ -26,10 +38,28 @@ export default class ChatPlugin extends Plugin {
   agent!: AgentLoop;
   /** ChatGPT OAuth service (used by the chatgpt-oauth provider). */
   chatgptOAuth!: ChatGPTOAuthService;
-  /** Chat messages for replaying into the UI when the view reopens */
-  chatHistory: ChatHistoryEntry[] = [];
+  /**
+   * All conversations. The active one's API history lives in `agent` and
+   * is copied into its record when saving or switching.
+   */
+  conversations: ConversationRecord[] = [newConversation()];
+  activeConversationId = this.conversations[0].id;
   /** Set once the saved chat has been read; saving earlier would overwrite it with an empty one. */
   private chatHistoryLoaded = false;
+
+  get activeConversation(): ConversationRecord {
+    return this.conversations.find((conversation) => conversation.id === this.activeConversationId)
+      ?? this.conversations[0];
+  }
+
+  /** The active conversation's messages, for replaying into the UI when the view reopens. */
+  get chatHistory(): ChatHistoryEntry[] {
+    return this.activeConversation.chatHistory;
+  }
+
+  set chatHistory(entries: ChatHistoryEntry[]) {
+    this.activeConversation.chatHistory = entries;
+  }
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -61,6 +91,9 @@ export default class ChatPlugin extends Plugin {
           item.setTitle("Open chat").setIcon("message-circle").onClick(() => void this.openChat())
         );
         menu.addItem((item) =>
+          item.setTitle("New chat").setIcon("square-pen").onClick(() => void this.newChat())
+        );
+        menu.addItem((item) =>
           item.setTitle("Chat about active note").setIcon("file-text").onClick(() => void this.chatAboutActiveNote())
         );
         menu.addItem((item) =>
@@ -78,6 +111,12 @@ export default class ChatPlugin extends Plugin {
       id: "open-chat",
       name: "Open chat",
       callback: () => void this.openChat(),
+    });
+
+    this.addCommand({
+      id: "new-chat",
+      name: "New chat",
+      callback: () => void this.newChat(),
     });
 
     this.addCommand({
@@ -201,11 +240,15 @@ export default class ChatPlugin extends Plugin {
     await this.activateView();
     const view = this.getChatView();
     if (view) {
-      window.setTimeout(() => view.sendMessage(message), 100);
+      // A new topic: in a new conversation, like the chat apps.
+      window.setTimeout(() => {
+        view.newChat();
+        view.sendMessage(message);
+      }, 100);
     }
   }
 
-  /** Open chat with a selection scope (shows pill, user types their own question) */
+  /** Open a new chat with a selection scope (shows pill, user types their own question) */
   private async openChatWithSelection(selection: SelectionScope): Promise<void> {
     if (!this.isProviderConfigured()) {
       new Notice(this.notConfiguredMessage());
@@ -215,6 +258,7 @@ export default class ChatPlugin extends Plugin {
     const view = this.getChatView();
     if (view) {
       window.setTimeout(() => {
+        view.newChat();
         view.setSelection(selection);
         view.focus();
       }, 100);
@@ -290,16 +334,106 @@ export default class ChatPlugin extends Plugin {
     }
   }
 
+  /** Opens the chat on a new conversation. */
+  private async newChat(): Promise<void> {
+    const view = this.getChatView();
+    if (view) view.newChat();
+    else this.startNewConversation();
+    await this.openChat();
+  }
+
+  // ─── Conversations ──────────────────────────────────────────────────
+  // The view stops a running turn before calling these.
+
+  /** Conversations with content, most recently used first (the history list). */
+  listConversations(): ConversationSummary[] {
+    this.storeActiveMessages();
+    return newestFirst(this.conversations)
+      .filter((conversation) => !isEmptyConversation(conversation))
+      .map(({ id, title, updatedAt }) => ({ id, title, updatedAt, active: id === this.activeConversationId }));
+  }
+
+  /** Makes a new empty conversation active; an empty active one is kept instead. */
+  startNewConversation(): void {
+    this.storeActiveMessages();
+    if (isEmptyConversation(this.activeConversation)) return;
+    const conversation = newConversation();
+    this.conversations.push(conversation);
+    this.activate(conversation);
+  }
+
+  /** Makes conversation `id` active. */
+  openConversation(id: string): void {
+    const next = this.conversations.find((conversation) => conversation.id === id);
+    if (!next || next.id === this.activeConversationId) return;
+    this.storeActiveMessages();
+    this.activate(next);
+  }
+
+  /** Renames conversation `id`; an empty name goes back to the automatic title. */
+  renameConversation(id: string, title: string): void {
+    const conversation = this.conversations.find((item) => item.id === id);
+    if (!conversation) return;
+    const name = title.replace(/\s+/g, " ").trim();
+    conversation.customTitle = name !== "";
+    conversation.title = name || conversationTitle(conversation.chatHistory);
+    void this.saveChatHistory();
+  }
+
+  /** Deletes conversation `id`; deleting the active one opens the most recent other, or a new one. */
+  deleteConversation(id: string): void {
+    const deleted = this.conversations.find((conversation) => conversation.id === id);
+    if (!deleted) return;
+    this.conversations = this.conversations.filter((conversation) => conversation !== deleted);
+    if (deleted.id === this.activeConversationId) {
+      const next = newestFirst(this.conversations)[0] ?? newConversation();
+      if (!this.conversations.includes(next)) this.conversations.push(next);
+      this.agent.abort();
+      this.activeConversationId = next.id;
+      this.agent.importMessages(next.agentMessages);
+    }
+    void this.saveChatHistory();
+  }
+
+  /** Called when a turn starts or the conversation is cleared: order and title. */
+  touchConversation(): void {
+    const conversation = this.activeConversation;
+    conversation.updatedAt = Date.now();
+    if (!conversation.customTitle) conversation.title = conversationTitle(conversation.chatHistory);
+  }
+
+  /** Switches the agent to `next`; an empty conversation left behind is dropped. */
+  private activate(next: ConversationRecord): void {
+    const previous = this.activeConversation;
+    this.agent.abort();
+    this.activeConversationId = next.id;
+    // A new history array: OpenAI can't chain to the other conversation's responses.
+    this.agent.importMessages(next.agentMessages);
+    if (previous !== next && isEmptyConversation(previous)) {
+      this.conversations = this.conversations.filter((conversation) => conversation !== previous);
+    }
+    void this.saveChatHistory();
+  }
+
+  /** Copies the agent's history into the active conversation's record. */
+  private storeActiveMessages(): void {
+    if (this.agent) this.activeConversation.agentMessages = this.agent.exportMessages(SAVED_MESSAGES);
+  }
+
   // ─── Chat history persistence ─────────────────────────────────────────
 
   async saveChatHistory(): Promise<void> {
     if (!this.chatHistoryLoaded) return;
     try {
+      this.storeActiveMessages();
       const state: ChatState = {
         version: CHAT_STATE_VERSION,
-        // Cap at 100 UI messages; image data is kept only in the API history
-        chatHistory: withoutImageData(this.chatHistory.slice(-100)),
-        agentMessages: this.agent.exportMessages(80), // Keep complete API turns
+        activeConversationId: this.activeConversationId,
+        // Per conversation: the last 100 UI entries and 80 API messages
+        // (complete turns); image data only in the API history.
+        conversations: this.conversations
+          .filter((conversation) => conversation.id === this.activeConversationId || !isEmptyConversation(conversation))
+          .map(savedConversation),
       };
       await this.app.vault.adapter.write(
         this.chatStatePath,
@@ -315,8 +449,12 @@ export default class ChatPlugin extends Plugin {
       const raw = await this.app.vault.adapter.read(this.chatStatePath);
       const state = migrateChatState(JSON.parse(raw));
       if (!state) return;
-      this.agent.importMessages(state.agentMessages);
-      this.chatHistory = restoreImages(state.chatHistory, this.agent.exportMessages());
+      for (const conversation of state.conversations) {
+        conversation.chatHistory = restoreImages(conversation.chatHistory, conversation.agentMessages);
+      }
+      this.conversations = state.conversations;
+      this.activeConversationId = state.activeConversationId;
+      this.agent.importMessages(this.activeConversation.agentMessages);
     } catch {
       // No saved state or parse error — start fresh
     } finally {

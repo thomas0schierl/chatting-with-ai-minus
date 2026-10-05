@@ -200,7 +200,7 @@ export function fakeChat() {
     showAskUser(question) { chat.addAssistantMessage(question); return new Promise(resolve => { chat.askUser = resolve; }); },
     cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
     setInputEnabled() {}, setBusy(value) { chat.busy = value; },
-    clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setSelection() {}, getSelection: () => null,
+    clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle(value) { chat.title = value; }, setSelection() {}, getSelection: () => null,
   };
   return chat;
 }

@@ -16,10 +16,11 @@
 3. Create the `AgentLoop` with the shared settings object.
 4. `loadChatHistory()`: read `chat-state.json` and bring it to the current
    format (`migrateChatState()`; each migration runs once, the next save
-   writes the new version). Import the API messages (trimmed to 40), then
-   give the visible history's images their data from the API messages
-   (same image ID); an image no longer there keeps only its name and is
-   shown as a chip. Until this has finished, `saveChatHistory()` does
+   writes the new version). In each conversation, give the visible
+   history's images their data from its API messages (same image ID); an
+   image no longer there keeps only its name and is shown as a chip. Make
+   the saved active conversation active again and import its API messages
+   into the agent loop (trimmed to 40). Until this has finished, `saveChatHistory()` does
    nothing, so an early unload can't overwrite the saved chat.
 5. Register the settings tab, view, ribbon icon, commands and menus.
 
@@ -113,6 +114,44 @@ result.
 **Copy:** the action under each finished answer copies its Markdown
 source (the text as received, before math conversion) and shows
 "Copied". Answers still streaming have no actions.
+
+## Conversations
+
+`plugin.conversations` holds every conversation (`ConversationRecord`:
+ID, title, `customTitle`, times, visible and API history).
+`plugin.chatHistory` is the active one's visible history. Its API history
+lives in the `AgentLoop` and is copied into the record when saving,
+switching or listing.
+
+1. **New chat** (header button, history list, command, ribbon menu):
+   `ObsidianChatView.newChat()` stops a running turn (as **Stop**: the text
+   shown so far stays in that conversation), then
+   `startNewConversation()` adds an empty conversation and activates it. If
+   the current one is still empty, it stays instead. *Chat about this
+   note* and *Send selection to Chat* (commands, context menus) start a
+   new chat the same way before sending or showing the selection.
+2. **Switch** (a row of the history list): the same stop, then
+   `openConversation(id)`. **Activating** aborts the loop and imports the
+   conversation's API history (`importMessages()`): a different array, and
+   the OpenAI chaining state is cleared, so the first request replays that
+   conversation in full and never chains to another conversation's
+   response. An empty conversation left behind is dropped. The view shows
+   the new history and title; then save.
+3. **Title:** each turn start (and Clear) sets `updatedAt` and, unless
+   renamed, the title from the first user message (one line, at most 40
+   characters, or the first image's name). Editing the first message
+   changes it.
+4. **Rename** (pencil in the list): inline field; Enter or leaving it
+   saves, Esc cancels. An empty name returns to the automatic title.
+5. **Delete** (bin in the list, then *Delete* to confirm): removes the
+   record. For the current conversation, the running turn stops first and
+   the most recently used other one opens, or a new empty one if none is
+   left.
+6. **List:** conversations with content, most recently used first; an
+   empty new chat isn't listed. Escape or the history button closes it.
+
+**Clear** (header, command) empties the current conversation's histories;
+it stays active and, being empty, leaves the list.
 
 ## Provider requests
 

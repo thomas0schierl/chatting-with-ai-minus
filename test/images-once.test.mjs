@@ -28,7 +28,7 @@ test('The saved chat holds each image\'s data once, in the API history', async (
   assert.equal(saved.version, api.chatState.CHAT_STATE_VERSION);
   assert.equal(count(json, one.data), 1);
   assert.equal(count(json, two.data), 1);
-  const entry = saved.chatHistory.find(e => e.type === 'user');
+  const entry = saved.conversations[0].chatHistory.find(e => e.type === 'user');
   assert.deepEqual(entry.images, [
     { id: 'one', fileName: 'one.png', mediaType: 'image/png', sizeBytes: one.sizeBytes },
     { id: 'two', fileName: 'two.png', mediaType: 'image/png', sizeBytes: two.sizeBytes },
@@ -100,7 +100,7 @@ test('A legacy chat (no version) is migrated once: turn IDs, image data only in 
   assert.equal(count(json, one.data), 1);
   assert.equal(count(json, two.data), 0);
 
-  // A state already in the current format is taken as it is.
-  const current = { version: api.chatState.CHAT_STATE_VERSION, chatHistory: [{ type: 'user', text: 'Q', images: [one] }], agentMessages: [] };
-  assert.deepEqual(api.chatState.migrateChatState(current).chatHistory, current.chatHistory);
+  // A version 2 state isn't stripped again (that migration ran already).
+  const v2 = { version: 2, chatHistory: [{ type: 'user', text: 'Q', images: [one] }], agentMessages: [] };
+  assert.deepEqual(api.chatState.migrateChatState(v2).conversations[0].chatHistory, v2.chatHistory);
 });

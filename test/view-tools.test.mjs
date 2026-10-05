@@ -152,7 +152,7 @@ for (const provider of ['anthropic', 'openai', 'chatgpt-oauth']) {
 
     // Restored history replays the image in full.
     const restored = new api.AgentLoop(app, settings(provider));
-    restored.importMessages(JSON.parse(writes[0]).agentMessages);
+    restored.importMessages(JSON.parse(writes[0]).conversations[0].agentMessages);
     const requests = transport(() => response(provider, [text('Still a cat')]));
     await restored.run('And now?', callbacks());
     assert.equal(imageOf(provider, { ...requests[0], messages: requests[0].messages?.slice(0, 3) }), expected);
