@@ -11,9 +11,14 @@ Chatting with AI Minus is an Obsidian plugin for chatting with an AI that
 can read, search, create and edit notes in the vault through tools. It runs
 the same on desktop, iOS and Android.
 
+The aim is the feel of the ChatGPT, Claude and Codex apps (editing and
+regenerating messages, voice, many conversations), but inside Obsidian and
+working on the user's notes. What those apps do that we don't yet is
+tracked as gaps in [11](11-risks-and-technical-debt.md).
+
 It is a fork of [Chatting with AI](https://github.com/o1xhack/obsidian-chatting)
 (o1xhack), which derives from [Obsidian Chat](https://github.com/omarshahine/obsidian-chat)
-(Omar Shahine). The fork keeps the feature set small and the code simple.
+(Omar Shahine). The fork keeps the code simple.
 
 ## Main features
 
@@ -31,9 +36,10 @@ It is a fork of [Chatting with AI](https://github.com/o1xhack/obsidian-chatting)
 | Priority | Goal | Meaning |
 |---|---|---|
 | 1 | Mobile parity | Every feature works on iOS and Android exactly as on desktop. |
-| 2 | Simplicity | Few features, little code, no clever abstractions (KISS). |
-| 3 | Safe user data | Credentials never leave the OS keychain; notes and chat history are never lost or sent anywhere unasked. |
-| 4 | Provider resilience | New models work without a plugin update; provider changes fail with a clear message. |
+| 2 | Familiar app feel | Someone used to the ChatGPT or Claude app finds the same interactions and responsiveness. |
+| 3 | Simplicity | Little code, no clever abstractions (KISS); a feature earns its place by serving goal 2 or the vault work. |
+| 4 | Safe user data | Credentials never leave the OS keychain; notes and chat history are never lost or sent anywhere unasked. |
+| 5 | Provider resilience | New models work without a plugin update; provider changes fail with a clear message. |
 
 Details and test scenarios: [10](10-quality-requirements.md).
 
