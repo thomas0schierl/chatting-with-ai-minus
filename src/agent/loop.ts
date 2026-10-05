@@ -85,6 +85,11 @@ export class AgentLoop {
     resetProviderState();
   }
 
+  /** Nothing in the API history yet. */
+  isEmpty(): boolean {
+    return this.messages.length === 0;
+  }
+
   /** Export the full conversation as a readable markdown transcript */
   exportTranscript(): string {
     const systemPrompt = buildSystemPrompt();

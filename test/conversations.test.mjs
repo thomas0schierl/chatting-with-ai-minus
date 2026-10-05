@@ -247,6 +247,26 @@ test('"Chat about this note" and "Send selection to chat" start a new conversati
   assert.deepEqual(selected, [{ text: 'Some words', filePath: 'Notes/Plan.md' }]);
 });
 
+test('Copy transcript: refused while the conversation is empty, else its Markdown', async () => {
+  const { plugin, view } = await chatSetup('anthropic');
+  answering('anthropic');
+  const copied = [];
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, writable: true, value: { clipboard: { writeText: async text => { copied.push(text); } } } });
+  try {
+    plugin.shareTranscript();
+    assert.deepEqual(globalThis.__notices, ['Conversation is empty.']);
+    assert.deepEqual(copied, []);
+    await view.handleUserMessage('Question', null);
+    plugin.shareTranscript();
+    await tick();
+    assert.match(copied[0], /## Conversation\n\n### User\n\n[\s\S]*Question\n\n### Assistant\n\nA1/);
+    assert.equal(globalThis.__notices.at(-1), 'Transcript copied to clipboard.');
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'navigator', previous); else delete globalThis.navigator;
+  }
+});
+
 test('Commands act on the chat view as soon as its UI is mounted, not after a fixed delay', async () => {
   const { plugin, view, chat, app } = await chatSetup('anthropic');
   plugin.isProviderConfigured = () => true;

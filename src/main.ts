@@ -332,20 +332,14 @@ export default class ChatPlugin extends Plugin {
     return null;
   }
 
+  /** Copy the current conversation's API history as Markdown (for debugging). */
   private shareTranscript(): void {
-    const view = this.getChatView();
-    if (!view) {
-      new Notice("No active conversation.");
-      return;
-    }
-
-    const transcript = view.getTranscript();
-    if (!transcript || transcript.endsWith("## Conversation\n\n")) {
+    if (this.agent.isEmpty()) {
       new Notice("Conversation is empty.");
       return;
     }
 
-    navigator.clipboard.writeText(transcript).then(() => {
+    navigator.clipboard.writeText(this.agent.exportTranscript()).then(() => {
       new Notice("Transcript copied to clipboard.");
     }).catch(() => {
       new Notice("Failed to copy transcript.");
