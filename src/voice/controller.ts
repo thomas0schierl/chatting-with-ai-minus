@@ -22,7 +22,7 @@ export type VoiceStatus = "connecting" | "reconnecting" | "listening" | "thinkin
 /** What the voice bar shows. */
 export interface VoiceViewState {
   status: VoiceStatus;
-  /** The user's latest words (live caption). */
+  /** The user's current words (live caption); cleared once the voice answers. */
   you: string;
   /** The voice's latest words. */
   assistant: string;
@@ -198,8 +198,10 @@ export class VoiceController {
         this.caption("assistant", event.text);
         break;
       case "turn-done":
-        if (event.role === "user") this.update({ you: event.text });
-        else this.update({ assistant: event.text });
+        // A user turn reported after the voice already answered doesn't bring the old words back.
+        if (event.role === "user") {
+          if (this.lastSpeaker !== "assistant") this.update({ you: event.text });
+        } else this.update({ assistant: event.text });
         break;
       case "delegation":
         void this.delegate(event.id, event.text);
@@ -224,7 +226,8 @@ export class VoiceController {
       this.update({ you: current + text, status: this.voiceTurnRunning ? "thinking" : "listening" });
       return;
     }
-    this.update({ assistant: current + text, status: "speaking" });
+    // `you` is the user's current words only: they go once the voice answers.
+    this.update({ assistant: current + text, you: "", status: "speaking" });
     window.clearTimeout(this.speakingTimer);
     this.speakingTimer = window.setTimeout(() => {
       if (!this.ended) this.update({ status: this.voiceTurnRunning ? "thinking" : "listening" });

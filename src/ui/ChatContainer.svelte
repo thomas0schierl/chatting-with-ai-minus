@@ -86,9 +86,16 @@
   };
 
   /** The end of a long caption line. */
-  function captionTail(text: string): string {
+  function captionTail(text: string, max = 80): string {
     const trimmed = text.trim();
-    return trimmed.length > 160 ? `…${trimmed.slice(-160)}` : trimmed;
+    return trimmed.length > max ? `…${trimmed.slice(-max)}` : trimmed;
+  }
+
+  /** The voice bar's one line: the user's words while they speak, else the state. */
+  function voiceLine(state: VoiceViewState): string {
+    if (state.you && (state.status === "listening" || state.status === "thinking")) return captionTail(state.you);
+    if (state.status === "listening" && !state.micOn) return state.holdToTalk ? "Hold the microphone to talk" : "Microphone off";
+    return VOICE_STATUS[state.status];
   }
 
   /** Hold to talk: the microphone is on while the button is pressed. */
@@ -1046,49 +1053,56 @@
   {/if}
 
   {#if voice}
-    <div class="chatting-minus-voice-bar" role="region" aria-label="Voice conversation">
-      <div class="chatting-minus-voice-header">
-        <span class="chatting-minus-voice-dot" data-status={voice.status} aria-hidden="true"></span>
-        <span class="chatting-minus-voice-status" aria-live="polite">{VOICE_STATUS[voice.status]}{voice.micOn ? "" : " · mic off"}</span>
-      </div>
-      {#if voice.you || voice.assistant}
-        <div class="chatting-minus-voice-captions">
-          {#if voice.you}<p><span class="chatting-minus-voice-who">You</span> {captionTail(voice.you)}</p>{/if}
-          {#if voice.assistant}<p><span class="chatting-minus-voice-who">Voice</span> {captionTail(voice.assistant)}</p>{/if}
-        </div>
+    <!-- Voice: one row in place of the input, as in the chat apps' voice mode. The request and
+         the answer land in the chat; the bar only shows what it hears right now. -->
+    <div class="chatting-minus-voice-bar" class:has-plan-row={displayProvider === "chatgpt-oauth"} role="region" aria-label="Voice conversation">
+      {#if voice.holdToTalk}
+        <button
+          class="chatting-minus-voice-round chatting-minus-voice-mic chatting-minus-voice-talk"
+          class:is-active={voice.micOn}
+          type="button"
+          aria-pressed={voice.micOn}
+          aria-label="Hold to talk"
+          title="Hold to talk"
+          disabled={voice.status === "connecting" || voice.status === "reconnecting"}
+          onpointerdown={talkStart}
+          onpointerup={() => onVoice("talk-end")}
+          onpointercancel={() => onVoice("talk-end")}
+          onkeydown={(event) => talkKey(event, true)}
+          onkeyup={(event) => talkKey(event, false)}
+          oncontextmenu={(event) => event.preventDefault()}
+        ><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg></button>
+      {:else}
+        <button
+          class="chatting-minus-voice-round chatting-minus-voice-mic"
+          class:is-muted={!voice.micOn}
+          type="button"
+          aria-pressed={!voice.micOn}
+          aria-label={voice.micOn ? "Mute microphone" : "Unmute microphone"}
+          title={voice.micOn ? "Mute microphone" : "Unmute microphone"}
+          disabled={voice.status === "connecting" || voice.status === "reconnecting"}
+          onclick={() => onVoice("mute")}
+        >
+          {#if voice.micOn}<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>{:else}<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="2" y2="22"></line><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"></path><path d="M5 10v2a7 7 0 0 0 12 5"></path><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"></path><path d="M9 9v3a3 3 0 0 0 5.12 2.12"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>{/if}
+        </button>
       {/if}
-      <div class="chatting-minus-voice-controls">
+      <div class="chatting-minus-voice-pill" aria-live="polite">
         {#if voice.audioBlocked}
-          <button class="chatting-minus-voice-btn mod-cta" type="button" onclick={() => onVoice("play")}>Tap to play audio</button>
-        {/if}
-        {#if voice.holdToTalk}
-          <button
-            class="chatting-minus-voice-btn chatting-minus-voice-talk"
-            class:is-active={voice.micOn}
-            type="button"
-            aria-pressed={voice.micOn}
-            disabled={voice.status === "connecting" || voice.status === "reconnecting"}
-            onpointerdown={talkStart}
-            onpointerup={() => onVoice("talk-end")}
-            onpointercancel={() => onVoice("talk-end")}
-            onkeydown={(event) => talkKey(event, true)}
-            onkeyup={(event) => talkKey(event, false)}
-            oncontextmenu={(event) => event.preventDefault()}
-          >{voice.micOn ? "Talking…" : "Hold to talk"}</button>
+          <button class="chatting-minus-link-btn" type="button" onclick={() => onVoice("play")}>Tap to play audio</button>
         {:else}
-          <button
-            class="chatting-minus-voice-btn"
-            type="button"
-            aria-pressed={!voice.micOn}
-            disabled={voice.status === "connecting" || voice.status === "reconnecting"}
-            onclick={() => onVoice("mute")}
-          >{voice.micOn ? "Mute" : "Unmute"}</button>
+          <span class="chatting-minus-voice-wave" data-status={voice.status} aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="chatting-minus-voice-line" class:is-words={voice.you && (voice.status === "listening" || voice.status === "thinking")}>{voiceLine(voice)}</span>
         {/if}
-        <button class="chatting-minus-voice-btn chatting-minus-voice-end" type="button" onclick={() => onVoice("end")}>End</button>
       </div>
+      <button
+        class="chatting-minus-voice-round chatting-minus-voice-end"
+        type="button"
+        aria-label="End voice conversation"
+        title="End voice conversation"
+        onclick={() => onVoice("end")}
+      ><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
     </div>
-  {/if}
-
+  {:else}
   <!-- Input bar -->
   <div class="chatting-minus-input-bar" class:has-plan-row={displayProvider === "chatgpt-oauth"}>
     <input
@@ -1157,6 +1171,7 @@
       </button>
     {/if}
   </div>
+  {/if}
   </div>
 </div>
 
@@ -1953,89 +1968,59 @@
   }
 
   /* ─── Voice bar ──────────────────────────────────────────────────────── */
+  /* One row like the input bar: mic, a pill with sound bars and one line, end */
   .chatting-minus-voice-bar {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin: 8px 8px 0;
-    padding: 8px 10px;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--radius-m);
-    background: var(--background-secondary);
-    flex-shrink: 0;
-  }
-
-  .chatting-minus-voice-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: var(--font-ui-small);
-    color: var(--text-muted);
+    padding: 8px 12px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+    animation: chatting-minus-voice-in 200ms ease-out;
   }
 
-  .chatting-minus-voice-dot {
-    width: 10px;
-    height: 10px;
+  .chatting-minus-voice-bar.has-plan-row {
+    border-top: none;
+  }
+
+  @keyframes chatting-minus-voice-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .chatting-minus-voice-round {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    padding: 0;
+    border: none;
     border-radius: 50%;
-    background: var(--text-faint);
+    box-shadow: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
     flex-shrink: 0;
   }
 
-  .chatting-minus-voice-dot[data-status="listening"] {
-    background: var(--color-green, var(--interactive-accent));
-  }
-
-  .chatting-minus-voice-dot[data-status="speaking"] {
-    background: var(--interactive-accent);
-    animation: chatting-minus-voice-pulse 1s ease-in-out infinite;
-  }
-
-  .chatting-minus-voice-dot[data-status="thinking"],
-  .chatting-minus-voice-dot[data-status="connecting"],
-  .chatting-minus-voice-dot[data-status="reconnecting"] {
-    background: var(--color-yellow, var(--text-muted));
-    animation: chatting-minus-voice-pulse 1.4s ease-in-out infinite;
-  }
-
-  @keyframes chatting-minus-voice-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.35; }
-  }
-
-  .chatting-minus-voice-captions {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: var(--font-ui-small);
+  .chatting-minus-voice-mic {
+    background: var(--background-modifier-hover);
     color: var(--text-normal);
-    overflow-wrap: anywhere;
   }
 
-  .chatting-minus-voice-captions p {
-    margin: 0;
-  }
-
-  .chatting-minus-voice-who {
-    color: var(--text-muted);
-    font-weight: 600;
-    margin-right: 4px;
-  }
-
-  .chatting-minus-voice-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .chatting-minus-voice-btn {
-    min-height: 34px;
-    padding: 0 14px;
-    border-radius: var(--radius-m);
-    cursor: pointer;
+  .chatting-minus-voice-mic.is-muted {
+    background: var(--background-modifier-error);
+    color: var(--text-error);
   }
 
   .chatting-minus-voice-talk {
-    flex: 1;
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -2047,8 +2032,100 @@
   }
 
   .chatting-minus-voice-end {
-    margin-left: auto;
-    color: var(--text-error);
+    background: var(--color-red, var(--text-error));
+    color: #fff;
+  }
+
+  .chatting-minus-voice-end:hover {
+    opacity: 0.85;
+  }
+
+  /* Takes the input's place and shape */
+  .chatting-minus-voice-pill {
+    flex: 1;
+    min-width: 0;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    border: 1.5px solid var(--background-modifier-border-hover, var(--background-modifier-border));
+    border-radius: 20px;
+    background: var(--background-secondary);
+    font-size: var(--font-ui-small);
+  }
+
+  .chatting-minus-voice-line {
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* What it hears right now */
+  .chatting-minus-voice-line.is-words {
+    color: var(--text-normal);
+  }
+
+  /* Five sound bars: calm while listening, shimmering while busy, bouncing while speaking */
+  .chatting-minus-voice-wave {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  .chatting-minus-voice-wave i {
+    display: block;
+    width: 3px;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--text-muted);
+    transform: scaleY(0.3);
+  }
+
+  .chatting-minus-voice-wave i:nth-child(2) { animation-delay: 120ms; }
+  .chatting-minus-voice-wave i:nth-child(3) { animation-delay: 240ms; }
+  .chatting-minus-voice-wave i:nth-child(4) { animation-delay: 360ms; }
+  .chatting-minus-voice-wave i:nth-child(5) { animation-delay: 480ms; }
+
+  .chatting-minus-voice-wave[data-status="listening"] i {
+    background: var(--color-green, var(--interactive-accent));
+    animation: chatting-minus-voice-breathe 2.4s ease-in-out infinite;
+  }
+
+  .chatting-minus-voice-wave[data-status="speaking"] i {
+    background: var(--interactive-accent);
+    animation: chatting-minus-voice-bounce 0.9s ease-in-out infinite;
+  }
+
+  .chatting-minus-voice-wave[data-status="thinking"] i,
+  .chatting-minus-voice-wave[data-status="connecting"] i,
+  .chatting-minus-voice-wave[data-status="reconnecting"] i {
+    animation: chatting-minus-voice-shimmer 1.2s ease-in-out infinite;
+  }
+
+  @keyframes chatting-minus-voice-breathe {
+    0%, 100% { transform: scaleY(0.3); }
+    50% { transform: scaleY(0.55); }
+  }
+
+  @keyframes chatting-minus-voice-bounce {
+    0%, 100% { transform: scaleY(0.3); }
+    50% { transform: scaleY(1); }
+  }
+
+  @keyframes chatting-minus-voice-shimmer {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chatting-minus-voice-bar,
+    .chatting-minus-voice-wave i {
+      animation: none;
+    }
   }
 
   /* ─── Selection Pill ─────────────────────────────────────────────────── */

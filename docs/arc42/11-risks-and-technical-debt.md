@@ -67,8 +67,8 @@ gap or drop.
   In the iOS and Android apps: WebRTC, the microphone prompt and a
   denial, autoplay, earpiece vs speaker, echo causing false interruptions
   on speaker, screen lock.
-- Voice: small talk the voice model handles itself appears only in the
-  live caption, not in the chat history. GPT-Live's delegation carries no
+- Voice: small talk the voice model handles itself is only heard; it
+  isn't written anywhere (the voice bar shows only the user's words). GPT-Live's delegation carries no
   text; the request is the transcript since the last delegation, which
   may be cut or include words that weren't meant for it.
 - Back from the background (ADR-15), on iOS and Android: leave the app

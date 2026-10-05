@@ -313,6 +313,22 @@ test('Public delegation: the transcript gathered since the last one runs as a ch
   view.endVoice();
 });
 
+test('The live caption holds only the current words: cleared once the voice answers, not restored by a late user turn', async () => {
+  const { view, chat } = await voiceSetup({ codex: true });
+  serve({});
+  await startListening(view, chat);
+  const ch = channel();
+  ch.receive({ type: 'input_transcript.added', item: { text: 'Hello there' } });
+  assert.equal(chat.voice.you, 'Hello there');
+  ch.receive({ type: 'output_transcript.added', item: { text: 'Hi!' } });
+  assert.equal(chat.voice.you, '');
+  ch.receive({ type: 'turn.done', turn: { role: 'user', transcript: 'Hello there' } });
+  assert.equal(chat.voice.you, '');
+  ch.receive({ type: 'input_transcript.added', item: { text: 'Next' } });
+  assert.equal(chat.voice.you, 'Next');
+  view.endVoice();
+});
+
 test('Codex dialect: the delegation text runs as the turn; progress and the answer go back as ≤500-byte delegation.context.append chunks', async () => {
   const { view, plugin, chat } = await voiceSetup({ codex: true });
   const answer = '日本語のメモです。'.repeat(60);
