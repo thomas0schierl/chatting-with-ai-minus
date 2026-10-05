@@ -147,7 +147,8 @@ test('Anthropic: thinking/signatures/redacted thinking/search/citations replay u
   const messages = [{ role: 'user', content: [text('Read'), { type: 'image', image }] }];
   const requests = transport((body, index) => response('anthropic', index ? [text('Done')] : raw, index ? 'end_turn' : 'tool_use'));
   const first = await api.sendAnthropicMessage(settings('anthropic'), messages, [], 'System');
-  assert.deepEqual(first.content.map(block => block.type), ['text', 'tool_use']);
+  assert.deepEqual(first.content.map(block => block.type), ['text', 'tool_use', 'text']);
+  assert.equal(first.content[2].text, '\n\nSources:\n- [https://example.com](https://example.com)');
   messages.push(assistant(first), { role: 'user', content: [result('read', 'Contents', true)] });
   await api.sendAnthropicMessage(settings('anthropic'), JSON.parse(JSON.stringify(messages)), [], 'System');
   assert.deepEqual(requests[1].messages[1].content, raw);
@@ -155,6 +156,44 @@ test('Anthropic: thinking/signatures/redacted thinking/search/citations replay u
   assert.equal(requests[1].messages[2].content[0].is_error, true);
   assert.equal(requests[1].system[0].cache_control.type, 'ephemeral');
   assert.equal(requests[1].tools.at(-1).cache_control.type, 'ephemeral');
+});
+
+test('Anthropic web search as documented: results stay encrypted for replay, cited pages follow the answer', async () => {
+  // Stream shape from the web search tool docs (docs.claude.com, "Web search tool").
+  const result = { type: 'web_search_result', url: 'https://en.wikipedia.org/wiki/Claude_Shannon', title: 'Claude Shannon - Wikipedia', encrypted_content: 'fake-encrypted', page_age: 'April 30, 2025' };
+  const citation = { type: 'web_search_result_location', url: result.url, title: result.title, encrypted_index: 'fake-index', cited_text: 'Claude Elwood Shannon (April 30, 1916' };
+  const failed = { type: 'web_search_tool_result_error', error_code: 'max_uses_exceeded' };
+  const start = (index, content_block) => ({ type: 'content_block_start', index, content_block });
+  const delta = (index, value) => ({ type: 'content_block_delta', index, delta: value });
+  const stop = index => ({ type: 'content_block_stop', index });
+  const events = [
+    { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', content: [], usage: { input_tokens: 10, output_tokens: 1 } } },
+    start(0, { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search' }),
+    delta(0, { type: 'input_json_delta', partial_json: '{"query":"claude shannon' }), delta(0, { type: 'input_json_delta', partial_json: ' birth date"}' }), stop(0),
+    start(1, { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_1', content: [result] }), stop(1),
+    start(2, { type: 'server_tool_use', id: 'srvtoolu_2', name: 'web_search' }), stop(2),
+    start(3, { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_2', content: failed }), stop(3),
+    start(4, { type: 'text', text: '' }), delta(4, { type: 'text_delta', text: 'Based on the search results, ' }), stop(4),
+    start(5, { type: 'text', text: '' }), delta(5, { type: 'citations_delta', citation }), delta(5, { type: 'text_delta', text: 'Claude Shannon was born on April 30, 1916.' }), stop(5),
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 5 } }, { type: 'message_stop' },
+  ];
+  const requests = transport((body, index) => index ? response('anthropic', [text('Done')]) : sse(events));
+  const messages = [{ role: 'user', content: 'When was Claude Shannon born?' }];
+  const first = await api.sendAnthropicMessage(settings('anthropic'), messages, [], 'System');
+  assert.equal(first.content.map(block => block.text).join(''),
+    'Based on the search results, Claude Shannon was born on April 30, 1916.\n\nSources:\n- [Claude Shannon - Wikipedia](https://en.wikipedia.org/wiki/Claude_Shannon)');
+  assert.deepEqual(first.replay.items, [
+    { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search', input: { query: 'claude shannon birth date' } },
+    { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_1', content: [result] },
+    { type: 'server_tool_use', id: 'srvtoolu_2', name: 'web_search', input: {} },
+    { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_2', content: failed },
+    { type: 'text', text: 'Based on the search results, ' },
+    { type: 'text', text: 'Claude Shannon was born on April 30, 1916.', citations: [citation] },
+  ]);
+  // The next turn sends the blocks back exactly as received.
+  messages.push(assistant(first), { role: 'user', content: 'And where?' });
+  await api.sendAnthropicMessage(settings('anthropic'), JSON.parse(JSON.stringify(messages)), [], 'System');
+  assert.deepEqual(requests[1].messages[1], { role: 'assistant', content: first.replay.items });
 });
 
 test('Anthropic: pause_turn continues server search within the same user turn', async () => {

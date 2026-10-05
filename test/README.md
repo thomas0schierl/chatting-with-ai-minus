@@ -16,7 +16,8 @@ vault and a mocked `requestUrl()`; new test files import from it. Its
 `fetch` fails like a CORS block unless a test sets `globalThis.__fetch`, so
 chat requests take the `requestUrl()` fallback and receive SSE. No
 credentials or network needed. They cover history encoding and replay per
-provider, tool flows, cancellation, model catalogs and caching, thinking
+provider (Anthropic web search in the documented stream shape), tool
+flows, cancellation, model catalogs and caching, thinking
 parameters, the ChatGPT sign-in and its refresh and retry after a 401
 (`chatgpt-signin.test.mjs`), canvas tools
 (`canvas.test.mjs`), image tools and canvas drawing (`view-tools.test.mjs`),

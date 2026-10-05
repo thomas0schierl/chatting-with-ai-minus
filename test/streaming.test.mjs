@@ -49,6 +49,9 @@ async function expected(provider, blocks, stop) {
   if (provider !== 'anthropic') return api.fromResponsesOutput(responsesData(blocks, stop), provider, model, identity);
   const content = blocks.flatMap(block => block.type === 'text' ? [{ type: 'text', text: block.text }]
     : block.type === 'tool_use' ? [{ type: 'tool_use', id: block.id, name: block.name, input: block.input }] : []);
+  // The cited pages follow the answer.
+  const urls = [...new Set(blocks.flatMap(block => block.citations ?? []).map(citation => citation.url))];
+  if (urls.length) content.push({ type: 'text', text: `\n\nSources:\n${urls.map(url => `- [${url}](${url})`).join('\n')}` });
   return { content, replay: { provider, model, identity, items: blocks }, stopReason: stop, usage: { inputTokens: 10, outputTokens: 5 } };
 }
 
