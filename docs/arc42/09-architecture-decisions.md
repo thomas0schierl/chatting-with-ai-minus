@@ -7,8 +7,8 @@
 
 ## ADR-01: All HTTP through `requestUrl()`, no streaming
 
-- **Status:** narrowed by ADR-11. Still applies to all HTTP; the live voice
-  audio connection (WebRTC) is the one exception.
+- **Status:** narrowed by ADR-11 (live voice audio uses WebRTC). ADR-12
+  (proposed) would replace it for chat requests to Anthropic and OpenAI.
 - **Context:** mobile WebViews enforce CORS, and `requestUrl()` is the only
   HTTP API that works on every platform. It returns complete responses only.
 - **Decision:** every request uses `requestUrl()`. Answers appear when
@@ -126,3 +126,31 @@
     that account can get Realtime credentials (open).
   - Anthropic users get no voice mode.
   - Voice runs only while the chat panel is open.
+
+## ADR-12: Stream chat with `fetch` where the provider allows it (proposed)
+
+- **Status:** proposed; decided after the device spike in GAP-016.
+- **Context:** ADR-01 assumed `requestUrl()` is the only HTTP API that
+  works everywhere. Checked on 2026-10-05 for the origins Obsidian uses
+  (`app://obsidian.md`, `capacitor://localhost`, `http://localhost`):
+  - **Anthropic `/v1/messages`:** answers with `Access-Control-Allow-Origin: *`
+    when the request sends `anthropic-dangerous-direct-browser-access: true`.
+  - **OpenAI `/v1/responses`:** always answers with it.
+  - **Codex `/backend-api/codex/responses`:** sends no allow-origin header,
+    so browsers block it.
+
+  `requestUrl()` can't stream and can't be cancelled, which costs streamed
+  answers (GAP-016) and a working Stop.
+- **Decision (proposed):**
+  - Chat requests to Anthropic and OpenAI use `fetch` with `stream: true`,
+    render text as it arrives, and cancel with `AbortController`.
+  - If `fetch` fails before any response (blocked or network error), the
+    same request falls back to `requestUrl()` and is parsed from the
+    buffered stream, as Codex is today.
+  - Codex, sign-in and model-list requests stay on `requestUrl()`.
+- **Consequences:**
+  - All three adapters then parse server-sent events, sharing one parser.
+  - Two transport paths to test.
+  - Check the Obsidian review lint for rules against `fetch` before
+    adopting.
+  - Supersedes ADR-01 for these two providers.

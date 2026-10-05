@@ -12,18 +12,20 @@ thinking indicator until the whole answer arrives.
 
 ADR-01 sends all HTTP through `requestUrl()`, which returns complete
 responses only, because mobile WebViews enforce CORS on `fetch`. That
-assumes the provider APIs reject cross-origin requests. Two of them may
-not:
+assumes the provider APIs reject cross-origin requests. Checked on
+2026-10-05 against Obsidian's origins (`app://obsidian.md`,
+`capacitor://localhost`, `http://localhost`), two of them don't:
 
-- **Anthropic:** accepts browser requests when the request carries the
-  header `anthropic-dangerous-direct-browser-access: true`.
-- **OpenAI:** the OpenAI API also answers cross-origin requests; its SDKs
-  allow browser use behind an explicit flag.
-- **Codex backend:** browser access to `chatgpt.com/backend-api` is
-  unlikely to be allowed.
+- **Anthropic `/v1/messages`:** allows any origin when the request carries
+  `anthropic-dangerous-direct-browser-access: true`; without the header it
+  sends no CORS headers.
+- **OpenAI `/v1/responses`:** allows any origin.
+- **Codex `/backend-api/codex/responses`:** no allow-origin header; browsers
+  block it.
 
-**Unverified:** whether streaming `fetch` to those APIs works from
-Obsidian's mobile WebViews and from desktop.
+**Still unverified:** that the Obsidian apps let a plugin `fetch` with a
+streamed body. This needs a device test. Proposed decision:
+[ADR-12](../09-architecture-decisions.md).
 
 ## Fix
 
