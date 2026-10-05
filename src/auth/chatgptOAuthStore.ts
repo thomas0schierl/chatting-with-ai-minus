@@ -181,7 +181,7 @@ export class ChatGPTOAuthStore {
 }
 
 /** RFC 9562 version 4 UUID from `crypto.getRandomValues` (works in mobile WebViews). */
-function uuidV4(): string {
+export function uuidV4(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;

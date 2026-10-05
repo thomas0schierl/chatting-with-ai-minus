@@ -16,6 +16,7 @@ import { App, Modal, Notice, Platform, Setting, requestUrl, type SettingDefiniti
 import type ChatPlugin from "../main";
 import type { VoiceRouteId } from "../types";
 import { decodeJwt } from "../auth/chatgptOAuth";
+import { uuidV4 } from "../auth/chatgptOAuthStore";
 import type { VoiceRoute } from "./session";
 
 // Plain strings, not templates: public builds can then drop them all.
@@ -216,7 +217,8 @@ export function codexVoiceRoute(auth: CodexVoiceAuth, voice: string, clientVersi
       const credential = await auth.usableCredential();
       if (!credential) throw new Error("Sign in as Codex in the voice settings first.");
       const version = await clientVersion();
-      const sessionId = crypto.randomUUID();
+      // Not crypto.randomUUID(): mobile WebViews may lack it.
+      const sessionId = uuidV4();
       const response = await requestUrl({
         url: CALL_URL,
         method: "POST",

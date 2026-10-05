@@ -158,7 +158,15 @@ test('Codex route: POST to the realtime calls route with Codex headers; the call
   };
   const route = X.codexVoiceRoute(auth, 'ember', async () => '1.2.3');
   const items = P.seedItems([{ type: 'user', text: 'Hi' }]);
-  const result = await route.connect({ sdp: 'offer-sdp', instructions: 'Be brief', items });
+  // As in a mobile WebView without crypto.randomUUID().
+  const randomUUID = crypto.randomUUID;
+  crypto.randomUUID = undefined;
+  let result;
+  try {
+    result = await route.connect({ sdp: 'offer-sdp', instructions: 'Be brief', items });
+  } finally {
+    crypto.randomUUID = randomUUID;
+  }
 
   assert.deepEqual(result, { sdp: 'answer-sdp', callId: 'rtc_abc123' });
   const [request] = requests;
@@ -171,7 +179,7 @@ test('Codex route: POST to the realtime calls route with Codex headers; the call
   assert.equal(h.originator, 'codex_cli_rs');
   assert.equal(h.version, '1.2.3');
   assert.match(h['User-Agent'], /^codex_cli_rs\/1\.2\.3 \(.+; .+\) obsidian$/);
-  assert.match(h['x-session-id'], /^[0-9a-f-]{36}$/);
+  assert.match(h['x-session-id'], /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.equal(h['session-id'], h['x-session-id']);
   assert.equal(h['thread-id'], h['x-session-id']);
   assert.deepEqual(JSON.parse(request.body), {
