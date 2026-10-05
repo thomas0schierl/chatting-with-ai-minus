@@ -17,6 +17,7 @@ import { ChatGPTOAuthService } from "./auth/chatgptOAuth";
 import { cachedCatalog, catalogIdentity, normalizeCatalogState } from "./api/model-catalog";
 import { setChatGPTOAuthService } from "./api/chatgpt-oauth";
 import { PLUGIN_ID } from "./plugin-id";
+import { runCapabilityCheck } from "./diagnostics/capability-check";
 
 export default class ChatPlugin extends Plugin {
   settings: ChatSettings = DEFAULT_SETTINGS;
@@ -95,6 +96,16 @@ export default class ChatPlugin extends Plugin {
       id: "clear-chat",
       name: "Clear conversation",
       callback: () => this.clearChat(),
+    });
+
+    // Diagnostics for live voice and streaming on this device (ADR-11, ADR-12)
+    this.addCommand({
+      id: "check-device-capabilities",
+      name: "Check device capabilities (voice, streaming)",
+      callback: () => void runCapabilityCheck(this.app, {
+        openai: this.loadApiKey("openai"),
+        anthropic: this.loadApiKey("anthropic"),
+      }),
     });
 
     // Editor command: chat about the current note (only when editor is active)
@@ -368,7 +379,7 @@ export default class ChatPlugin extends Plugin {
     this.settings.apiKey = this.loadApiKey(this.settings.provider);
   }
 
-  private loadApiKey(provider: string): string {
+  loadApiKey(provider: string): string {
     try {
       return this.app.secretStorage.getSecret(`${PLUGIN_ID}-api-key-${provider}`) || "";
     } catch {

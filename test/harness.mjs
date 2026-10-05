@@ -48,6 +48,7 @@ export const bundled = await build({
       }
       export const requireApiVersion = () => globalThis.__supportsNewObsidian === true;
       export class Notice {}
+      export const Platform = { isDesktopApp: true, isMobile: false, isIosApp: false, isAndroidApp: false };
       export class TFile { constructor(path) { this.path = path; this.extension = 'md'; } }
       export const normalizePath = path => path;
       export const requestUrl = request => globalThis.__providerRequest(request);
