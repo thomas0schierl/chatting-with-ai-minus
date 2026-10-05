@@ -231,6 +231,8 @@ test('"Chat about this note" and "Send selection to chat" start a new conversati
   plugin.getChatView = () => view;
   await view.handleUserMessage('Earlier topic', null);
   const earlier = plugin.activeConversationId;
+  // The list is ordered by last use, in ms.
+  await tick();
 
   await plugin.openChatWithMessage('Tell me about Notes/Plan.md');
   while (requests.length < 2 || view.running) await tick();
