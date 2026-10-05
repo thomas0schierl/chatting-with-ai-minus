@@ -1,19 +1,92 @@
-import type { ContentBlock, ImageAttachment, Provider, UnifiedMessage, UnifiedResponse } from "../types";
+/**
+ * The Responses API, shared by the OpenAI and ChatGPT adapters: the request
+ * (tools, history as input items, sending and its errors) and the answer
+ * (stream events, output items). Also the replay rule for all adapters.
+ */
+import type { ContentBlock, ImageAttachment, Provider, ProviderReplay, StreamOptions, UnifiedMessage, UnifiedResponse, UnifiedToolDef } from "../types";
 import { withoutOldToolImages } from "../agent/history";
+import { streamSSE, type StreamResult } from "./stream";
 
 /** The ChatGPT route takes function tools only inside a namespace; this is ours. */
 export const CHATGPT_TOOL_NAMESPACE = "vault";
+
+/**
+ * Whether an assistant message's native items (thinking signatures,
+ * encrypted reasoning, search results) go back as they are: they came from
+ * `provider` and were recorded for this model and account, or before
+ * either was recorded. Otherwise its plain content goes instead, since a
+ * provider rejects items made for another model or account. A request
+ * whose own model or account isn't known replays only unrecorded items:
+ * the rule is the same for all three adapters.
+ */
+export function canReplay(message: UnifiedMessage, provider: Provider, model: string, identity: string): message is UnifiedMessage & { replay: ProviderReplay } {
+  const replay = message.replay;
+  return message.role === "assistant" && replay?.provider === provider &&
+    (!replay.model || replay.model === model) && (!replay.identity || replay.identity === identity);
+}
+
+/** Our tools as Responses API function tools. */
+export function functionTools(tools: UnifiedToolDef[]): Record<string, unknown>[] {
+  return tools.map((t) => ({
+    type: "function",
+    name: t.name,
+    description: t.description,
+    parameters: t.inputSchema,
+    strict: false,
+  }));
+}
+
+/** A failure the stream reported (`error`, `response.failed`). */
+export interface ResponsesFailure {
+  message: string;
+  code?: string;
+}
+
+/** The adapter's errors for an HTTP error answer and for a failure inside the stream. */
+export interface ResponsesErrors {
+  http(response: StreamResult): Error;
+  stream(failure: ResponsesFailure): Error;
+}
+
+/**
+ * Sends a streamed Responses request with a bearer token; returns the
+ * completed response as the non-streamed API would. `name` names the
+ * provider in the error for a stream that ends too early.
+ */
+export async function sendResponsesRequest(
+  url: string,
+  accessToken: string,
+  body: Record<string, unknown>,
+  stream: StreamOptions,
+  name: string,
+  errors: ResponsesErrors,
+): Promise<Record<string, unknown>> {
+  const collected = collectResponsesStream(stream.onTextDelta);
+  const response = await streamSSE(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify(body),
+  }, collected.onEvent, stream.signal);
+  if (response.status < 200 || response.status >= 300) throw errors.http(response);
+  const { data, failure } = collected.finish();
+  if (failure) throw errors.stream(failure);
+  if (!data) throw new Error(`${name} stream ended without a completed response.`);
+  return data;
+}
 
 /** Encode both fresh input and restored history without losing tool pairs. */
 export function buildResponsesInput(
   messages: UnifiedMessage[],
   provider: Extract<Provider, "openai" | "chatgpt-oauth">,
-  model?: string,
-  identity?: string,
+  model: string,
+  identity: string,
 ): Record<string, unknown>[] {
   const items: Record<string, unknown>[] = [];
   for (const message of withoutOldToolImages(messages)) {
-    if (message.role === "assistant" && message.replay?.provider === provider && (!model || !message.replay.model || message.replay.model === model) && (!identity || !message.replay.identity || message.replay.identity === identity)) {
+    if (canReplay(message, provider, model, identity)) {
       items.push(...message.replay.items);
       continue;
     }
@@ -120,13 +193,13 @@ export function fromResponsesOutput(
  * terminal event gives id, status and usage. `finish()` returns the same
  * object the non-streamed API returns, or the failure the stream reported.
  */
-export function collectResponsesStream(onTextDelta?: (text: string) => void): {
+function collectResponsesStream(onTextDelta?: (text: string) => void): {
   onEvent: (event: Record<string, unknown>) => void;
-  finish: () => { data?: Record<string, unknown>; failure?: { message: string; code?: string } };
+  finish: () => { data?: Record<string, unknown>; failure?: ResponsesFailure };
 } {
   const items = new Map<string | number, Record<string, unknown>>();
   let completed: Record<string, unknown> | undefined;
-  let failure: { message: string; code?: string } | undefined;
+  let failure: ResponsesFailure | undefined;
   return {
     onEvent: (event) => {
       const type = event.type;

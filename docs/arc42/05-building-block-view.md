@@ -53,7 +53,7 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
 | `api/anthropic.ts` | Anthropic Messages API adapter (streamed; thinking, prompt caching, web search, native replay). Rebuilds the message from stream events. |
 | `api/openai.ts` | OpenAI Responses API adapter (`previous_response_id` chaining, full replay as fallback). |
 | `api/chatgpt-oauth.ts` | ChatGPT adapter (`api.openai.com/v1/responses` with the ChatGPT-plan token): `store: false`, full replay each turn, tools in a namespace. |
-| `api/responses-format.ts` | Converts unified messages to and from the Responses API format, and rebuilds a response from its stream events (shared by the OpenAI and ChatGPT adapters). |
+| `api/responses-format.ts` | The Responses API path shared by the OpenAI and ChatGPT adapters: function tools, sending a streamed request (errors built by the adapter), unified messages to input items and back, the response rebuilt from its stream events. Also `canReplay()`, the one rule all three adapters use for sending native items back: same provider, and the model and account they were recorded for (items recorded without them replay too). |
 | `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account; thinking and parallel-tool capabilities, and the thinking parameters built from them. |
 | `auth/chatgptOAuth.ts` | ChatGPT sign-in (authorize URL, pasted callback, token exchange, ID token check), refresh and revocation against `auth.openai.com`. |
 | `auth/chatgptOAuthStore.ts` | Reads and writes the ChatGPT credential, registration and pending sign-in in SecretStorage. |

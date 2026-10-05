@@ -8,8 +8,7 @@ import type {
   StreamOptions,
 } from "../types";
 
-import { buildResponsesInput, collectResponsesStream, fromResponsesOutput } from "./responses-format";
-import { streamSSE } from "./stream";
+import { buildResponsesInput, fromResponsesOutput, functionTools, sendResponsesRequest } from "./responses-format";
 import { ProviderError } from "./errors";
 
 const DEFAULT_OPENAI_URL = "https://api.openai.com";
@@ -69,48 +68,20 @@ export async function sendOpenAIMessage(
   // No reasoning parameters: `/v1/models` doesn't report which models reason
   // or which levels they accept, so every model runs on its own default.
 
-  // Tools
-  const apiTools: Record<string, unknown>[] = tools.map((t) => ({
-    type: "function",
-    name: t.name,
-    description: t.description,
-    parameters: t.inputSchema,
-    strict: false,
-  }));
-
-  if (settings.enableWebSearch) {
-    apiTools.push({ type: "web_search" });
-  }
-
-  if (apiTools.length > 0) {
-    body.tools = apiTools;
-  }
+  const apiTools = functionTools(tools);
+  if (settings.enableWebSearch) apiTools.push({ type: "web_search" });
+  if (apiTools.length > 0) body.tools = apiTools;
 
   // Always send instructions (system prompt) since previous_response_id
   // doesn't carry forward the system prompt
   body.instructions = systemPrompt;
 
-  const collected = collectResponsesStream(stream.onTextDelta);
-  const response = await streamSSE(`${baseUrl}/v1/responses`, {
-    headers: {
-      Authorization: `Bearer ${settings.apiKey}`,
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-    },
-    body: JSON.stringify(body),
-  }, collected.onEvent, stream.signal);
-
-  if (response.status !== 200) {
-    const errorBody = getNestedString(response.json, ["error", "message"]) ?? `HTTP ${response.status}`;
-    throw new ProviderError(`OpenAI API error (${response.status}): ${errorBody}`, response.status,
-      getNestedString(response.json, ["error", "code"]), response.retryAfterMs);
-  }
-
-  const { data, failure } = collected.finish();
-  if (failure) {
-    throw new ProviderError(`OpenAI API error${failure.code ? ` (${failure.code})` : ""}: ${failure.message}`, 0, failure.code);
-  }
-  if (!data) throw new Error("OpenAI stream ended without a completed response.");
+  const data = await sendResponsesRequest(`${baseUrl}/v1/responses`, settings.apiKey, body, stream, "OpenAI", {
+    http: (response) => new ProviderError(
+      `OpenAI API error (${response.status}): ${getNestedString(response.json, ["error", "message"]) ?? `HTTP ${response.status}`}`,
+      response.status, getNestedString(response.json, ["error", "code"]), response.retryAfterMs),
+    stream: ({ message, code }) => new ProviderError(`OpenAI API error${code ? ` (${code})` : ""}: ${message}`, 0, code),
+  });
 
   const result = fromResponsesOutput(data, "openai", model, identity);
   if (typeof data.id === "string") {

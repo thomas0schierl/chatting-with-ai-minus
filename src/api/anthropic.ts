@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { streamSSE } from "./stream";
 import { ProviderError } from "./errors";
+import { canReplay } from "./responses-format";
 import { withoutOldToolImages } from "../agent/history";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -270,7 +271,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function toAnthropicMessage(msg: UnifiedMessage, model: string, identity: string): Record<string, unknown> {
-  if (msg.role === "assistant" && msg.replay?.provider === "anthropic" && (!msg.replay.model || msg.replay.model === model) && (!msg.replay.identity || msg.replay.identity === identity)) {
+  if (canReplay(msg, "anthropic", model, identity)) {
     return { role: msg.role, content: msg.replay.items };
   }
   if (typeof msg.content === "string") {

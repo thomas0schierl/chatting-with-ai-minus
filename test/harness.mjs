@@ -17,7 +17,7 @@ export const bundled = await build({
     export { sendAnthropicMessage } from './src/api/anthropic';
     export { sendOpenAIMessage, clearOpenAIState } from './src/api/openai';
     export { sendChatGPTOAuthMessage, setChatGPTOAuthService } from './src/api/chatgpt-oauth';
-    export { buildResponsesInput, fromResponsesOutput } from './src/api/responses-format';
+    export { buildResponsesInput, fromResponsesOutput, canReplay } from './src/api/responses-format';
     export { streamSSE, createSSEParser, resetStreamTransport } from './src/api/stream';
     export { default as ChatPlugin } from './src/main';
     export { ObsidianChatView } from './src/ui/chat-view';

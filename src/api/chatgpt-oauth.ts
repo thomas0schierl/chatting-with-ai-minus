@@ -17,9 +17,9 @@ import type {
   StreamOptions,
 } from "../types";
 import { CHATGPT_OAUTH_DEFAULT_MODEL } from "../types";
-import { buildResponsesInput, collectResponsesStream, fromResponsesOutput, CHATGPT_TOOL_NAMESPACE } from "./responses-format";
+import { buildResponsesInput, fromResponsesOutput, functionTools, sendResponsesRequest, CHATGPT_TOOL_NAMESPACE, type ResponsesFailure } from "./responses-format";
 import { oauthReasoning, oauthParallelTools, cachedCatalog, catalogIdentity } from "./model-catalog";
-import { streamSSE } from "./stream";
+import type { StreamResult } from "./stream";
 import { ProviderError } from "./errors";
 import {
   ChatGPTOAuthError,
@@ -97,13 +97,7 @@ export async function sendChatGPTOAuthMessage(
       type: "namespace",
       name: CHATGPT_TOOL_NAMESPACE,
       description: "Read, search and edit notes in the user's Obsidian vault.",
-      tools: tools.map((t) => ({
-        type: "function",
-        name: t.name,
-        description: t.description,
-        parameters: t.inputSchema,
-        strict: false,
-      })),
+      tools: functionTools(tools),
     });
   }
   if (settings.enableWebSearch) {
@@ -113,8 +107,11 @@ export async function sendChatGPTOAuthMessage(
     body.tools = apiTools;
   }
 
+  const send = async (accessToken: string) => fromResponsesOutput(
+    await sendResponsesRequest(CHATGPT_RESPONSES_URL, accessToken, body, stream, "ChatGPT", CHATGPT_ERRORS),
+    "chatgpt-oauth", model, identity);
   try {
-    return await sendOnce(body, credential.accessToken, identity, stream);
+    return await send(credential.accessToken);
   } catch (e) {
     // A rejected token (401 comes before any streamed text): refresh once
     // and retry once. A second 401 keeps its "sign in again" error.
@@ -126,27 +123,13 @@ export async function sendChatGPTOAuthMessage(
       throw refreshError instanceof ChatGPTOAuthError ? refreshError : e;
     }
     if (!renewed) throw e;
-    return sendOnce(body, renewed.accessToken, identity, stream);
+    return send(renewed.accessToken);
   }
 }
 
-async function sendOnce(
-  body: Record<string, unknown>,
-  accessToken: string,
-  identity: string,
-  stream: StreamOptions,
-): Promise<UnifiedResponse> {
-  const collected = collectResponsesStream(stream.onTextDelta);
-  const response = await streamSSE(CHATGPT_RESPONSES_URL, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-    },
-    body: JSON.stringify(body),
-  }, collected.onEvent, stream.signal);
-
-  if (response.status < 200 || response.status >= 300) {
+/** ChatGPT's errors: a usage limit is its own error; others say how to recover. */
+const CHATGPT_ERRORS = {
+  http(response: StreamResult): Error {
     // Errors come as `{error: {code, message}}` or, before the request is
     // admitted, `{detail: "..."}`.
     const json = asOptionalRecord(response.json);
@@ -157,25 +140,20 @@ async function sendOnce(
       getNestedString(json, ["error", "message"]) ??
       response.text?.slice(0, 300) ??
       `HTTP ${response.status}`;
-    if (code === USAGE_LIMIT_CODE) throw new ChatGPTUsageLimitError(`${apiMsg} (${code})`);
+    if (code === USAGE_LIMIT_CODE) return new ChatGPTUsageLimitError(`${apiMsg} (${code})`);
     const hint = response.status === 401
       ? " Continue with ChatGPT in settings to sign in again."
       : code === USAGE_UNAVAILABLE_CODE ? " Try again in a moment." : "";
-    throw new ProviderError(`ChatGPT request failed (${response.status}${code ? `, ${code}` : ""}): ${apiMsg}.${hint}`,
+    return new ProviderError(`ChatGPT request failed (${response.status}${code ? `, ${code}` : ""}): ${apiMsg}.${hint}`,
       response.status, code, response.retryAfterMs);
-  }
-
-  const { data, failure } = collected.finish();
-  if (failure) {
-    // Usage limits can arrive here after the stream has started.
-    const { message, code } = failure;
-    if (code === USAGE_LIMIT_CODE) throw new ChatGPTUsageLimitError(`${message} (${code})`);
-    throw new ProviderError(code === USAGE_UNAVAILABLE_CODE ? `${message} (${code}). Try again in a moment.`
+  },
+  // Usage limits can arrive here after the stream has started.
+  stream({ message, code }: ResponsesFailure): Error {
+    if (code === USAGE_LIMIT_CODE) return new ChatGPTUsageLimitError(`${message} (${code})`);
+    return new ProviderError(code === USAGE_UNAVAILABLE_CODE ? `${message} (${code}). Try again in a moment.`
       : code ? `${message} (${code})` : message, 0, code);
-  }
-  if (!data) throw new ChatGPTOAuthError("ChatGPT stream ended without a completed response.");
-  return fromResponsesOutput(data, "chatgpt-oauth", typeof body.model === "string" ? body.model : undefined, identity);
-}
+  },
+};
 
 function getNestedString(value: unknown, path: string[]): string | undefined {
   let current: unknown = value;

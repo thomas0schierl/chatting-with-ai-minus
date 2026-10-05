@@ -490,6 +490,21 @@ test('Responses: model changes rebuild text and tool pairs without encrypted rea
   assert.deepEqual(input.map(i=>i.type),['message','function_call','function_call_output']);
 });
 
+test('One replay rule for all adapters: recorded model and account must match; unrecorded items replay', () => {
+  const native = { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Native', annotations: [] }] };
+  const message = (provider, recorded) => ({ role: 'assistant', content: [text('Plain')], replay: { provider, items: [native], ...recorded } });
+  const sentText = (recorded, model, identity) => api.buildResponsesInput([message('openai', recorded)], 'openai', model, identity)[0].content[0].text;
+  assert.equal(sentText({}, 'gpt-5.5', 'me'), 'Native');
+  assert.equal(sentText({ model: 'gpt-5.5', identity: 'me' }, 'gpt-5.5', 'me'), 'Native');
+  assert.equal(sentText({ model: 'gpt-4o' }, 'gpt-5.5', 'me'), 'Plain');
+  assert.equal(sentText({ identity: 'other' }, 'gpt-5.5', 'me'), 'Plain');
+  // A request whose model isn't known replays nothing recorded for a model.
+  assert.equal(sentText({ model: 'gpt-5.5' }, undefined, 'me'), 'Plain');
+  assert.equal(api.canReplay(message('anthropic', { model: 'claude-x' }), 'anthropic', 'claude-x', 'me'), true);
+  assert.equal(api.canReplay(message('anthropic', { model: 'claude-x' }), 'openai', 'claude-x', 'me'), false);
+  assert.equal(api.canReplay({ ...message('anthropic', {}), role: 'user' }, 'anthropic', 'claude-x', 'me'), false);
+});
+
 test('Provider replay is isolated across credential changes even with the same model', async () => {
   for (const provider of ['anthropic','openai','chatgpt-oauth']) {
     let account = 'first-account';
