@@ -8,7 +8,7 @@ import { build } from 'esbuild';
 export const bundled = await build({
   stdin: { contents: `
     export { ChatSettingTab, getModelHeaderLabel } from './src/settings';
-    export { Setting } from 'obsidian';
+    export { Setting, Platform } from 'obsidian';
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';
     export { AgentLoop } from './src/agent/loop';
@@ -19,6 +19,7 @@ export const bundled = await build({
     export { sendChatGPTOAuthMessage, setChatGPTOAuthService } from './src/api/chatgpt-oauth';
     export { buildResponsesInput, fromResponsesOutput, canReplay } from './src/api/responses-format';
     export { streamSSE, createSSEParser, resetStreamTransport } from './src/api/stream';
+    export * as lifecycle from './src/platform/lifecycle';
     export { default as ChatPlugin } from './src/main';
     export { ObsidianChatView } from './src/ui/chat-view';
     export { executeTool } from './src/tools/executor';
@@ -69,7 +70,7 @@ export const bundled = await build({
       export const apiVersion = 'test';
       // Shown notices are recorded in globalThis.__notices.
       export class Notice { constructor(message) { (globalThis.__notices ??= []).push(message); } }
-      export const Platform = { isDesktopApp: true, isMobile: false, isIosApp: false, isAndroidApp: false };
+      export const Platform = { isDesktopApp: true, isMobile: false, isMobileApp: false, isIosApp: false, isAndroidApp: false };
       export class TFile { constructor(path) { this.path = path; this.extension = 'md'; } }
       export const normalizePath = path => path;
       // GitHub (Codex version lookup) is answered here so provider mocks only

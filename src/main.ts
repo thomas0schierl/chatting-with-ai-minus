@@ -36,6 +36,7 @@ import type { VoiceRoute } from "./voice/session";
 import { openAILiveRoute } from "./voice/openai-live";
 import { isRecord } from "./json";
 import { CodexVoiceAuth, codexVoiceRoute } from "./voice/codex";
+import { appLifecycle } from "./platform/lifecycle";
 
 export default class ChatPlugin extends Plugin {
   settings: ChatSettings = { ...DEFAULT_SETTINGS, modelCatalog: { entries: [] } };
@@ -87,6 +88,7 @@ export default class ChatPlugin extends Plugin {
 
     // Restore persisted chat history
     await this.loadChatHistory();
+    this.watchLifecycle();
 
     this.addSettingTab(new ChatSettingTab(this.app, this));
 
@@ -207,6 +209,15 @@ export default class ChatPlugin extends Plugin {
         }
       })
     );
+  }
+
+  /**
+   * Foreground or background (ADR-15). Leaving saves the chats: a phone
+   * may end Obsidian in the background, even in the middle of a turn.
+   */
+  private watchLifecycle(): void {
+    appLifecycle.watch(this);
+    this.register(appLifecycle.onHidden(() => void this.saveChatHistory()));
   }
 
   onunload(): void {
