@@ -37,6 +37,7 @@ import { openAILiveRoute } from "./voice/openai-live";
 import { isRecord } from "./json";
 import { CodexVoiceAuth, codexVoiceRoute } from "./voice/codex";
 import { appLifecycle } from "./platform/lifecycle";
+import { debugLog } from "./debug";
 
 export default class ChatPlugin extends Plugin {
   settings: ChatSettings = { ...DEFAULT_SETTINGS, modelCatalog: { entries: [] } };
@@ -216,7 +217,7 @@ export default class ChatPlugin extends Plugin {
    * may end Obsidian in the background, even in the middle of a turn.
    */
   private watchLifecycle(): void {
-    appLifecycle.watch(this);
+    appLifecycle.watch(this, (hint, visibility) => debugLog(this.app, "LIFECYCLE", { hint, visibility }));
     this.register(appLifecycle.onHidden(() => void this.saveChatHistory()));
   }
 

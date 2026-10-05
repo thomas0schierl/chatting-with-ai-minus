@@ -16,20 +16,29 @@ export class AppLifecycle {
   private readonly visibleListeners = new Set<(hiddenMs: number) => void>();
   private readonly hiddenListeners = new Set<() => void>();
 
-  /** Listen to the hints; `owner` (the plugin) removes the listeners on unload. */
-  watch(owner: Pick<Component, "registerDomEvent">, doc: Document = document, win: Window = window): void {
-    owner.registerDomEvent(doc, "visibilitychange", () => {
+  /**
+   * Listen to the hints; `owner` (the plugin) removes the listeners on
+   * unload. `log` gets each hint as it comes (which ones a device sends is
+   * still to be checked).
+   */
+  watch(owner: Pick<Component, "registerDomEvent">, log: (hint: string, visibility: string) => void = () => {},
+    doc: Document = document, win: Window = window): void {
+    const hint = (type: string, apply: () => void) => () => {
+      log(type, doc.visibilityState);
+      apply();
+    };
+    owner.registerDomEvent(doc, "visibilitychange", hint("visibilitychange", () => {
       if (doc.visibilityState === "hidden") this.markHidden();
       else this.markVisible();
-    });
-    owner.registerDomEvent(doc, "pause", () => this.markHidden());
+    }));
+    owner.registerDomEvent(doc, "pause", hint("pause", () => this.markHidden()));
     // Capacitor says the app is active again, even if the page doesn't yet.
-    owner.registerDomEvent(doc, "resume", () => this.markVisible());
+    owner.registerDomEvent(doc, "resume", hint("resume", () => this.markVisible()));
     const shown = () => {
       if (doc.visibilityState !== "hidden") this.markVisible();
     };
-    owner.registerDomEvent(win, "focus", shown);
-    owner.registerDomEvent(win, "pageshow", shown);
+    owner.registerDomEvent(win, "focus", hint("focus", shown));
+    owner.registerDomEvent(win, "pageshow", hint("pageshow", shown));
   }
 
   isHidden(): boolean {

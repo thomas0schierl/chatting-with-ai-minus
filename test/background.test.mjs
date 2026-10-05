@@ -40,7 +40,8 @@ test('Lifecycle: visibilitychange, pause/resume, focus and pageshow decide hidde
   t.mock.method(Date, 'now', () => now);
   const lifecycle = new AppLifecycle();
   const { doc, win, owner, listeners, fire } = hintSources();
-  lifecycle.watch(owner, doc, win);
+  const hints = [];
+  lifecycle.watch(owner, (hint, visibility) => hints.push(`${hint}:${visibility}`), doc, win);
   assert.deepEqual(listeners.map(l => [l.target === doc ? 'document' : 'window', l.type]),
     [['document', 'visibilitychange'], ['document', 'pause'], ['document', 'resume'], ['window', 'focus'], ['window', 'pageshow']]);
   const events = [];
@@ -80,6 +81,9 @@ test('Lifecycle: visibilitychange, pause/resume, focus and pageshow decide hidde
   fire(win, 'focus');
   fire(doc, 'visibilitychange');
   assert.deepEqual(events, ['hidden', 'visible after 5000', 'hidden', 'visible after 100']);
+  // Every hint is logged (debug.log), for checking which ones a device sends.
+  assert.deepEqual(hints, ['visibilitychange:hidden', 'pause:hidden', 'focus:hidden', 'resume:hidden', 'pause:hidden',
+    'pageshow:visible', 'focus:visible', 'visibilitychange:visible']);
 });
 
 test('Leaving Obsidian saves the chats (the phone may end it in the background)', async () => {
