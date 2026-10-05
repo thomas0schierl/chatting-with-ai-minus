@@ -31,7 +31,7 @@ an answer through the chat view with a fake Svelte component
 waits), saving each image once with the
 migration of older saved chats (`images-once.test.mjs`), named
 conversations: migration, new chat, switch, rename, delete, restore, an
-unreadable saved file kept aside, tool card inputs after a reload,
+unreadable saved file kept aside, saves one at a time, tool card inputs after a reload,
 titles, and isolation of histories and OpenAI chaining
 (`conversations.test.mjs`), `edit_document` without content
 (`edit-document.test.mjs`), and the ChatGPT plan cues: no retry on a

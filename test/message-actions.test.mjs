@@ -168,6 +168,8 @@ test('The cut is saved at once, and the saved chat after the new turn restores c
   answering('anthropic');
   for (const question of ['Q1', 'Q2', 'Q3']) await view.handleUserMessage(question, null);
   const ids = turnIdsOf(plugin).ui;
+  // The last turn's save has finished (saves run one at a time).
+  await new Promise(resolve => setTimeout(resolve, 2));
   const savedBefore = writes.length;
 
   const editing = view.editMessage(ids[1], 'Edited');

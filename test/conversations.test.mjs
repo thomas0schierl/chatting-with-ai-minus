@@ -415,3 +415,46 @@ test('No chat-state.json yet (first run): no notice, nothing renamed, saving wor
   await plugin.saveChatHistory();
   assert.equal(writes.length, 1);
 });
+
+test('Saves never overlap: calls during a write share one next write with the latest state', async () => {
+  const { app } = vaultApp();
+  const writes = [], pending = [];
+  let active = 0, maxActive = 0;
+  app.vault.adapter = {
+    read: async () => { throw new Error('ENOENT'); },
+    exists: async () => false,
+    write: (path, data) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      writes.push(JSON.parse(data));
+      return new Promise(resolve => pending.push(() => { active--; resolve(); }));
+    },
+  };
+  const plugin = new api.ChatPlugin();
+  plugin.app = app;
+  plugin.agent = new api.AgentLoop(app, settings('anthropic'));
+  await plugin.loadChatHistory();
+
+  const first = plugin.saveChatHistory();
+  assert.equal(writes.length, 1);
+  plugin.chatHistory.push({ type: 'user', text: 'One', turnId: 't1' });
+  const second = plugin.saveChatHistory();
+  plugin.chatHistory.push({ type: 'user', text: 'Two', turnId: 't2' });
+  const third = plugin.saveChatHistory();
+  assert.equal(second, third);
+  assert.equal(writes.length, 1);
+
+  pending.shift()();
+  await first;
+  while (writes.length < 2) await tick();
+  assert.deepEqual(writes[1].conversations[0].chatHistory.map(e => e.text), ['One', 'Two']);
+  pending.shift()();
+  await third;
+  assert.equal(writes.length, 2);
+  assert.equal(maxActive, 1);
+
+  // Idle again: the next save writes at once.
+  void plugin.saveChatHistory();
+  assert.equal(writes.length, 3);
+  pending.shift()();
+});

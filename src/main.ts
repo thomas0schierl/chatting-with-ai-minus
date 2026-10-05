@@ -51,6 +51,9 @@ export default class ChatPlugin extends Plugin {
   activeConversationId = this.conversations[0].id;
   /** Set once the saved chat has been read; saving earlier would overwrite it with an empty one. */
   private chatHistoryLoaded = false;
+  /** The write of `chat-state.json` in progress, and the one queued after it. */
+  private chatStateWrite: Promise<void> | null = null;
+  private nextChatStateWrite: Promise<void> | null = null;
 
   get activeConversation(): ConversationRecord {
     return this.conversations.find((conversation) => conversation.id === this.activeConversationId)
@@ -455,8 +458,31 @@ export default class ChatPlugin extends Plugin {
 
   // ─── Chat history persistence ─────────────────────────────────────────
 
-  async saveChatHistory(): Promise<void> {
-    if (!this.chatHistoryLoaded) return;
+  /**
+   * Saves the chats. One write at a time: a save asked for while one is
+   * being written waits for it, and all such calls share that one next
+   * write, which takes the state when it starts.
+   */
+  saveChatHistory(): Promise<void> {
+    if (!this.chatHistoryLoaded) return Promise.resolve();
+    if (!this.chatStateWrite) return this.startChatStateWrite();
+    this.nextChatStateWrite ??= this.chatStateWrite.then(() => {
+      this.nextChatStateWrite = null;
+      return this.startChatStateWrite();
+    });
+    return this.nextChatStateWrite;
+  }
+
+  private startChatStateWrite(): Promise<void> {
+    const write: Promise<void> = this.writeChatState().finally(() => {
+      if (this.chatStateWrite === write) this.chatStateWrite = null;
+    });
+    this.chatStateWrite = write;
+    return write;
+  }
+
+  /** Writes the current state; it is taken before the first await. Never throws. */
+  private async writeChatState(): Promise<void> {
     try {
       this.storeActiveMessages();
       const state: ChatState = {
