@@ -4,13 +4,17 @@
  * that to one warning. Everything else uses `requestUrl()`.
  *
  * The request is a POST whose answer is Server-Sent Events. Each event's
- * JSON is handed to `onEvent` as it arrives. If `fetch` fails before any
- * response (CORS block, network error), the same request goes through
- * `requestUrl()`, which buffers the whole stream; its events are then
- * delivered at once. Once that fallback has worked, later requests in this
- * session skip `fetch`.
+ * JSON is handed to `onEvent` as it arrives:
+ * - Desktop: Node's `https` (Electron), which no CORS check applies to.
+ *   Needed for ChatGPT: with a ChatGPT-plan token, `api.openai.com` answers
+ *   without CORS headers, so browser `fetch` is blocked (seen 2026-10-05).
+ * - Mobile: `fetch`. Anthropic and OpenAI (API key) allow it.
+ * If that fails before any response (CORS block, network error), the same
+ * request goes through `requestUrl()`, which buffers the whole stream; its
+ * events are then delivered at once. Once that fallback has worked for a
+ * URL, later requests to it skip `fetch` for this session.
  */
-import { requestUrl } from "obsidian";
+import { Platform, requestUrl } from "obsidian";
 
 export interface StreamRequest {
   headers: Record<string, string>;
@@ -26,12 +30,12 @@ export interface StreamResult {
 
 export type SSEHandler = (event: Record<string, unknown>) => void;
 
-/** Set when `fetch` failed but `requestUrl()` worked: fetch is blocked here. */
-let fetchBlocked = false;
+/** URLs where `fetch` failed but `requestUrl()` worked: fetch is blocked there. */
+const fetchBlocked = new Set<string>();
 
 /** For tests: forget that `fetch` was blocked. */
 export function resetStreamTransport(): void {
-  fetchBlocked = false;
+  fetchBlocked.clear();
 }
 
 export async function streamSSE(
@@ -41,7 +45,9 @@ export async function streamSSE(
   signal?: AbortSignal,
 ): Promise<StreamResult> {
   throwIfAborted(signal);
-  if (!fetchBlocked) {
+  const https = nodeHttps();
+  if (https) return viaNode(https, url, request, onEvent, signal);
+  if (!fetchBlocked.has(url)) {
     let response: Response | undefined;
     try {
       response = await fetch(url, { method: "POST", headers: request.headers, body: request.body, signal });
@@ -51,10 +57,85 @@ export async function streamSSE(
     }
     if (response) return readFetchResponse(response, onEvent, signal);
     const result = await viaRequestUrl(url, request, onEvent, signal);
-    fetchBlocked = true;
+    fetchBlocked.add(url);
     return result;
   }
   return viaRequestUrl(url, request, onEvent, signal);
+}
+
+// ─── Desktop: Node https ────────────────────────────────────────────────────
+
+interface NodeResponse {
+  statusCode?: number;
+  setEncoding(encoding: string): void;
+  on(event: "data", listener: (chunk: string) => void): void;
+  on(event: "end", listener: () => void): void;
+  on(event: "error", listener: (error: Error) => void): void;
+}
+
+interface NodeRequest {
+  on(event: "error", listener: (error: Error) => void): void;
+  write(body: string): void;
+  end(): void;
+  destroy(): void;
+}
+
+interface NodeHttps {
+  request(url: string, options: { method: string; headers: Record<string, string> },
+    callback: (response: NodeResponse) => void): NodeRequest;
+}
+
+/** Node's `https` module on desktop (Electron); undefined on mobile. */
+function nodeHttps(): NodeHttps | undefined {
+  if (!Platform.isDesktopApp || typeof window === "undefined") return undefined;
+  const load = (window as unknown as { require?: (id: string) => unknown }).require;
+  try {
+    return load?.("https") as NodeHttps | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function viaNode(https: NodeHttps, url: string, request: StreamRequest, onEvent: SSEHandler,
+  signal?: AbortSignal): Promise<StreamResult> {
+  return new Promise((resolve, reject) => {
+    const headers = { ...request.headers, "Content-Length": String(new TextEncoder().encode(request.body).length) };
+    const req = https.request(url, { method: "POST", headers }, (res) => {
+      const status = res.statusCode ?? 0;
+      res.setEncoding("utf8");
+      const ok = status >= 200 && status < 300;
+      const parser = ok ? createSSEParser(onEvent) : undefined;
+      let errorText = "";
+      res.on("data", (chunk) => {
+        if (signal?.aborted) return;
+        if (parser) parser.push(chunk);
+        else errorText += chunk;
+      });
+      res.on("error", fail);
+      res.on("end", () => {
+        signal?.removeEventListener("abort", abort);
+        if (signal?.aborted) return reject(new Error("Request cancelled."));
+        if (parser) {
+          parser.end();
+          resolve({ status });
+        } else {
+          resolve({ status, text: errorText, json: parseJson(errorText) });
+        }
+      });
+    });
+    function fail(error: Error) {
+      signal?.removeEventListener("abort", abort);
+      reject(signal?.aborted ? new Error("Request cancelled.") : error);
+    }
+    function abort() {
+      req.destroy();
+      fail(new Error("Request cancelled."));
+    }
+    signal?.addEventListener("abort", abort);
+    req.on("error", fail);
+    req.write(request.body);
+    req.end();
+  });
 }
 
 async function readFetchResponse(response: Response, onEvent: SSEHandler, signal?: AbortSignal): Promise<StreamResult> {

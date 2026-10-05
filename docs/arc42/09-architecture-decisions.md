@@ -157,11 +157,19 @@
     so history, persistence and native replay are unchanged. Text deltas
     go through `onTextDelta` to the chat view; tool calls run only once the
     response is complete.
+  - **Desktop streams through Node's `https`** (Electron), which no CORS
+    check applies to. Found in Obsidian on 2026-10-05: with a ChatGPT-plan
+    token, `api.openai.com` answers *without* CORS headers (the fake-key
+    preflight above doesn't show this), so browser `fetch` is blocked for
+    the ChatGPT provider.
+  - **Mobile streams with `fetch`** (Anthropic, OpenAI API key). ChatGPT
+    can't stream there.
   - If `fetch` fails before any response (CORS block, network error), the
     same request goes through `requestUrl()`, and its buffered SSE goes
     through the same parser: the answer appears at once. Once that
-    fallback has worked, the session skips `fetch`. Such a request can't be
-    cancelled; Stop ignores its result.
+    fallback has worked for a URL, later requests to that URL skip
+    `fetch` for the session. Such a request can't be cancelled; Stop
+    ignores its result.
   - Sign-in, model lists and all other HTTP stay on `requestUrl()`.
 - **Consequences:**
   - Answers appear as they're written; Stop cancels the request.
@@ -178,7 +186,8 @@
   - **Mobile:** not yet verified on a device whether the iOS and Android
     apps deliver a streamed `fetch` body (the *Check device capabilities*
     command tests it). If `fetch` is blocked there, the fallback keeps chat
-    working without streaming.
+    working without streaming. ChatGPT answers on mobile always arrive
+    whole.
   - API keys and tokens travel in `fetch` headers from the user's device
     to the provider, as before with `requestUrl()` (§8).
 
