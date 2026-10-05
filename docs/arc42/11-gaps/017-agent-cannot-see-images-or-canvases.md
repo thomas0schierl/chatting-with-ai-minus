@@ -14,9 +14,8 @@ the vault. It can't "take a picture" of a canvas to understand its layout.
   expensive in tokens.
 - **No image results:** tool results are text only, so there's no way to
   hand the model an image.
-- **Canvases:** a canvas can only be read as its JSON, where the layout is
-  just coordinates. `read_canvas` gives a readable outline, but there's no
-  way to see the layout.
+- **Canvases:** `read_canvas` gives a readable outline, but the layout is
+  only numbers; the model can't see it.
 
 ## Fix
 
