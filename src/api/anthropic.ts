@@ -11,6 +11,7 @@ import type {
 import { streamSSE } from "./stream";
 import { ProviderError } from "./errors";
 import { canReplay } from "./responses-format";
+import { asRecord, getNestedString, isRecord } from "../json";
 import { withoutOldToolImages } from "../agent/history";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -253,22 +254,6 @@ function normalizeStopReason(value: string | undefined): UnifiedResponse["stopRe
   return "end_turn";
 }
 
-function getNestedString(value: unknown, path: string[]): string | undefined {
-  let current: unknown = value;
-  for (const key of path) {
-    if (!isRecord(current)) return undefined;
-    current = current[key];
-  }
-  return typeof current === "string" ? current : undefined;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 function toAnthropicMessage(msg: UnifiedMessage, model: string, identity: string): Record<string, unknown> {
   if (canReplay(msg, "anthropic", model, identity)) {

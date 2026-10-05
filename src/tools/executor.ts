@@ -1,5 +1,6 @@
 import { App, TFile, normalizePath } from "obsidian";
 import type { ToolResult } from "../types";
+import { isRecord } from "../json";
 import { applyCanvasOperations, canvasSearchTexts, describeCanvas, isCanvasPath, parseCanvas, serializeCanvas } from "./canvas";
 import { renderCanvas, shortIds } from "./canvas-render";
 import { createCanvasElement, decodeImage, encodeCanvas, extensionOf, fitImage, formatBytes, imageMediaType, isImagePath } from "../images";
@@ -116,9 +117,6 @@ function requiredRecord(value: unknown): Record<string, unknown> | null {
   return isRecord(value) ? value : null;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 /** About 50 characters either side of a match, on one line. */
 function snippet(content: string, idx: number, length: number): string {

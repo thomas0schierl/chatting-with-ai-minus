@@ -21,6 +21,29 @@ test('Loaded settings: the iteration limit is kept within 1 to 100, the catalog 
   assert.deepEqual(fresh.settings.modelCatalog, { entries: [] });
 });
 
+// A note with frontmatter `properties`, edited through processFrontMatter.
+function propertiesVault(properties = {}) {
+  const frontmatter = { ...properties };
+  let edits = 0;
+  const app = {
+    workspace: { getActiveFile: () => null },
+    vault: { getFileByPath: path => (path === 'Note.md' ? { path } : null) },
+    fileManager: { processFrontMatter: async (file, fn) => { edits++; fn(frontmatter); } },
+  };
+  return { app, frontmatter, edits: () => edits };
+}
+
+test('set_properties refuses a list or a missing object and leaves the note alone', async () => {
+  for (const properties of [['tag'], 'tag: x', undefined, null]) {
+    const { app, frontmatter, edits } = propertiesVault({ keep: 1 });
+    const result = await run(app, 'set_properties', { path: 'Note.md', properties });
+    assert.equal(result.isError, true, JSON.stringify(properties));
+    assert.match(result.result, /must be an object/);
+    assert.equal(edits(), 0);
+    assert.deepEqual(frontmatter, { keep: 1 });
+  }
+});
+
 test('A multi-line selection is quoted line by line', async () => {
   const requests = transport(() => response('anthropic', [text('OK')]));
   const agent = new api.AgentLoop(vaultApp().app, settings('anthropic'));

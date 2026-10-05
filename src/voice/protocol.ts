@@ -10,6 +10,7 @@
  * the first dialect-specific event it receives.
  */
 import type { ChatHistoryEntry } from "../types";
+import { isRecord } from "../json";
 
 export type VoiceDialect = "live" | "v3";
 
@@ -54,7 +55,6 @@ const LIVE_TYPES = new Set([
 ]);
 const V3_TYPES = new Set(["input_transcript.added", "output_transcript.added", "turn.done", "delegation.created"]);
 
-const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 const str = (value: unknown): string => typeof value === "string" ? value : "";
 
 /** The dialect an event type belongs to, if it belongs to only one. */
@@ -66,7 +66,7 @@ export function eventDialect(type: string): VoiceDialect | undefined {
 
 /** Parse a data-channel message (either dialect). */
 export function parseVoiceEvent(message: unknown): VoiceEvent {
-  if (!record(message)) return { kind: "other" };
+  if (!isRecord(message)) return { kind: "other" };
   switch (message.type) {
     case "session.started":
       return { kind: "started" };
@@ -75,30 +75,30 @@ export function parseVoiceEvent(message: unknown): VoiceEvent {
     case "session.output_transcript.delta":
       return { kind: "output", text: str(message.delta) };
     case "input_transcript.added":
-      return { kind: "input", text: record(message.item) ? str(message.item.text) : "" };
+      return { kind: "input", text: isRecord(message.item) ? str(message.item.text) : "" };
     case "output_transcript.added":
-      return { kind: "output", text: record(message.item) ? str(message.item.text) : "" };
+      return { kind: "output", text: isRecord(message.item) ? str(message.item.text) : "" };
     case "turn.done": {
-      const turn = record(message.turn) ? message.turn : {};
+      const turn = isRecord(message.turn) ? message.turn : {};
       const role = turn.role === "user" || turn.role === "assistant" ? turn.role : undefined;
       return role ? { kind: "turn-done", role, text: str(turn.transcript) } : { kind: "other" };
     }
     case "session.delegation.created": {
-      const delegation = record(message.delegation) ? message.delegation : {};
+      const delegation = isRecord(message.delegation) ? message.delegation : {};
       const id = str(delegation.id);
       return id && delegation.target === "client" ? { kind: "delegation", id, text: "" } : { kind: "other" };
     }
     case "delegation.created": {
-      const item = record(message.item) ? message.item : {};
+      const item = isRecord(message.item) ? message.item : {};
       const id = str(item.id);
       if (!id || (item.target !== undefined && item.target !== "client")) return { kind: "other" };
       const text = Array.isArray(item.content)
-        ? item.content.filter(record).filter((part) => part.type === "input_text").map((part) => str(part.text)).join("")
+        ? item.content.filter(isRecord).filter((part) => part.type === "input_text").map((part) => str(part.text)).join("")
         : "";
       return { kind: "delegation", id, text };
     }
     case "error": {
-      const error = record(message.error) ? message.error : message;
+      const error = isRecord(message.error) ? message.error : message;
       return { kind: "error", message: str(error.message) || str(error.code) || "The voice session reported an error." };
     }
     case "session.closed":

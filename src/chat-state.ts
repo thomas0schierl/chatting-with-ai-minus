@@ -5,6 +5,7 @@
  */
 import type { ChatHistoryEntry, ImageAttachment, UnifiedMessage } from "./types";
 import { assignLegacyTurnIds, trimHistory, HISTORY_MESSAGES } from "./agent/history";
+import { isRecord } from "./json";
 
 /** Current format version of `chat-state.json`. */
 export const CHAT_STATE_VERSION = 3;
@@ -192,6 +193,3 @@ function arrayOf<T>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
 }
 
-function isRecord(value: unknown): value is StateRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

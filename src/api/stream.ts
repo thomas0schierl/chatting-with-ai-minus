@@ -16,6 +16,7 @@
  * `fetch` for 10 minutes.
  */
 import { Platform, requestUrl } from "obsidian";
+import { isRecord, readJson } from "../json";
 
 export interface StreamRequest {
   headers: Record<string, string>;
@@ -211,13 +212,7 @@ async function viaRequestUrl(url: string, request: StreamRequest, onEvent: SSEHa
     text = undefined;
   }
   if (response.status < 200 || response.status >= 300) {
-    // The .json getter throws on iOS for bodies that aren't JSON.
-    let json: unknown;
-    try {
-      json = response.json as unknown;
-    } catch {
-      json = undefined;
-    }
+    const json = readJson(response);
     const header = Object.entries(response.headers ?? {}).find(([name]) => name.toLowerCase() === "retry-after")?.[1];
     return { status: response.status, text, json, retryAfterMs: retryAfterMs(header) };
   }
@@ -245,10 +240,9 @@ export function createSSEParser(onEvent: SSEHandler): { push(text: string): void
     eventName = "";
     if (!payload || payload === "[DONE]") return;
     const event = parseJson(payload);
-    if (typeof event !== "object" || event === null || Array.isArray(event)) return;
-    const record = event as Record<string, unknown>;
-    if (typeof record.type !== "string" && name) record.type = name;
-    onEvent(record);
+    if (!isRecord(event)) return;
+    if (typeof event.type !== "string" && name) event.type = name;
+    onEvent(event);
   };
 
   const line = (text: string) => {

@@ -34,6 +34,7 @@ import { PLUGIN_ID } from "./plugin-id";
 import { runCapabilityCheck } from "./diagnostics/capability-check";
 import type { VoiceRoute } from "./voice/session";
 import { openAILiveRoute } from "./voice/openai-live";
+import { isRecord } from "./json";
 import { CodexVoiceAuth, codexVoiceRoute } from "./voice/codex";
 
 export default class ChatPlugin extends Plugin {
@@ -649,6 +650,3 @@ function isProvider(value: unknown): value is ChatSettings["provider"] {
   return value === "anthropic" || value === "openai" || value === "chatgpt-oauth";
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

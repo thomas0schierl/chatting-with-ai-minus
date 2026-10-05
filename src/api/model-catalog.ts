@@ -2,6 +2,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { requestUrl } from "obsidian";
 import type { Provider } from "../types";
 import type { ChatGPTOAuthService } from "../auth/chatgptOAuth";
+import { isRecord, readJson } from "../json";
 
 export interface ModelOption {
   value: string;
@@ -33,18 +34,17 @@ let versionAttempt = 0;
 const activeModels = new Map<Provider, ModelOption[]>();
 const pending = new Map<string, Promise<ModelOption[]>>();
 const failedAt = new Map<string, number>();
-const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
 /** Validate untrusted persisted data; never persist credentials. */
 export function normalizeCatalogState(value: unknown): CatalogState {
   const state: CatalogState = { entries: [] };
-  if (!record(value)) return state;
+  if (!isRecord(value)) return state;
   if (Array.isArray(value.entries)) {
     for (const entry of value.entries.slice(-3)) {
-      if (!record(entry) || !["anthropic", "openai", "chatgpt-oauth"].includes(String(entry.provider)) ||
+      if (!isRecord(entry) || !["anthropic", "openai", "chatgpt-oauth"].includes(String(entry.provider)) ||
           typeof entry.identity !== "string" || !/^[a-f0-9]{64}$/.test(entry.identity) ||
           typeof entry.fetchedAt !== "number" || !Number.isFinite(entry.fetchedAt) || !Array.isArray(entry.models)) continue;
-      const models = entry.models.filter(record).filter(m => typeof m.value === "string" && typeof m.label === "string")
+      const models = entry.models.filter(isRecord).filter(m => typeof m.value === "string" && typeof m.label === "string")
         .map((m): ModelOption => ({ value: m.value as string, label: m.label as string,
           reasoningEfforts: Array.isArray(m.reasoningEfforts) ? m.reasoningEfforts.filter((e): e is string => typeof e === "string") : undefined,
           defaultReasoningEffort: typeof m.defaultReasoningEffort === "string" ? m.defaultReasoningEffort : undefined,
@@ -55,7 +55,7 @@ export function normalizeCatalogState(value: unknown): CatalogState {
     }
   }
   const version = value.clientVersion;
-  if (record(version) && typeof version.value === "string" && /^\d+\.\d+\.\d+$/.test(version.value) &&
+  if (isRecord(version) && typeof version.value === "string" && /^\d+\.\d+\.\d+$/.test(version.value) &&
       typeof version.checkedAt === "number") {
     state.clientVersion = { value: version.value, checkedAt: version.checkedAt };
   }
@@ -132,13 +132,13 @@ export function anthropicThinking(model: string, level: string): Record<string, 
 }
 /** Read `capabilities.thinking.types` and `capabilities.effort` from Anthropic `/v1/models`. */
 function anthropicCapabilities(capabilities: unknown): Pick<ModelOption, "thinkingType" | "reasoningEfforts"> {
-  if (!record(capabilities)) return {};
-  const types = record(capabilities.thinking) && record(capabilities.thinking.types) ? capabilities.thinking.types : {};
-  const supported = (value: unknown) => record(value) && value.supported === true;
+  if (!isRecord(capabilities)) return {};
+  const types = isRecord(capabilities.thinking) && isRecord(capabilities.thinking.types) ? capabilities.thinking.types : {};
+  const supported = (value: unknown) => isRecord(value) && value.supported === true;
   const thinkingType = supported(types.adaptive) ? "adaptive" : supported(types.enabled) ? "enabled" : undefined;
   const effort = capabilities.effort;
   // Levels in the API's key order; "supported" is the flag for effort as a whole.
-  const reasoningEfforts = record(effort) && effort.supported === true
+  const reasoningEfforts = isRecord(effort) && effort.supported === true
     ? Object.entries(effort).filter(([key, value]) => key !== "supported" && supported(value)).map(([key]) => key) : undefined;
   return { thinkingType, reasoningEfforts };
 }
@@ -156,9 +156,8 @@ export function cachedCatalog(state: CatalogState, provider: Provider, identity:
 async function jsonRequest(url: string, headers: Record<string, string> = {}): Promise<Record<string, unknown>> {
   const response = await requestUrl({ url, method: "GET", headers, throw: false });
   if (response.status < 200 || response.status >= 300) throw new Error(`Model catalog request failed (HTTP ${response.status})`);
-  let json: unknown;
-  try { json = response.json; } catch { json = undefined; }
-  if (!record(json)) throw new Error("Invalid model catalog response");
+  const json = readJson(response);
+  if (!isRecord(json)) throw new Error("Invalid model catalog response");
   return json;
 }
 /** Dedupe requests; failures retain the last good entry and use a short retry backoff. */
@@ -182,9 +181,9 @@ export async function refreshCatalog(state: CatalogState, provider: Provider, id
       const json = await jsonRequest(`https://api.openai.com/v1/models?client_version=${encodeURIComponent(version)}`,
         { Authorization: `Bearer ${credential.accessToken}` });
       if (!Array.isArray(json.models)) throw new Error("Invalid ChatGPT model catalog");
-      models = json.models.filter(record).filter(m => m.visibility === "list" && typeof m.slug === "string")
+      models = json.models.filter(isRecord).filter(m => m.visibility === "list" && typeof m.slug === "string")
         .map(m => ({ value: m.slug as string, label: typeof m.display_name === "string" ? m.display_name : m.slug as string,
-          reasoningEfforts: Array.isArray(m.supported_reasoning_levels) ? m.supported_reasoning_levels.filter(record).map(e => e.effort).filter((e): e is string => typeof e === "string") : undefined,
+          reasoningEfforts: Array.isArray(m.supported_reasoning_levels) ? m.supported_reasoning_levels.filter(isRecord).map(e => e.effort).filter((e): e is string => typeof e === "string") : undefined,
           defaultReasoningEffort: typeof m.default_reasoning_level === "string" ? m.default_reasoning_level : undefined,
           supportsReasoningSummary: typeof m.supports_reasoning_summaries === "boolean" ? m.supports_reasoning_summaries : undefined,
           supportsParallelTools: typeof m.supports_parallel_tool_calls === "boolean" ? m.supports_parallel_tool_calls : undefined }));
@@ -197,7 +196,7 @@ export async function refreshCatalog(state: CatalogState, provider: Provider, id
         const headers: Record<string, string> = provider === "anthropic" ? { "x-api-key": apiKey, "anthropic-version": "2023-06-01" } : { Authorization: `Bearer ${apiKey}` };
         const json = await jsonRequest(url, headers);
         if (!Array.isArray(json.data)) throw new Error("Invalid model catalog");
-        records.push(...json.data.filter(record));
+        records.push(...json.data.filter(isRecord));
         if (provider === "anthropic" && json.has_more === true && (typeof json.last_id !== "string" || !json.last_id)) throw new Error("Missing model catalog pagination cursor");
         cursor = provider === "anthropic" && json.has_more === true && typeof json.last_id === "string" ? json.last_id : "";
         if (cursor && seen.has(cursor)) throw new Error("Model catalog pagination did not advance");

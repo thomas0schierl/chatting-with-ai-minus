@@ -8,6 +8,7 @@ import { App, Modal, Notice, Platform, apiVersion, requestUrl } from "obsidian";
 import { browserFetch } from "../api/stream";
 import { DEFAULT_LIVE_VOICE, LIVE_MODEL, hasLiveAccess, openAILiveRoute } from "../voice/openai-live";
 import { VoiceSession } from "../voice/session";
+import { asRecord, readJson } from "../json";
 
 type Status = "ok" | "fail" | "skip";
 
@@ -181,8 +182,10 @@ export async function checkLiveVoice(apiKey: string): Promise<[Status, string]> 
 async function newestModel(apiKey: string, match: (id: string) => boolean): Promise<string | undefined> {
   const res = await requestUrl({ url: `${OPENAI}/models`, headers: { Authorization: `Bearer ${apiKey}` }, throw: false });
   if (res.status !== 200) return undefined;
-  const data = (res.json as { data?: Array<{ id: string; created: number }> }).data ?? [];
-  return data.filter((m) => match(m.id)).sort((a, b) => b.created - a.created)[0]?.id;
+  const data = asRecord(readJson(res)).data;
+  const models = (Array.isArray(data) ? data : []).map(asRecord)
+    .filter((m): m is { id: string; created: number } => typeof m.id === "string" && typeof m.created === "number");
+  return models.filter((m) => match(m.id)).sort((a, b) => b.created - a.created)[0]?.id;
 }
 
 

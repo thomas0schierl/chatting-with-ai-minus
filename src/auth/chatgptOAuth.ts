@@ -25,6 +25,7 @@
 import { requestUrl } from "obsidian";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { base64UrlDecode, verifyRs256, type RsaJwk } from "./rs256";
+import { asRecord, getNestedString, isRecord, readJson } from "../json";
 import type {
   ChatGPTOAuthCredential,
   ChatGPTOAuthStore,
@@ -126,7 +127,7 @@ export function decodeJwt(token: string, index = 1): Record<string, unknown> | u
   if (!bytes?.length) return undefined;
   try {
     const json: unknown = JSON.parse(new TextDecoder().decode(bytes));
-    return typeof json === "object" && json !== null ? json as Record<string, unknown> : undefined;
+    return isRecord(json) ? json : undefined;
   } catch {
     return undefined;
   }
@@ -191,14 +192,8 @@ export function validateIdToken(idToken: string | undefined, clientId: string, n
 
 /** Error text from an OAuth or API error body (`error`, `error.code`, `detail`). */
 function errorCode(json: unknown): string | undefined {
-  if (typeof json !== "object" || json === null) return undefined;
-  const error = (json as Record<string, unknown>).error;
-  if (typeof error === "string") return error;
-  if (typeof error === "object" && error !== null) {
-    const code = (error as Record<string, unknown>).code;
-    if (typeof code === "string") return code;
-  }
-  return undefined;
+  const error = asRecord(json).error;
+  return typeof error === "string" ? error : getNestedString(error, ["code"]);
 }
 
 function describe(response: { status: number; text?: string }): string {
@@ -206,13 +201,6 @@ function describe(response: { status: number; text?: string }): string {
   return text ? `HTTP ${response.status}: ${text}` : `HTTP ${response.status}`;
 }
 
-function readJson(response: { json?: unknown }): unknown {
-  try {
-    return response.json;
-  } catch {
-    return undefined;
-  }
-}
 
 async function postForm(url: string, form: Record<string, string>) {
   return requestUrl({
@@ -376,7 +364,7 @@ export class ChatGPTOAuthService {
       if (typeof jwksUri !== "string" || !jwksUri.startsWith(`${ISSUER}/`)) throw new ChatGPTOAuthError(unavailable);
       const jwks = readJson(await requestUrl({ url: jwksUri, throw: false })) as { keys?: unknown } | undefined;
       if (!Array.isArray(jwks?.keys)) throw new ChatGPTOAuthError(unavailable);
-      this.signingKeys = jwks.keys.filter((key): key is RsaJwk => typeof key === "object" && key !== null);
+      this.signingKeys = jwks.keys.filter((key): key is RsaJwk => isRecord(key));
       return this.signingKeys;
     } catch (error) {
       throw error instanceof ChatGPTOAuthError ? error : new ChatGPTOAuthError(unavailable);

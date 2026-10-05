@@ -28,7 +28,8 @@ main.ts ──▶ settings.ts ─────────────┐
                        api/model-catalog.ts ◀── adapters, settings ┘
 ```
 
-All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
+All modules share types from `types.ts` and the JSON readers in `json.ts`;
+`plugin-id.ts` holds the plugin ID;
 `images.ts` (image limits and re-encoding) serves the image tools;
 `chat-state.ts` (conversation records, format and migrations of
 `chat-state.json`) serves `main.ts`; `styles.css` holds the global styles
@@ -71,6 +72,7 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
 | `images.ts` | Image limits (5 MB, 2048 px long side) and re-encoding via `createImageBitmap` and `<canvas>`, shared by the image tools. Attachments in `ChatContainer.svelte` still have their own copy. |
 | `chat-state.ts` | The conversation record, the saved format and its version, titles (first user message), per-conversation caps, the one-time migrations from older versions (turn IDs for chats saved without them; image data dropped from the visible history; the single chat becoming the first conversation), and storing each image once: the visible history keeps an image's name, type and size, and gets its data back from the API history on load. |
 | `types.ts` | Settings, unified message and response types, defaults. |
+| `json.ts` | Reading untrusted JSON without casts: `isRecord` (objects, not arrays), `asRecord`, `getNestedString`, and `readJson` for a `requestUrl()` response whose `json` getter may throw. |
 | `globals.d.ts` | The `__CODEX_VOICE__` build flag (ADR-14). |
 | `plugin-id.ts` | The plugin ID, used for keychain keys, paths and User-Agents. |
 

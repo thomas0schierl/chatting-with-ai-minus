@@ -4,6 +4,7 @@
  * executor does the vault I/O. Unknown fields on the canvas, its nodes and
  * its edges are kept as they are.
  */
+import { isRecord } from "../json";
 
 export interface CanvasNode {
   id: string;
@@ -520,9 +521,6 @@ export function applyCanvasOperations(
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isRecordList(value: unknown): value is Record<string, unknown>[] {
   return Array.isArray(value) && value.every(isRecord);

@@ -6,6 +6,7 @@
 import type { ContentBlock, ImageAttachment, Provider, ProviderReplay, StreamOptions, UnifiedMessage, UnifiedResponse, UnifiedToolDef } from "../types";
 import { withoutOldToolImages } from "../agent/history";
 import { streamSSE, type StreamResult } from "./stream";
+import { isRecord } from "../json";
 
 /** The ChatGPT route takes function tools only inside a namespace; this is ours. */
 export const CHATGPT_TOOL_NAMESPACE = "vault";
@@ -238,6 +239,3 @@ function numberValue(value: unknown): number {
   return typeof value === "number" ? value : 0;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

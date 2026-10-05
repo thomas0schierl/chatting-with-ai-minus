@@ -21,6 +21,7 @@ import { buildResponsesInput, fromResponsesOutput, functionTools, sendResponsesR
 import { oauthReasoning, oauthParallelTools, cachedCatalog, catalogIdentity } from "./model-catalog";
 import type { StreamResult } from "./stream";
 import { ProviderError } from "./errors";
+import { asRecord, getNestedString } from "../json";
 import {
   ChatGPTOAuthError,
   ChatGPTUsageLimitError,
@@ -132,8 +133,8 @@ const CHATGPT_ERRORS = {
   http(response: StreamResult): Error {
     // Errors come as `{error: {code, message}}` or, before the request is
     // admitted, `{detail: "..."}`.
-    const json = asOptionalRecord(response.json);
-    const detail = json?.detail;
+    const json = asRecord(response.json);
+    const detail = json.detail;
     const code = getNestedString(json, ["error", "code"]);
     const apiMsg =
       (typeof detail === "string" ? detail : getNestedString(detail, ["message"])) ??
@@ -155,19 +156,3 @@ const CHATGPT_ERRORS = {
   },
 };
 
-function getNestedString(value: unknown, path: string[]): string | undefined {
-  let current: unknown = value;
-  for (const key of path) {
-    if (!isRecord(current)) return undefined;
-    current = current[key];
-  }
-  return typeof current === "string" ? current : undefined;
-}
-
-function asOptionalRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

@@ -10,6 +10,7 @@ import type {
 
 import { buildResponsesInput, fromResponsesOutput, functionTools, sendResponsesRequest } from "./responses-format";
 import { ProviderError } from "./errors";
+import { getNestedString } from "../json";
 
 const DEFAULT_OPENAI_URL = "https://api.openai.com";
 
@@ -92,15 +93,3 @@ export async function sendOpenAIMessage(
   return result;
 }
 
-function getNestedString(value: unknown, path: string[]): string | undefined {
-  let current: unknown = value;
-  for (const key of path) {
-    if (!isRecord(current)) return undefined;
-    current = current[key];
-  }
-  return typeof current === "string" ? current : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

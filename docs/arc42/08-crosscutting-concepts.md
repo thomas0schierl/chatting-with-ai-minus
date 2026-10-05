@@ -60,7 +60,7 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   Android apps deliver a streamed `fetch` body is still to be checked on a
   device (*Check device capabilities*).
 - On iOS `response.json` throws for non-JSON bodies, so always read it
-  inside `try`.
+  inside `try` (`readJson()` in `json.ts`).
 - Hashing uses pure JavaScript (`@noble/hashes`), since `SubtleCrypto`
   isn't always available.
 - Images are re-encoded through a canvas when needed (HEIC, oversized):

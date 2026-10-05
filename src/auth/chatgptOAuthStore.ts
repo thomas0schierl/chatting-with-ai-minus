@@ -18,6 +18,7 @@
  */
 import type { App } from "obsidian";
 import { PLUGIN_ID } from "../plugin-id";
+import { isRecord } from "../json";
 
 export interface ChatGPTOAuthCredential {
   accessToken: string;
@@ -165,7 +166,7 @@ export class ChatGPTOAuthStore {
       const raw = this.app.secretStorage.getSecret(key);
       if (!raw) return null;
       const parsed: unknown = JSON.parse(raw);
-      return typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : null;
+      return isRecord(parsed) ? parsed : null;
     } catch {
       return null;
     }

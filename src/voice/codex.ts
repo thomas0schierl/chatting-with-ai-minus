@@ -17,6 +17,7 @@ import type ChatPlugin from "../main";
 import type { VoiceRouteId } from "../types";
 import { decodeJwt } from "../auth/chatgptOAuth";
 import { uuidV4 } from "../auth/chatgptOAuthStore";
+import { asRecord, isRecord, readJson } from "../json";
 import type { VoiceRoute } from "./session";
 
 // Plain strings, not templates: public builds can then drop them all.
@@ -53,16 +54,11 @@ export interface CodexDeviceCode {
   intervalMs: number;
 }
 
-const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 const str = (value: unknown): string | undefined => typeof value === "string" && value ? value : undefined;
 const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
 function json(response: { json: unknown }): Record<string, unknown> {
-  try {
-    return record(response.json) ? response.json : {};
-  } catch {
-    return {};
-  }
+  return asRecord(readJson(response));
 }
 
 /** The Codex sign-in for voice: device code flow, refresh, sign-out. */
@@ -75,7 +71,7 @@ export class CodexVoiceAuth {
     try {
       const raw = this.app.secretStorage.getSecret(SECRET_KEY);
       const parsed: unknown = raw ? JSON.parse(raw) : null;
-      if (!record(parsed)) return null;
+      if (!isRecord(parsed)) return null;
       const accessToken = str(parsed.accessToken), refreshToken = str(parsed.refreshToken), accountId = str(parsed.accountId);
       if (!accessToken || !refreshToken || !accountId || typeof parsed.expiresAt !== "number") return null;
       return { accessToken, refreshToken, accountId, expiresAt: parsed.expiresAt, idToken: str(parsed.idToken), email: str(parsed.email) };
@@ -184,7 +180,7 @@ export class CodexVoiceAuth {
     if (!accessToken || !refreshToken) throw new Error("The Codex sign-in returned no tokens.");
     const claims = idToken ? decodeJwt(idToken) : undefined;
     const auth = claims?.["https://api.openai.com/auth"];
-    const accountId = (record(auth) ? str(auth.chatgpt_account_id) : undefined) ?? previous?.accountId;
+    const accountId = (isRecord(auth) ? str(auth.chatgpt_account_id) : undefined) ?? previous?.accountId;
     if (!accountId) throw new Error("The Codex sign-in returned no ChatGPT account.");
     const expiresIn = typeof data.expires_in === "number" ? data.expires_in : undefined;
     const exp = decodeJwt(accessToken)?.exp;

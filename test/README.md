@@ -39,7 +39,8 @@ titles, and isolation of histories and OpenAI chaining
 (`conversations.test.mjs`), `edit_document` without content and where it
 inserts (after the frontmatter)
 (`edit-document.test.mjs`), the local date of `get_current_datetime` and a
-multi-line selection quoted line by line, saved settings checked on load
+multi-line selection quoted line by line, saved settings checked on load,
+`set_properties` refusing a list
 (`tools.test.mjs`), and the ChatGPT plan cues: no retry on a
 usage limit, its own message, the one-time welcome
 (`chatgpt-usage.test.mjs`), and live voice with fake WebRTC, microphone

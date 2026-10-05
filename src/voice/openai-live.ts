@@ -5,6 +5,7 @@
  */
 import { requestUrl } from "obsidian";
 import type { VoiceRoute } from "./session";
+import { asRecord, getNestedString, readJson } from "../json";
 
 const API = "https://api.openai.com/v1";
 export const LIVE_MODEL = "gpt-live-1";
@@ -43,18 +44,14 @@ export function openAILiveRoute(apiKey: string, voice: string): VoiceRoute {
         }),
         throw: false,
       });
-      let json: unknown;
-      try {
-        json = response.json;
-      } catch {
-        json = undefined;
-      }
+      const json = readJson(response);
       if (response.status < 200 || response.status >= 300) {
-        throw new Error(`Couldn't start voice (HTTP ${response.status})${errorText(json)}`);
+        const message = getNestedString(json, ["error", "message"]);
+        throw new Error(`Couldn't start voice (HTTP ${response.status})${message ? `: ${message}` : ""}`);
       }
-      const body = (json ?? {}) as { session?: { id?: unknown }; transport?: { sdp?: unknown } };
-      if (typeof body.transport?.sdp !== "string") throw new Error("Couldn't start voice: the answer had no connection details.");
-      return { sdp: body.transport.sdp, callId: typeof body.session?.id === "string" ? body.session.id : undefined };
+      const answer = getNestedString(json, ["transport", "sdp"]);
+      if (answer === undefined) throw new Error("Couldn't start voice: the answer had no connection details.");
+      return { sdp: answer, callId: getNestedString(json, ["session", "id"]) };
     },
   };
 }
@@ -63,17 +60,6 @@ export function openAILiveRoute(apiKey: string, voice: string): VoiceRoute {
 export async function hasLiveAccess(apiKey: string): Promise<boolean> {
   const response = await requestUrl({ url: `${API}/models`, headers: { Authorization: `Bearer ${apiKey}` }, throw: false });
   if (response.status < 200 || response.status >= 300) throw new Error(`Couldn't check the key (HTTP ${response.status})`);
-  let json: unknown;
-  try {
-    json = response.json;
-  } catch {
-    return false;
-  }
-  const data = (json as { data?: unknown } | undefined)?.data;
-  return Array.isArray(data) && data.some((model: unknown) => (model as { id?: unknown } | null)?.id === LIVE_MODEL);
-}
-
-function errorText(json: unknown): string {
-  const error = (json as { error?: { message?: unknown } } | undefined)?.error;
-  return typeof error?.message === "string" && error.message ? `: ${error.message}` : "";
+  const data = asRecord(readJson(response)).data;
+  return Array.isArray(data) && data.some((model: unknown) => asRecord(model).id === LIVE_MODEL);
 }
