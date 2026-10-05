@@ -157,3 +157,29 @@
   - Check the Obsidian review lint for rules against `fetch` before
     adopting.
   - Supersedes ADR-01 for these two providers.
+
+## ADR-13: ChatGPT sign-in through OpenAI's official route, with a pasted callback
+
+- **Status:** accepted 2026-10-05; replaces ADR-02 and ADR-03 once GAP-019
+  ships.
+- **Context:**
+  - The ChatGPT provider posed as the Codex CLI and called Codex's
+    internal backend (GAP-019).
+  - OpenAI's "Sign in with ChatGPT" for open-source apps is the sanctioned
+    way.
+  - Its login redirects to a loopback callback on `127.0.0.1`, which mobile
+    apps can't serve. But the redirect URL already carries the result
+    (`code`, `state`, issued `client_id`).
+- **Decision:**
+  - Sign in with OpenAI's authorize endpoint, PKCE, and the app's own
+    issued client ID.
+  - After signing in, the user copies the callback URL from the browser
+    into the plugin, on every platform. Automatic capture on desktop may
+    follow.
+  - Chat and model lists use `api.openai.com/v1` with the ChatGPT-plan
+    token.
+- **Consequences:**
+  - A sanctioned, documented route, with streaming possible (ADR-12).
+  - One extra copy step at sign-in; each device signs in separately.
+  - The programme is a preview and may change.
+  - Users of the old route sign in again.

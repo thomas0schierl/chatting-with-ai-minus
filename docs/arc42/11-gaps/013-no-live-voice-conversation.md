@@ -86,6 +86,15 @@ Live speech-to-speech over WebRTC with OpenAI, setup calls through
    - A voice button.
    - The session module.
    - Transcripts into the chat history, and tool cards as in text chat.
+   - **A "Voice" settings section**, independent of the chat provider,
+     because voice always runs on OpenAI:
+     - an OpenAI API key, sharing the OpenAI provider's keychain entry
+     - the voice model
+     - the voice
+     - hands-free (voice detection) or push-to-talk
+
+     Take the models and voices from the API where it lists them, not
+     from a hardcoded list.
 4. **Limits:** voice only while the chat panel is open; iOS stops on screen
    lock.
 

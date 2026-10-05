@@ -10,8 +10,10 @@
 npm test
 ```
 
-Bundles the real provider adapters and agent loop with an in-memory vault
-and a mocked `requestUrl()`. No credentials or network needed. They cover
+Runs every `test/*.test.mjs` (`scripts/test.mjs`). `test/harness.mjs`
+bundles the real plugin modules with a fake Obsidian API, an in-memory
+vault and a mocked `requestUrl()`; new test files import from it. No
+credentials or network needed. They cover
 history encoding and replay per provider, tool flows, cancellation, model
 catalogs and caching, and thinking parameters. They don't prove live-service
 or mobile behaviour.
