@@ -208,6 +208,9 @@
   let textareaEl: HTMLTextAreaElement | undefined = $state();
   let fileInputEl: HTMLInputElement | undefined = $state();
   let attachments = $state<ImageAttachment[]>([]);
+  let inputFocused = $state(false);
+  /** Typing: the attach button folds away so the text gets the width. */
+  const typing = $derived(inputFocused && inputText.trim() !== "");
   let nextId = 0;
   /** A turn is running (set by the view); regenerate waits for it. */
   let busy = $state(false);
@@ -231,6 +234,11 @@
 
   // ask_user support
   let askUserResolve: ((value: string) => void) | null = $state(null);
+
+  /** The action slot shows voice while there is nothing to send (not while a question waits for its answer). */
+  const showVoiceStart = $derived(
+    canVoice && !voice && !askUserResolve && inputText.trim() === "" && attachments.length === 0,
+  );
 
   // Sync model prop to local state (also updateable via setModel)
   $effect(() => {
@@ -321,7 +329,7 @@
     if (question && followQuestion) el.scrollTop = target;
   }
 
-  // ─── Public API (called from chat-view.ts / chat-modal.ts) ────────────
+  // ─── Public API (called from chat-view.ts) ────────────────────────────
 
   export function addUserMessage(
     text: string,
@@ -561,11 +569,14 @@
     if (!textareaEl) return;
     textareaEl.style.height = "auto";
     textareaEl.style.height = Math.min(textareaEl.scrollHeight, 300) + "px";
+    // A scrollbar only once the text is taller than the box can grow
+    textareaEl.style.overflowY = textareaEl.scrollHeight > 300 ? "auto" : "hidden";
   }
 
   function resetHeight(): void {
     if (!textareaEl) return;
     textareaEl.style.height = "auto";
+    textareaEl.style.overflowY = "hidden";
   }
 
   function imageDataUrl(image: ImageAttachment): string {
@@ -1085,16 +1096,19 @@
       onchange={handleImageSelection}
       aria-label="Choose images"
     />
-    <button
-      class="chatting-minus-attach-btn"
-      type="button"
-      onclick={openImagePicker}
-      disabled={!inputEnabled || attachments.length >= MAX_IMAGE_COUNT}
-      aria-label="Attach images"
-      title="Attach images"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-    </button>
+    <!-- While typing, the attach button folds away so the text gets the width -->
+    {#if !typing}
+      <button
+        class="chatting-minus-attach-btn"
+        type="button"
+        onclick={openImagePicker}
+        disabled={!inputEnabled || attachments.length >= MAX_IMAGE_COUNT}
+        aria-label="Attach images"
+        title="Attach images"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+      </button>
+    {/if}
     <textarea
       class="chatting-minus-input"
       bind:this={textareaEl}
@@ -1105,8 +1119,11 @@
       onkeydown={handleKeydown}
       onpaste={handlePaste}
       oninput={autoGrow}
+      onfocus={() => { inputFocused = true; }}
+      onblur={() => { inputFocused = false; }}
     ></textarea>
-    {#if canVoice && !voice}
+    <!-- One action slot, as in the chat apps: voice while there's nothing to send, else send; stop while a turn runs -->
+    {#if inputEnabled && showVoiceStart}
       <button
         class="chatting-minus-attach-btn chatting-minus-voice-start"
         type="button"
@@ -1117,8 +1134,7 @@
         <!-- Live voice, as in the chat apps: a filled circle with sound-wave bars (the microphone means dictation there) -->
         <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="currentColor"></circle><g class="chatting-minus-voice-bars" fill="none" stroke-width="2" stroke-linecap="round"><line x1="7.5" y1="10.5" x2="7.5" y2="13.5"></line><line x1="10.5" y1="7.5" x2="10.5" y2="16.5"></line><line x1="13.5" y1="9" x2="13.5" y2="15"></line><line x1="16.5" y1="10.5" x2="16.5" y2="13.5"></line></g></svg>
       </button>
-    {/if}
-    {#if inputEnabled}
+    {:else if inputEnabled}
       <button
         class="chatting-minus-send-btn"
         onclick={handleSend}
@@ -1811,7 +1827,8 @@
     color: var(--text-normal);
     line-height: 1.4;
     max-height: 300px;
-    overflow-y: auto;
+    /* autoGrow() turns the scrollbar on only beyond the maximum height */
+    overflow-y: hidden;
     box-shadow: none;
   }
 
