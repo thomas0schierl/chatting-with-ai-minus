@@ -6,8 +6,9 @@ import { ChatGPTUsageLimitError } from "../auth/chatgptOAuth";
 
 /**
  * Dispatches a message to the appropriate provider adapter.
- * Handles single retry on 429 (rate limit) with exponential backoff, but
- * only while no answer text has been shown: a retry would show it twice.
+ * Handles single retry on a rate limit or overload (429, 529, or such an
+ * error inside the stream), but only while no answer text has been shown:
+ * a retry would show it twice.
  * A ChatGPT usage limit (also 429) is not retried.
  */
 export async function sendMessage(
@@ -59,7 +60,9 @@ export function errorKind(e: unknown): ChatErrorKind | undefined {
 function isRateLimitError(e: unknown): boolean {
   if (e instanceof ChatGPTUsageLimitError) return false;
   if (e instanceof Error) {
-    return e.message.includes("429") || e.message.toLowerCase().includes("rate limit");
+    // HTTP 429 or 529, or an error inside the stream such as Anthropic's
+    // `rate_limit_error` or `overloaded_error`.
+    return /\b(429|529)\b|rate.?limit|overloaded/i.test(e.message);
   }
   return false;
 }

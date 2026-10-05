@@ -47,10 +47,9 @@ gap or drop.
 - ChatGPT: whether `function_call_output` may contain `input_image` is
   assumed from the general "images are supported" note; check live.
 - Streaming: unverified in the mobile apps (run *Check device
-  capabilities*). A brief network failure followed by a working
-  `requestUrl()` fallback turns streaming off until Obsidian reloads. An
-  Anthropic rate-limit error inside the stream isn't recognised for the
-  retry. A stopped partial answer isn't sent to the model next turn.
+  capabilities*), including whether a CORS block there fails as a
+  `TypeError` (only then is `fetch` skipped for 10 minutes). A stopped
+  partial answer isn't sent to the model next turn.
 - ChatGPT model list: depends on the undocumented `client_version`
   parameter (without it, newer models are hidden).
 - Message editing: no Retry after a turn that failed without any answer

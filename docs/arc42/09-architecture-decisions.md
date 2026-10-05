@@ -186,10 +186,12 @@
     can't stream there.
   - If `fetch` fails before any response (CORS block, network error), the
     same request goes through `requestUrl()`, and its buffered SSE goes
-    through the same parser: the answer appears at once. Once that
-    fallback has worked for a URL, later requests to that URL skip
-    `fetch` for the session. Such a request can't be cancelled; Stop
-    ignores its result.
+    through the same parser: the answer appears at once. When `fetch`
+    failed like a CORS block (a `TypeError`) and that fallback reached
+    the server, later requests to that URL skip `fetch` for 10 minutes;
+    a brief network failure looks the same, so the block doesn't last
+    the session. Such a request can't be cancelled; Stop ignores its
+    result.
   - Sign-in, model lists and all other HTTP stay on `requestUrl()`.
 - **Consequences:**
   - Answers appear as they're written; Stop cancels the request.

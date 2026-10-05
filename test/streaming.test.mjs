@@ -160,6 +160,31 @@ test('fetch failure with a failing requestUrl keeps trying fetch next time', asy
   assert.equal(fetches, 2);
 });
 
+test('fetch failing other than a CORS-like TypeError is not marked blocked', async () => {
+  let fetches = 0;
+  globalThis.__fetch = async () => { fetches++; throw new Error('connection reset'); };
+  transport(() => response('openai', [text('OK')]));
+  await api.sendOpenAIMessage(settings('openai'), [{ role: 'user', content: 'Hi' }], [], 'System');
+  await api.sendOpenAIMessage(settings('openai'), [{ role: 'user', content: 'Hi' }], [], 'System');
+  assert.equal(fetches, 2);
+});
+
+test('A URL marked fetch-blocked tries fetch again after 10 minutes', async (t) => {
+  let now = 1_000_000;
+  t.mock.method(Date, 'now', () => now);
+  let fetches = 0;
+  globalThis.__fetch = async () => { fetches++; throw new TypeError('Failed to fetch'); };
+  transport(() => response('openai', [text('OK')]));
+  const sendOnce = () => api.sendOpenAIMessage(settings('openai'), [{ role: 'user', content: 'Hi' }], [], 'System');
+  await sendOnce();
+  now += 10 * 60_000 - 1;
+  await sendOnce();
+  assert.equal(fetches, 1);
+  now += 1;
+  await sendOnce();
+  assert.equal(fetches, 2);
+});
+
 test('An incomplete stream is an error, not a partial answer', async () => {
   const events = streamEvents('anthropic', [text('Half an answer')]).filter(event => event.type !== 'message_stop');
   fakeFetch(() => streamedResponse(sseText(events)));
@@ -243,6 +268,19 @@ test('Rate limit: retried before any text was shown, not after', async () => {
     await assert.rejects(api.sendMessage(settings('openai'), [{ role: 'user', content: 'Hi' }], [], 'System', () => false, { onTextDelta: delta => shown.push(delta) }), /Rate limit reached/);
     assert.equal(calls.length, 1);
     assert.deepEqual(shown, ['Partial']);
+
+    // Anthropic reports a rate limit or overload inside the stream: one retry before any text.
+    for (const [type, message] of [['rate_limit_error', 'Number of request tokens has exceeded your per-minute limit'], ['overloaded_error', 'Overloaded']]) {
+      const failed = [streamEvents('anthropic', [])[0], { type: 'error', error: { type, message } }];
+      calls = fakeFetch(index => streamedResponse(sseText(index ? streamEvents('anthropic', [text('After retry')]) : failed)));
+      const retried = await api.sendMessage(settings('anthropic'), [{ role: 'user', content: 'Hi' }], [], 'System');
+      assert.equal(calls.length, 2, type);
+      assert.equal(retried.content[0].text, 'After retry');
+    }
+    // After text was shown it is not retried.
+    calls = fakeFetch(() => streamedResponse(sseText([...streamEvents('anthropic', [text('Partial')]).slice(0, 4), { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }])));
+    await assert.rejects(api.sendMessage(settings('anthropic'), [{ role: 'user', content: 'Hi' }], [], 'System', () => false, { onTextDelta() {} }), /overloaded_error/);
+    assert.equal(calls.length, 1);
   } finally {
     globalThis.window = previousWindow;
   }

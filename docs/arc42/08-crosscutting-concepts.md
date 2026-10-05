@@ -36,7 +36,8 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   kept in the history.
 - **Tools never throw** to the loop. Failures and invalid arguments return
   an error result to the model.
-- **Rate limits:** one retry after the server's suggested delay (5 s
+- **Rate limits and overload** (429, 529, or Anthropic's
+  `rate_limit_error` / `overloaded_error` inside the stream): one retry after the server's suggested delay (5 s
   default, 30 s maximum), only if no answer text was shown yet, and never
   for a ChatGPT usage limit; otherwise
   the error is shown below the partial answer.
@@ -49,7 +50,8 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   `fetch` in `api/stream.ts` (ADR-12). No Node modules, no localhost.
 - If `fetch` fails before any response (blocked by CORS, network), the same
   request goes through `requestUrl()` and the answer appears when complete;
-  after one such fallback the session skips `fetch`. Whether the iOS and
+  if `fetch` failed like a CORS block (`TypeError`) and `requestUrl()`
+  reached the server, `fetch` is skipped for that URL for 10 minutes. Whether the iOS and
   Android apps deliver a streamed `fetch` body is still to be checked on a
   device (*Check device capabilities*).
 - On iOS `response.json` throws for non-JSON bodies, so always read it

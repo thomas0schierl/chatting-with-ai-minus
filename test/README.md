@@ -23,7 +23,8 @@ parameters, the ChatGPT sign-in and its refresh and retry after a 401
 (`canvas.test.mjs`), image tools, leaving older tool images out of
 requests, and canvas drawing (`view-tools.test.mjs`),
 math conversion (`math-markdown.test.mjs`), streamed answers: SSE
-parsing, rebuilt responses, fallback, Stop and rate-limit retry
+parsing, rebuilt responses, fallback and when `fetch` is skipped, Stop
+and the rate-limit retry (also Anthropic errors inside the stream)
 (`streaming.test.mjs`), editing a message, regenerating and copying
 an answer through the chat view with a fake Svelte component
 (`message-actions.test.mjs`, also Stop and Clear while `ask_user`

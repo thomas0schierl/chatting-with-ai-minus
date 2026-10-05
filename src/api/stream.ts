@@ -11,8 +11,9 @@
  * - Mobile: `fetch`. Anthropic and OpenAI (API key) allow it.
  * If that fails before any response (CORS block, network error), the same
  * request goes through `requestUrl()`, which buffers the whole stream; its
- * events are then delivered at once. Once that fallback has worked for a
- * URL, later requests to it skip `fetch` for this session.
+ * events are then delivered at once. When `fetch` failed like a CORS block
+ * and that fallback reached the server, later requests to the URL skip
+ * `fetch` for 10 minutes.
  */
 import { Platform, requestUrl } from "obsidian";
 
@@ -30,8 +31,16 @@ export interface StreamResult {
 
 export type SSEHandler = (event: Record<string, unknown>) => void;
 
-/** URLs where `fetch` failed but `requestUrl()` worked: fetch is blocked there. */
-const fetchBlocked = new Set<string>();
+/** How long `fetch` is skipped for a URL after it looked blocked. */
+const FETCH_BLOCK_MS = 10 * 60_000;
+
+/**
+ * URLs where `fetch` failed like a CORS block (a `TypeError` before any
+ * response) while `requestUrl()` reached the server, with the time until
+ * which `fetch` is skipped there. A brief network failure looks the same,
+ * so the block ends after `FETCH_BLOCK_MS` (and on reload).
+ */
+const fetchBlockedUntil = new Map<string, number>();
 
 /**
  * The plugin's only `fetch` (ADR-12). Called as `window.fetch`: Obsidian's
@@ -44,7 +53,7 @@ export function browserFetch(url: string, init: RequestInit): Promise<Response> 
 
 /** For tests: forget that `fetch` was blocked. */
 export function resetStreamTransport(): void {
-  fetchBlocked.clear();
+  fetchBlockedUntil.clear();
 }
 
 export async function streamSSE(
@@ -56,17 +65,19 @@ export async function streamSSE(
   throwIfAborted(signal);
   const https = nodeHttps();
   if (https) return viaNode(https, url, request, onEvent, signal);
-  if (!fetchBlocked.has(url)) {
+  if ((fetchBlockedUntil.get(url) ?? 0) <= Date.now()) {
     let response: Response | undefined;
+    let failure: unknown;
     try {
       response = await browserFetch(url, { method: "POST", headers: request.headers, body: request.body, signal });
-    } catch {
+    } catch (error) {
       throwIfAborted(signal);
       // No response at all: try requestUrl() below.
+      failure = error;
     }
     if (response) return readFetchResponse(response, onEvent, signal);
     const result = await viaRequestUrl(url, request, onEvent, signal);
-    fetchBlocked.add(url);
+    if (failure instanceof TypeError) fetchBlockedUntil.set(url, Date.now() + FETCH_BLOCK_MS);
     return result;
   }
   return viaRequestUrl(url, request, onEvent, signal);
