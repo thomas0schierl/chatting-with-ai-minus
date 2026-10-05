@@ -18,7 +18,8 @@ chat requests take the `requestUrl()` fallback and receive SSE. No
 credentials or network needed. They cover history encoding and replay per
 provider (Anthropic web search in the documented stream shape), tool
 flows, cancellation, model catalogs and caching, thinking
-parameters, the ChatGPT sign-in and its refresh and retry after a 401
+parameters, the ChatGPT sign-in and its refresh (also one ending after
+Disconnect) and retry after a 401
 (`chatgpt-signin.test.mjs`), canvas tools
 (`canvas.test.mjs`), image tools, leaving older tool images out of
 requests, and canvas drawing (`view-tools.test.mjs`),

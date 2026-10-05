@@ -341,6 +341,26 @@ test('Refresh failures: unusable token clears the sign-in, a server error keeps 
   assert.equal(store.getRegistration().clientId, ISSUED);
 });
 
+test('A refresh that ends after Disconnect or another sign-in stores and clears nothing', async () => {
+  for (const [label, change, answer] of [
+    ['disconnect', (store) => store.clear(), { status: 200, json: { access_token: 'late-access', refresh_token: 'late-refresh', expires_in: 3600 } }],
+    ['other account', (store, oauth) => store.set({ ...oauth.getCredential(), accessToken: 'other-access', refreshToken: 'other-refresh' }), { status: 400, json: { error: 'invalid_grant' } }],
+  ]) {
+    const { store, oauth } = service();
+    await signIn(oauth);
+    store.set({ ...oauth.getCredential(), expiresAt: Date.now() - 1 });
+    let answerRefresh;
+    globalThis.__providerRequest = () => new Promise(resolve => { answerRefresh = resolve; });
+    const refreshing = oauth.getUsableCredential();
+    while (!answerRefresh) await new Promise(resolve => setTimeout(resolve, 1));
+    change(store, oauth);
+    const expected = store.get();
+    answerRefresh(answer);
+    await assert.rejects(refreshing, /changed while the token was refreshed/, label);
+    assert.deepEqual(store.get(), expected, label);
+  }
+});
+
 test('Sign-out revokes the refresh token and keeps the registration', async () => {
   const { store, oauth } = service();
   await signIn(oauth);

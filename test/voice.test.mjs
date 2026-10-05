@@ -508,3 +508,17 @@ test('Codex sign-in refreshes within 5 minutes of expiry with a JSON body and ke
   assert.equal((await auth.usableCredential()).accessToken, 'new');
   assert.equal(requests.length, 1);
 });
+
+test('A Codex refresh that ends after sign-out stores nothing', async () => {
+  const { app, secrets } = secretApp();
+  secrets[CODEX_KEY] = JSON.stringify({ accessToken: 'old', refreshToken: 'refresh_1', accountId: 'acct_1', expiresAt: Date.now() + 60_000 });
+  const auth = new X.CodexVoiceAuth(app);
+  let answer;
+  globalThis.__providerRequest = () => new Promise((resolve) => { answer = resolve; });
+  const refreshing = auth.usableCredential();
+  while (!answer) await new Promise((resolve) => setTimeout(resolve, 1));
+  auth.signOut();
+  answer({ status: 200, json: { access_token: 'late', refresh_token: 'refresh_2', expires_in: 3600 } });
+  await assert.rejects(refreshing, /changed while the token was refreshed/);
+  assert.equal(auth.getCredential(), null);
+});

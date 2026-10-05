@@ -444,6 +444,11 @@ export class ChatGPTOAuthService {
     return this.refreshCredential(current);
   }
 
+  /**
+   * Refreshes `credential`. Disconnect or another sign-in may replace the
+   * stored credential while the request runs: the result then stores or
+   * clears nothing, and the caller gets an error.
+   */
   private async refresh(credential: ChatGPTOAuthCredential): Promise<ChatGPTOAuthCredential> {
     const clientId = this.store.getRegistration().clientId;
     if (!clientId) {
@@ -456,6 +461,9 @@ export class ChatGPTOAuthService {
       refresh_token: credential.refreshToken,
       resource: RESOURCE,
     });
+    if (this.store.get()?.refreshToken !== credential.refreshToken) {
+      throw new ChatGPTOAuthError("The ChatGPT sign-in changed while the token was refreshed. Try again.");
+    }
     if (response.status < 200 || response.status >= 300) {
       const code = errorCode(readJson(response));
       if (code && TERMINAL_REFRESH_ERRORS.includes(code)) {

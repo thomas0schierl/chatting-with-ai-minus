@@ -165,6 +165,10 @@ export class CodexVoiceAuth {
       body: JSON.stringify({ grant_type: "refresh_token", client_id: CODEX_CLIENT_ID, refresh_token: credential.refreshToken }),
       throw: false,
     });
+    // Signed out or in again meanwhile: leave that alone.
+    if (this.getCredential()?.refreshToken !== credential.refreshToken) {
+      throw new Error("The Codex sign-in changed while the token was refreshed. Try again.");
+    }
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`The Codex sign-in has expired (HTTP ${response.status}). Sign in again in the settings.`);
     }
