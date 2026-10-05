@@ -67,7 +67,11 @@ test('First sign-in: authorize URL registers a new client with a persisted host 
   const port = Number(pending.redirectUri.match(/^http:\/\/127\.0\.0\.1:(\d+)\/auth\/callback$/)?.[1]);
   assert.ok(port >= 49152 && port <= 65535);
   assert.match(p.get('ext_agent_host_id'), /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-  // A new attempt gets fresh values but keeps this device's host ID.
+  // Reopening the dialog within 10 minutes keeps the same attempt, so an
+  // address copied after an accidental close still matches.
+  assert.equal(oauth.beginSignIn(), pending);
+  // An older attempt is replaced: fresh values, same host ID.
+  pending.createdAt -= 11 * 60 * 1000;
   const again = oauth.beginSignIn();
   assert.notEqual(again.state, pending.state);
   assert.notEqual(again.nonce, pending.nonce);

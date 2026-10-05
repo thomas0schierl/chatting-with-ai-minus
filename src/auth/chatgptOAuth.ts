@@ -58,7 +58,15 @@ export interface PendingSignIn {
   redirectUri: string;
   /** `dynamic_agent_client` for a new registration, else the issued client ID. */
   clientId: string;
+  /** Epoch ms; the attempt is reused until it is used or SIGN_IN_REUSE_MS old. */
+  createdAt: number;
 }
+
+/**
+ * How long reopening the sign-in dialog keeps the same attempt, so an
+ * address copied after the dialog was closed still matches.
+ */
+const SIGN_IN_REUSE_MS = 10 * 60 * 1000;
 
 interface TokenResponse {
   access_token?: string;
@@ -210,8 +218,12 @@ export class ChatGPTOAuthService {
     return this.store.get();
   }
 
-  /** Start an authorization attempt: fresh PKCE, state, nonce and port. */
+  /**
+   * The current authorization attempt, or a new one (fresh PKCE, state,
+   * nonce and port) if there is none or it is over 10 minutes old.
+   */
   beginSignIn(): PendingSignIn {
+    if (this.pending && Date.now() - this.pending.createdAt < SIGN_IN_REUSE_MS) return this.pending;
     const registration = this.store.getRegistration();
     const clientId = registration.clientId ?? NEW_REGISTRATION_CLIENT_ID;
     const port = PORT_MIN + Math.floor(Math.random() * (PORT_MAX - PORT_MIN + 1));
@@ -234,7 +246,11 @@ export class ChatGPTOAuthService {
     // The name hint belongs only to the first registration.
     if (clientId === NEW_REGISTRATION_CLIENT_ID) params.set("agent_name_hint", AGENT_NAME);
     else if (registration.email) params.set("login_hint", registration.email);
-    this.pending = { url: `${AUTHORIZE_URL}?${params.toString()}`, state, nonce, codeVerifier, redirectUri, clientId };
+    this.pending = {
+      url: `${AUTHORIZE_URL}?${params.toString()}`,
+      state, nonce, codeVerifier, redirectUri, clientId,
+      createdAt: Date.now(),
+    };
     return this.pending;
   }
 

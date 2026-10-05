@@ -10,7 +10,13 @@ const context = await esbuild.context({
   bundle: true,
   plugins: [
     esbuildSvelte({
-      compilerOptions: { css: "injected" },
+      compilerOptions: {
+        css: "injected",
+        // Svelte's default style hash comes from the file name, so it would
+        // equal Chatting with AI's: the first plugin's styles win and ours
+        // are never injected. Hash the plugin ID and the CSS instead.
+        cssHash: ({ css, hash }) => `svelte-${hash(`chatting-with-ai-minus${css}`)}`,
+      },
       preprocess: sveltePreprocess(),
     }),
   ],

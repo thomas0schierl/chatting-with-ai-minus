@@ -463,6 +463,9 @@ export class ChatSettingTab extends PluginSettingTab {
 // ─── Sign-in modal ──────────────────────────────────────────────────────────
 
 class ChatGPTSignInModal extends Modal {
+  /** Set by a press on the dimmed background, whose close request is ignored. */
+  private backgroundPressed = false;
+
   constructor(
     app: App,
     private readonly oauth: ChatGPTOAuthService,
@@ -471,9 +474,27 @@ class ChatGPTSignInModal extends Modal {
     super(app);
   }
 
+  /**
+   * Stays open on clicks outside the dialog: users switch to the browser and
+   * back, and a stray click lost the dialog. Escape and the close button
+   * still close it.
+   */
+  close(): void {
+    if (this.backgroundPressed) {
+      this.backgroundPressed = false;
+      return;
+    }
+    super.close();
+  }
+
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
+    this.containerEl.querySelector(".modal-bg")?.addEventListener("pointerdown", () => {
+      this.backgroundPressed = true;
+      // Clear it if the press didn't turn into a close request.
+      window.setTimeout(() => { this.backgroundPressed = false; }, 500);
+    }, { capture: true });
     const pending = this.oauth.beginSignIn();
     new Setting(contentEl).setName("Continue with ChatGPT").setHeading();
 
