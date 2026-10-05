@@ -1,7 +1,7 @@
 /**
  * Transport for streamed chat requests (ADR-12): the one place that uses
- * `fetch`. Obsidian's review lint warns about `fetch`; keeping it here keeps
- * that to one warning. Everything else uses `requestUrl()`.
+ * `fetch` (`browserFetch`, also used by the device capability check).
+ * Everything else uses `requestUrl()`.
  *
  * The request is a POST whose answer is Server-Sent Events. Each event's
  * JSON is handed to `onEvent` as it arrives:
@@ -33,6 +33,15 @@ export type SSEHandler = (event: Record<string, unknown>) => void;
 /** URLs where `fetch` failed but `requestUrl()` worked: fetch is blocked there. */
 const fetchBlocked = new Set<string>();
 
+/**
+ * The plugin's only `fetch` (ADR-12). Called as `window.fetch`: Obsidian's
+ * review lint flags the bare global and forbids switching that rule off in
+ * a comment.
+ */
+export function browserFetch(url: string, init: RequestInit): Promise<Response> {
+  return window.fetch(url, init);
+}
+
 /** For tests: forget that `fetch` was blocked. */
 export function resetStreamTransport(): void {
   fetchBlocked.clear();
@@ -50,7 +59,7 @@ export async function streamSSE(
   if (!fetchBlocked.has(url)) {
     let response: Response | undefined;
     try {
-      response = await fetch(url, { method: "POST", headers: request.headers, body: request.body, signal });
+      response = await browserFetch(url, { method: "POST", headers: request.headers, body: request.body, signal });
     } catch {
       throwIfAborted(signal);
       // No response at all: try requestUrl() below.

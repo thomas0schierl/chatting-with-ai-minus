@@ -54,6 +54,7 @@ export const bundled = await build({
         addButton(fn) { return this.control(fn); }
       }
       export const requireApiVersion = () => globalThis.__supportsNewObsidian === true;
+      export const apiVersion = 'test';
       // Shown notices are recorded in globalThis.__notices.
       export class Notice { constructor(message) { (globalThis.__notices ??= []).push(message); } }
       export const Platform = { isDesktopApp: true, isMobile: false, isIosApp: false, isAndroidApp: false };
@@ -130,7 +131,9 @@ export const sseText = events => events.map(event => `event: ${event.type}\ndata
 export function sse(events) {
   return { status: 200, text: sseText(events), get json() { throw new SyntaxError('iOS lazy JSON getter'); } };
 }
-// fetch fails like a CORS block unless a test sets __fetch.
+// Obsidian's window. stream.ts calls window.fetch, which fails like a CORS
+// block unless a test sets __fetch.
+globalThis.window = globalThis;
 globalThis.fetch = async (url, init) => {
   if (globalThis.__fetch) return globalThis.__fetch(url, init);
   throw new TypeError('Failed to fetch');

@@ -7,7 +7,7 @@ import { api, sseText, sse, transport } from './harness.mjs';
 
 beforeEach(() => api.resetStreamTransport());
 afterEach(() => {
-  delete globalThis.window;
+  globalThis.window = globalThis;
   delete globalThis.__fetch;
 });
 

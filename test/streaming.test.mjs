@@ -219,7 +219,7 @@ test('Agent loop: deltas reach the view before the whole text and tool cards', a
 
 test('Rate limit: retried before any text was shown, not after', async () => {
   const previousWindow = globalThis.window;
-  globalThis.window = { setTimeout(fn) { queueMicrotask(fn); } };
+  globalThis.window = { setTimeout(fn) { queueMicrotask(fn); }, fetch: globalThis.fetch };
   try {
     // 429 before the stream starts: one retry.
     let calls = fakeFetch(index => index ? streamedResponse(sseText(streamEvents('openai', [text('After retry')]))) : new Response('{"error":{"message":"Rate limit reached"}}', { status: 429 }));

@@ -4,7 +4,8 @@
  * with fetch). Results are shown in a modal and can be copied; API keys are
  * never included.
  */
-import { App, Modal, Notice, Platform, requestUrl } from "obsidian";
+import { App, Modal, Notice, Platform, apiVersion, requestUrl } from "obsidian";
+import { browserFetch } from "../api/stream";
 
 type Status = "ok" | "fail" | "skip";
 
@@ -49,7 +50,9 @@ export async function runCapabilityCheck(app: App, keys: CapabilityKeys): Promis
 
 function describePlatform(): string {
   const kind = Platform.isIosApp ? "iOS app" : Platform.isAndroidApp ? "Android app" : Platform.isDesktopApp ? "desktop app" : "other";
-  return `${kind}; origin ${window.location.origin}; ${navigator.userAgent}`;
+  const os = Platform.isMacOS ? "macOS" : Platform.isWin ? "Windows" : Platform.isLinux ? "Linux" : "";
+  const form = Platform.isPhone ? "phone" : Platform.isTablet ? "tablet" : "";
+  return [kind, os, form, `Obsidian API ${apiVersion}`, `origin ${window.location.origin}`].filter(Boolean).join("; ");
 }
 
 async function checkMicrophone(): Promise<[Status, string]> {
@@ -90,7 +93,7 @@ function gatherCandidates(pc: RTCPeerConnection, timeoutMs: number): Promise<str
 /** Without a key: proves only that the browser may call the API (CORS). */
 async function checkOpenAIStreaming(apiKey: string): Promise<[Status, string]> {
   if (!apiKey) {
-    const res = await fetch(`${OPENAI}/responses`, { method: "POST", headers: { Authorization: "Bearer invalid", "Content-Type": "application/json" }, body: "{}" });
+    const res = await browserFetch(`${OPENAI}/responses`, { method: "POST", headers: { Authorization: "Bearer invalid", "Content-Type": "application/json" }, body: "{}" });
     return ["ok", `CORS allowed (HTTP ${res.status} readable). Set an OpenAI key to test streaming.`];
   }
   const model = await newestModel(apiKey, (id) => /^gpt-/.test(id) && !/realtime|audio|transcri|search|image|tts/.test(id));
@@ -107,10 +110,10 @@ async function checkAnthropicStreaming(apiKey: string): Promise<[Status, string]
     "content-type": "application/json",
   };
   if (!apiKey) {
-    const res = await fetch(`${ANTHROPIC}/messages`, { method: "POST", headers, body: "{}" });
+    const res = await browserFetch(`${ANTHROPIC}/messages`, { method: "POST", headers, body: "{}" });
     return ["ok", `CORS allowed (HTTP ${res.status} readable). Set an Anthropic key to test streaming.`];
   }
-  const models = await (await fetch(`${ANTHROPIC}/models?limit=20`, { headers })).json() as { data?: Array<{ id: string }> };
+  const models = await (await browserFetch(`${ANTHROPIC}/models?limit=20`, { headers })).json() as { data?: Array<{ id: string }> };
   const model = models.data?.[0]?.id;
   if (!model) return ["fail", "no model found in /v1/models"];
   return streamProbe(`${ANTHROPIC}/messages`, headers,
@@ -120,7 +123,7 @@ async function checkAnthropicStreaming(apiKey: string): Promise<[Status, string]
 /** Reads a streamed response chunk by chunk, then checks that abort works. */
 async function streamProbe(url: string, headers: Record<string, string>, body: unknown, model: string): Promise<[Status, string]> {
   const started = Date.now();
-  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  const res = await browserFetch(url, { method: "POST", headers, body: JSON.stringify(body) });
   if (!res.ok || !res.body) return ["fail", `HTTP ${res.status} with ${model}: ${(await res.text()).slice(0, 200)}`];
   const reader = res.body.getReader();
   let chunks = 0;
@@ -133,7 +136,7 @@ async function streamProbe(url: string, headers: Record<string, string>, body: u
   const totalMs = Date.now() - started;
 
   const controller = new AbortController();
-  const aborted = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal })
+  const aborted = await browserFetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal })
     .then(async (r) => { const rd = r.body!.getReader(); await rd.read(); controller.abort(); await rd.read(); return "not aborted"; })
     .catch((e: unknown) => (e instanceof DOMException && e.name === "AbortError" ? "abort works" : `abort error: ${message(e)}`));
 

@@ -177,12 +177,12 @@
     like a CORS block unless a test supplies a streamed body.
   - The rate-limit retry happens only before any text was shown.
   - **Plugin review:** Obsidian's review lint (`eslint-plugin-obsidianmd`)
-    warns about every `fetch` (`no-restricted-globals`, a warning, not an
-    error), and its config forbids switching the rule off in a comment.
-    `fetch` is kept in `api/stream.ts` (and the device check in
-    `diagnostics/capability-check.ts`), so the review sees one justified
-    use. If review refuses it, removing the `fetch` call leaves the
-    `requestUrl()` path, i.e. ADR-01's behaviour.
+    flags the bare global `fetch` (`no-restricted-globals`), and its config
+    forbids switching the rule off in a comment. The one call,
+    `browserFetch` in `api/stream.ts`, is written `window.fetch`; the
+    device check (`diagnostics/capability-check.ts`) uses it too, so the
+    review sees one justified use. If review refuses it, removing that
+    call leaves the `requestUrl()` path, i.e. ADR-01's behaviour.
   - **Mobile:** not yet verified on a device whether the iOS and Android
     apps deliver a streamed `fetch` body (the *Check device capabilities*
     command tests it). If `fetch` is blocked there, the fallback keeps chat
