@@ -58,16 +58,81 @@
     displayModel = model;
   });
 
-  // Auto-scroll when messages change
+  // ─── Scrolling: the latest question stays at the top ──────────────────
+  // When a question is added, it is scrolled to the top of the message
+  // area and the answer reads downward from it (like chat apps). Temporary
+  // bottom padding (the "tail") makes that position reachable while the
+  // content below is still short; it shrinks as the answer grows. Once the
+  // user scrolls by hand, the position is left alone until the next question.
+  // Adapted from scrollToLastQuestion() in nagisa525/obsidian-chatting-plus (MIT).
+  const MESSAGES_PADDING = 12; // matches .chatting-minus-messages padding
+  let messageListEl: HTMLElement | undefined = $state();
+  let anchoredQuestionId = -1;
+  let followQuestion = false;
+  let scrollTail = 0;
+
+  // A new question starts a new turn.
   $effect(() => {
-    // Track messages array length to trigger scroll
-    messages.length;
-    if (messagesEl) {
-      requestAnimationFrame(() => {
-        messagesEl!.scrollTop = messagesEl!.scrollHeight;
-      });
+    let lastQuestionId = -1;
+    for (const msg of messages) if (msg.type === "user") lastQuestionId = msg.id;
+    if (lastQuestionId !== anchoredQuestionId) {
+      anchoredQuestionId = lastQuestionId;
+      followQuestion = true;
     }
+    keepQuestionInView();
   });
+
+  // Rendered Markdown, math, images and a resized panel or phone keyboard
+  // change heights after the messages do.
+  $effect(() => {
+    const el = messagesEl;
+    if (!el || !messageListEl) return;
+    const observer = new ResizeObserver(() => keepQuestionInView());
+    observer.observe(el, { box: "border-box" });
+    observer.observe(messageListEl);
+    const stopFollowing = () => {
+      followQuestion = false;
+    };
+    const stopOnScrollbar = (e: PointerEvent) => {
+      if (e.target === el) stopFollowing();
+    };
+    const stopOnScrollKey = (e: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(e.key)) stopFollowing();
+    };
+    el.addEventListener("wheel", stopFollowing, { passive: true });
+    el.addEventListener("touchmove", stopFollowing, { passive: true });
+    el.addEventListener("pointerdown", stopOnScrollbar);
+    el.addEventListener("keydown", stopOnScrollKey);
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("wheel", stopFollowing);
+      el.removeEventListener("touchmove", stopFollowing);
+      el.removeEventListener("pointerdown", stopOnScrollbar);
+      el.removeEventListener("keydown", stopOnScrollKey);
+    };
+  });
+
+  function keepQuestionInView(): void {
+    const el = messagesEl;
+    if (!el || !messageListEl) return;
+    const questions = el.querySelectorAll<HTMLElement>(".chatting-minus-user-msg");
+    const question = questions.item(questions.length - 1);
+    let tail = 0;
+    let target = 0;
+    if (question) {
+      // Positions in scroll coordinates; scrollHeight can't be used because
+      // it never drops below the visible height.
+      const top = el.getBoundingClientRect().top - el.scrollTop;
+      target = Math.max(0, Math.round(question.getBoundingClientRect().top - top - MESSAGES_PADDING));
+      const contentHeight = messageListEl.getBoundingClientRect().bottom - top + MESSAGES_PADDING;
+      if (target > 0) tail = Math.max(0, Math.ceil(target - (contentHeight - el.clientHeight)));
+    }
+    if (tail !== scrollTail) {
+      scrollTail = tail;
+      el.style.setProperty("--chatting-minus-scroll-tail", `${tail}px`);
+    }
+    if (question && followQuestion) el.scrollTop = target;
+  }
 
   // ─── Public API (called from chat-view.ts / chat-modal.ts) ────────────
 
@@ -382,6 +447,7 @@
 
   <!-- Messages -->
   <div class="chatting-minus-messages" bind:this={messagesEl}>
+    <div class="chatting-minus-message-list" bind:this={messageListEl}>
     {#each messages as msg (msg.id)}
       {#if msg.type === "user"}
         <div class="chatting-minus-msg chatting-minus-user-msg">
@@ -441,6 +507,7 @@
         </div>
       {/if}
     {/each}
+    </div>
   </div>
 
   <!-- Selection pill -->
@@ -591,12 +658,16 @@
     flex: 1 1 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 12px;
+    /* The tail lets the latest question scroll to the top (see keepQuestionInView). */
+    padding: 12px 12px calc(12px + var(--chatting-minus-scroll-tail, 0px));
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  .chatting-minus-message-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    -webkit-user-select: text;
-    user-select: text;
   }
 
   .chatting-minus-msg {
