@@ -1100,19 +1100,20 @@
       onchange={handleImageSelection}
       aria-label="Choose images"
     />
-    <!-- While typing, the attach button folds away so the text gets the width -->
-    {#if !typing}
-      <button
-        class="chatting-minus-attach-btn"
-        type="button"
-        onclick={openImagePicker}
-        disabled={!inputEnabled || attachments.length >= MAX_IMAGE_COUNT}
-        aria-label="Attach images"
-        title="Attach images"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-      </button>
-    {/if}
+    <!-- While typing, the attach button folds away (animated) so the text gets the width -->
+    <button
+      class="chatting-minus-attach-btn chatting-minus-attach-fold"
+      class:is-folded={typing}
+      type="button"
+      onclick={openImagePicker}
+      disabled={!inputEnabled || attachments.length >= MAX_IMAGE_COUNT}
+      tabindex={typing ? -1 : undefined}
+      aria-hidden={typing ? "true" : undefined}
+      aria-label="Attach images"
+      title="Attach images"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+    </button>
     <textarea
       class="chatting-minus-input"
       bind:this={textareaEl}
@@ -1793,9 +1794,10 @@
   }
 
   .chatting-minus-input-bar {
+    --chatting-minus-bar-gap: 8px;
     display: flex;
     align-items: flex-end;
-    gap: 8px;
+    gap: var(--chatting-minus-bar-gap);
     padding: 8px 12px;
     padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--background-modifier-border);
@@ -1810,6 +1812,47 @@
 
   .chatting-minus-voice-bars {
     stroke: var(--background-primary);
+  }
+
+  /* The attach button folds away while typing; the input grows into its place */
+  .chatting-minus-attach-fold {
+    transition: width 200ms ease, min-width 200ms ease, margin 200ms ease, opacity 150ms ease, transform 200ms ease;
+  }
+
+  .chatting-minus-attach-fold.is-folded {
+    width: 0;
+    min-width: 0;
+    margin-right: calc(-1 * var(--chatting-minus-bar-gap)); /* takes the bar's gap with it */
+    opacity: 0;
+    transform: scale(0.5);
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  /* The action slot changes (voice, send, stop): the new button pops in */
+  .chatting-minus-voice-start,
+  .chatting-minus-send-btn {
+    animation: chatting-minus-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes chatting-minus-pop {
+    from {
+      transform: scale(0.4) rotate(-90deg);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1) rotate(0deg);
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chatting-minus-attach-fold,
+    .chatting-minus-voice-start,
+    .chatting-minus-send-btn {
+      transition: none;
+      animation: none;
+    }
   }
 
   .chatting-minus-attach-btn {
@@ -2080,7 +2123,7 @@
     }
 
     .chatting-minus-input-bar {
-      gap: 10px;
+      --chatting-minus-bar-gap: 10px;
       padding: 10px 12px;
       padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     }

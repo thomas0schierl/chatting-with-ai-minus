@@ -13,6 +13,14 @@
   flex-direction: column;
 }
 
+/* Obsidian pads every side panel (12px sides, 32px bottom) and scrolls it;
+   full-height views such as Backlinks, Sync, PDF and Canvas turn that off.
+   The chat scrolls its own message list and pads its own parts. */
+.workspace-leaf-content[data-type="chatting-minus-view"] .view-content {
+  padding: 0;
+  overflow: hidden;
+}
+
 /* Desktop sidebar min-width */
 .workspace-leaf-content[data-type="chatting-minus-view"] {
   min-width: 280px;
