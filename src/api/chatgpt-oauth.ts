@@ -130,7 +130,7 @@ export async function sendChatGPTOAuthMessage(
     parallel_tool_calls: oauthParallelTools(model),
   };
 
-  const reasoning = oauthReasoning(model);
+  const reasoning = oauthReasoning(model, settings.thinkingLevel);
   if (reasoning) {
     baseBody.reasoning = reasoning;
     // Codex requires the encrypted reasoning payload to be threaded through

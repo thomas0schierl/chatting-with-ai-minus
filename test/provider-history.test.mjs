@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 // Bundle the actual production adapters/loop; only transport and the vault are fake.
 const bundled = await build({
   stdin: { contents: `
-    export { ChatSettingTab } from './src/settings';
+    export { ChatSettingTab, getModelHeaderLabel } from './src/settings';
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';
     export { AgentLoop } from './src/agent/loop';
@@ -80,12 +80,18 @@ function vaultApp() {
   };
   return { app, files };
 }
+// Settings whose persisted catalog belongs to the fake credentials used by these tests.
+async function withCatalog(provider, models, extra = {}) {
+  const identity = await api.catalogIdentity(provider, provider === 'chatgpt-oauth' ? 'fake-account' : 'fake-test-key');
+  return { ...settings(provider), modelCatalog: { entries: [{ provider, identity, fetchedAt: Date.now(), models }] }, ...extra };
+}
 function callbacks(extra = {}) {
   const errors = [], texts = [], executed = [];
   return { errors, texts, executed, onThinking() {}, onToolCall(name) { executed.push(name); }, onToolResult() {}, onResponse(value) { texts.push(value); }, onAskUser: async () => 'yes', onError(error) { errors.push(error); }, ...extra };
 }
 beforeEach(() => {
   api.clearOpenAIState();
+  for (const provider of ['anthropic', 'openai', 'chatgpt-oauth']) api.clearCatalogModels(provider);
   api.setChatGPTOAuthService({ getUsableCredential: async () => ({ accessToken: 'fake-token', accountId: 'fake-account' }) });
 });
 
@@ -252,14 +258,47 @@ test('Anthropic: pause_turn continues server search within the same user turn', 
   assert.deepEqual(cb.texts, ['Search completed']);
 });
 
-for (const [model, thinking] of [['claude-sonnet-4-6', { type: 'adaptive' }], ['claude-opus-4-7', { type: 'adaptive' }], ['claude-opus-4-8', { type: 'adaptive' }], ['claude-opus-4-5', { type: 'enabled', budget_tokens: 8192 }], ['claude-sonnet-4-20250514', { type: 'enabled', budget_tokens: 8192 }], ['claude-haiku-4-5-20251001', undefined]]) {
-  test(`Anthropic: ${model} thinking configuration`, async () => {
+const anthropicModels = [
+  { value: 'claude-future-adaptive', label: 'Adaptive', thinkingType: 'adaptive', reasoningEfforts: ['low', 'high', 'max'] },
+  { value: 'claude-future-budget', label: 'Budget', thinkingType: 'enabled' },
+  { value: 'claude-future-plain', label: 'Plain' },
+];
+for (const [model, level, thinking, effort] of [
+  ['claude-future-adaptive', '', { type: 'adaptive' }, undefined],
+  ['claude-future-adaptive', 'max', { type: 'adaptive' }, 'max'],
+  ['claude-future-adaptive', 'xhigh', { type: 'adaptive' }, undefined],
+  ['claude-future-budget', 'high', { type: 'enabled', budget_tokens: 8192 }, undefined],
+  ['claude-future-plain', 'high', undefined, undefined],
+  ['claude-sonnet-4-6', 'high', undefined, undefined],
+]) {
+  test(`Anthropic: ${model} with level "${level}" takes thinking and effort from the catalog`, async () => {
     const requests = transport(() => response('anthropic', [text('Hello')]));
-    await api.sendAnthropicMessage({ ...settings('anthropic'), model, enableWebSearch: false }, [{ role: 'user', content: 'Hello' }], [{ name: 'read', description: 'read', inputSchema: { type: 'object' } }], 'System');
+    const config = await withCatalog('anthropic', anthropicModels, { model, thinkingLevel: level, enableWebSearch: false });
+    await api.sendAnthropicMessage(config, [{ role: 'user', content: 'Hello' }], [{ name: 'read', description: 'read', inputSchema: { type: 'object' } }], 'System');
     assert.deepEqual(requests[0].thinking, thinking);
+    assert.deepEqual(requests[0].output_config, effort && { effort });
     assert.equal(requests[0].tools.at(-1).cache_control.type, 'ephemeral');
   });
 }
+test('Anthropic catalog: thinking type and effort levels come from /v1/models capabilities', async () => {
+  const identity = await api.catalogIdentity('anthropic', 'capabilities');
+  globalThis.__providerRequest = async () => ({ status: 200, json: { has_more: false, data: [
+    { type: 'model', id: 'claude-a', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true }, enabled: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: false }, high: { supported: true }, max: { supported: true } } } },
+    { type: 'model', id: 'claude-b', capabilities: { thinking: { supported: true, types: { adaptive: { supported: false }, enabled: { supported: true } } }, effort: { supported: false, low: { supported: true } } } },
+    { type: 'model', id: 'claude-c' },
+  ] } });
+  const state = { entries: [] };
+  const models = await api.refreshCatalog(state, 'anthropic', identity, 'capabilities', {}, true);
+  assert.equal(models[0].thinkingType, 'adaptive');
+  assert.deepEqual(models[0].reasoningEfforts, ['low', 'high', 'max']);
+  assert.equal(models[1].thinkingType, 'enabled');
+  assert.equal(models[1].reasoningEfforts, undefined);
+  assert.equal(models[2].thinkingType, undefined);
+  assert.equal(models[2].reasoningEfforts, undefined);
+  const restored = api.normalizeCatalogState(JSON.parse(JSON.stringify(state)));
+  assert.equal(restored.entries[0].models[0].thinkingType, 'adaptive');
+  assert.deepEqual(restored.entries[0].models[0].reasoningEfforts, ['low', 'high', 'max']);
+});
 
 test('OpenAI: settings connection tests do not steal a conversation response ID', async () => {
   const history = [{ role: 'user', content: 'Hello' }];
@@ -422,7 +461,7 @@ test('Catalog: OAuth stable client discovery, hidden filtering, reasoning metada
   const [models, duplicate] = await Promise.all([api.refreshCatalog(state,'chatgpt-oauth',identity,'',oauth,true),api.refreshCatalog(state,'chatgpt-oauth',identity,'',oauth,true)]);
   assert.equal(models,duplicate);
   assert.deepEqual(models.map(m=>m.value),['gpt-6.1-sol']);
-  assert.equal(api.oauthReasoning('gpt-6.1-sol').effort,'ultra');
+  assert.equal(api.oauthReasoning('gpt-6.1-sol','').effort,'ultra');
   assert.equal(state.clientVersion.value,'0.161.0');
   assert.equal(releaseCalls,1);
   const count = requests.length;
@@ -472,18 +511,34 @@ test('OAuth catalog: GitHub outage retains bundled version without saving a fals
   assert.equal(state.entries[0].models[0].value,'gpt-6.1-sol');
   api.clearCatalogModels('chatgpt-oauth');
 });
-test('GPT 6.1: both adapters include encrypted reasoning, support tools and use canonical web search', async () => {
+test('GPT 6.1: reasoning only from catalog data, encrypted reasoning with it, canonical web search', async () => {
+  const models = [{value:'gpt-6.1-sol',label:'GPT 6.1',reasoningEfforts:['low','high'],defaultReasoningEffort:'low'}];
   for (const provider of ['openai','chatgpt-oauth']) {
     const requests = transport(()=>response(provider,[text('OK')]));
-    await (provider==='openai'?api.sendOpenAIMessage:api.sendChatGPTOAuthMessage)({...settings(provider),model:'gpt-6.1-sol'},[{role:'user',content:'test'}],[],'test');
-    assert.equal(requests[0].reasoning.effort,'medium');
-    assert.deepEqual(requests[0].include,['reasoning.encrypted_content']);
+    await (provider==='openai'?api.sendOpenAIMessage:api.sendChatGPTOAuthMessage)(await withCatalog(provider,models,{model:'gpt-6.1-sol',thinkingLevel:'high'}),[{role:'user',content:'test'}],[],'test');
+    // The OpenAI API reports no reasoning data, so it never gets reasoning parameters.
+    assert.deepEqual(requests[0].reasoning, provider==='openai' ? undefined : {effort:'high',summary:'auto'});
+    assert.deepEqual(requests[0].include, provider==='openai' ? undefined : ['reasoning.encrypted_content']);
     assert.equal(requests[0].tools[0].type,'web_search');
   }
 });
+for (const [level, models, reasoning] of [
+  ['high', [{value:'gpt-5.5',label:'GPT-5.5',reasoningEfforts:['low','high'],defaultReasoningEffort:'low'}], {effort:'high',summary:'auto'}],
+  ['ultra', [{value:'gpt-5.5',label:'GPT-5.5',reasoningEfforts:['low','high'],defaultReasoningEffort:'low'}], {effort:'low',summary:'auto'}],
+  ['', [{value:'gpt-5.5',label:'GPT-5.5',reasoningEfforts:['low','high'],defaultReasoningEffort:'low',supportsReasoningSummary:false}], {effort:'low'}],
+  ['high', [{value:'gpt-5.5',label:'GPT-5.5'}], undefined],
+  ['high', [], undefined],
+]) {
+  test(`ChatGPT: level "${level}" with ${models[0]?.reasoningEfforts ? 'catalog levels' : 'no catalog data'} sends ${JSON.stringify(reasoning)}`, async () => {
+    const requests = transport(()=>response('chatgpt-oauth',[text('OK')]));
+    await api.sendChatGPTOAuthMessage(await withCatalog('chatgpt-oauth',models,{thinkingLevel:level}),[{role:'user',content:'test'}],[],'test');
+    assert.deepEqual(requests[0].reasoning,reasoning);
+    assert.deepEqual(requests[0].include,reasoning && ['reasoning.encrypted_content']);
+  });
+}
 test('Anthropic Opus 5.5: adaptive thinking and model changes strip old signatures while preserving tool pairs', async () => {
   const requests = transport(()=>response('anthropic',[{type:'thinking',thinking:'private',signature:'signed-old'},text('Reading'),call('read','read_file',{path:'template'})],'tool_use'));
-  const first = await api.sendAnthropicMessage({...settings('anthropic'),model:'claude-opus-5-5'},[{role:'user',content:'test'}],[],'test');
+  const first = await api.sendAnthropicMessage(await withCatalog('anthropic',[{value:'claude-opus-5-5',label:'Claude Opus 5.5',thinkingType:'adaptive'}],{model:'claude-opus-5-5'}),[{role:'user',content:'test'}],[],'test');
   await api.sendAnthropicMessage({...settings('anthropic'),model:'claude-sonnet-6-1'},[{role:'user',content:'test'},assistant(first),{role:'user',content:[result('read','contents')]}],[],'test');
   assert.deepEqual(requests[0].thinking,{type:'adaptive'});
   assert.ok(!JSON.stringify(requests[1]).includes('signed-old'));
@@ -572,8 +627,11 @@ test('OAuth honors model capability metadata for summary and parallel calls', as
   api.setChatGPTOAuthService({getUsableCredential:async()=>({accessToken:'fake',accountId:'capability-account'})});
   const requests=transport(()=>response('chatgpt-oauth',[text('OK')]));
   await api.sendChatGPTOAuthMessage({...settings('chatgpt-oauth'),model,modelCatalog:state},[{role:'user',content:'test'}],[],'test');
-  assert.deepEqual(requests[0].reasoning,{effort:'high'});
+  // An unknown default is never sent, and there is no summary: nothing to send.
+  assert.equal(requests[0].reasoning,undefined);
   assert.equal(requests[0].parallel_tool_calls,false);
+  await api.sendChatGPTOAuthMessage({...settings('chatgpt-oauth'),model,modelCatalog:state,thinkingLevel:'high'},[{role:'user',content:'test'}],[],'test');
+  assert.deepEqual(requests[1].reasoning,{effort:'high'});
 });
 
 for (const provider of ['anthropic','openai','chatgpt-oauth']) {
@@ -603,7 +661,7 @@ test('Declarative settings stay searchable and reuse the legacy renderers withou
   const plugin={settings:settings('openai')}; const tab=new api.ChatSettingTab({},plugin);
   globalThis.__providerRequest=async()=>assert.fail('Indexing must not perform network I/O');
   const definitions=tab.getSettingDefinitions();
-  assert.deepEqual(definitions.map(d=>d.name),['Provider','API key','ChatGPT account','Model','Web search','Max tool iterations']);
+  assert.deepEqual(definitions.map(d=>d.name),['Provider','API key','ChatGPT account','Model','Thinking level','Web search','Max tool iterations']);
   assert.equal(definitions[1].visible(),true); assert.equal(definitions[2].visible(),false);
   plugin.settings.provider='chatgpt-oauth'; assert.equal(definitions[1].visible(),false); assert.equal(definitions[2].visible(),true);
   let updates=0,displays=0; tab.display=()=>displays++;
@@ -628,4 +686,60 @@ test('Stopping during rate-limit backoff prevents the retried network request', 
     await assert.rejects(api.sendMessage(settings('openai'),[{role:'user',content:'test'}],[],'test',()=>stopped),/cancelled/);
     assert.equal(requests,1);
   } finally { globalThis.window=previousWindow; }
+});
+
+// Records what a settings row renders, in place of Obsidian's Setting.
+function fakeSetting() {
+  const row = { name: '', desc: undefined, options: [], value: undefined, onChange: undefined };
+  const dropdown = { addOption(value, label) { row.options.push([value, label]); return dropdown; }, setValue(value) { row.value = value; return dropdown; }, onChange(fn) { row.onChange = fn; return dropdown; } };
+  return { row, setting: { setName(name) { row.name = name; return this; }, setDesc(desc) { row.desc = desc; return this; }, addDropdown(fn) { fn(dropdown); return this; } } };
+}
+test('Settings: thinking level offers the catalog levels of the selected model and hides without them', async () => {
+  const models = [
+    {value:'gpt-5.5',label:'GPT-5.5',reasoningEfforts:['low','medium','xhigh'],defaultReasoningEffort:'medium'},
+    {value:'claude-x',label:'Claude X',reasoningEfforts:['high','max']},
+    {value:'gpt-4o',label:'GPT-4o'},
+  ];
+  const saved = [];
+  const plugin = {settings:{...settings('chatgpt-oauth'),thinkingLevel:'xhigh'},saveSettings:async()=>saved.push(plugin.settings.thinkingLevel)};
+  const tab = new api.ChatSettingTab({},plugin);
+  tab.display = ()=>{};
+  const thinking = tab.getSettingDefinitions().find(d=>d.name==='Thinking level');
+  assert.equal(thinking.visible(), false);
+  tab.catalogModels = models;
+  assert.equal(thinking.visible(), true);
+  let {row, setting} = fakeSetting();
+  thinking.render(setting);
+  assert.equal(row.name, 'Thinking level');
+  assert.equal(row.desc, undefined);
+  assert.deepEqual(row.options, [['','Default (medium)'],['low','low'],['medium','medium'],['xhigh','xhigh']]);
+  assert.equal(row.value, 'xhigh');
+  await row.onChange('low');
+  assert.deepEqual(saved, ['low']);
+  // A saved level the model doesn't offer stays saved and is marked.
+  plugin.settings.model = 'claude-x';
+  ({row, setting} = fakeSetting());
+  thinking.render(setting);
+  assert.deepEqual(row.options, [['','Default'],['high','high'],['max','max'],['low','low (not available)']]);
+  assert.equal(row.value, 'low');
+  assert.equal(plugin.settings.thinkingLevel, 'low');
+  plugin.settings.model = 'gpt-4o';
+  assert.equal(thinking.visible(), false);
+  plugin.settings.model = 'custom-id';
+  assert.equal(thinking.visible(), false);
+});
+test('Chat header shows the effective thinking level next to the model name', async () => {
+  const models = [
+    {value:'gpt-5.5',label:'GPT-5.5',reasoningEfforts:['low','high'],defaultReasoningEffort:'low'},
+    {value:'claude-x',label:'Claude X',reasoningEfforts:['high','max']},
+    {value:'gpt-4o',label:'GPT-4o'},
+  ];
+  const state = {entries:[{provider:'chatgpt-oauth',identity:await api.catalogIdentity('chatgpt-oauth','header'),fetchedAt:Date.now(),models}]};
+  api.cachedCatalog(state,'chatgpt-oauth',state.entries[0].identity);
+  assert.equal(api.getModelHeaderLabel('chatgpt-oauth','gpt-5.5','high'),'GPT-5.5 · high');
+  assert.equal(api.getModelHeaderLabel('chatgpt-oauth','gpt-5.5',''),'GPT-5.5 · low (default)');
+  assert.equal(api.getModelHeaderLabel('chatgpt-oauth','gpt-5.5','max'),'GPT-5.5 · low (default)');
+  assert.equal(api.getModelHeaderLabel('chatgpt-oauth','claude-x',''),'Claude X · default');
+  assert.equal(api.getModelHeaderLabel('chatgpt-oauth','gpt-4o','high'),'GPT-4o');
+  assert.equal(api.getModelHeaderLabel('chatgpt-oauth','custom-id','high'),'custom-id');
 });

@@ -7,6 +7,11 @@ export interface ChatSettings {
   /** API key for `anthropic` and `openai`. Empty for `chatgpt-oauth` (which uses SecretStorage credentials). */
   apiKey: string;
   model: string;
+  /**
+   * Thinking level as the provider names it (e.g. `"high"`). Empty = the
+   * model's default. Offered levels come from the model catalog.
+   */
+  thinkingLevel: string;
   maxIterations: number;
   enableWebSearch: boolean;
   modelCatalog?: import("./api/model-catalog").CatalogState;
@@ -22,6 +27,7 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   provider: "anthropic",
   apiKey: "",
   model: "claude-sonnet-4-6",
+  thinkingLevel: "",
   maxIterations: 20,
   enableWebSearch: true,
 };

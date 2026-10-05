@@ -1,4 +1,4 @@
-import { supportsReasoning, catalogIdentity } from "./model-catalog";
+import { catalogIdentity } from "./model-catalog";
 import { requestUrl } from "obsidian";
 import type {
   ChatSettings,
@@ -62,11 +62,8 @@ export async function sendOpenAIMessage(
     body.previous_response_id = previous.responseId;
   }
 
-  // Reasoning for reasoning-capable models
-  if (supportsReasoning(model)) {
-    body.reasoning = { effort: "medium" };
-    body.include = ["reasoning.encrypted_content"];
-  }
+  // No reasoning parameters: `/v1/models` doesn't report which models reason
+  // or which levels they accept, so every model runs on its own default.
 
   // Tools
   const apiTools: Record<string, unknown>[] = tools.map((t) => ({

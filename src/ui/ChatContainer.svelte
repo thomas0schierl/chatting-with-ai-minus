@@ -551,6 +551,7 @@
     display: flex;
     align-items: baseline;
     gap: 8px;
+    min-width: 0;
   }
 
   .chatting-minus-header-title {
@@ -562,6 +563,10 @@
   .chatting-minus-header-model {
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
+    /* Model name + thinking level can outgrow a phone-width panel */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .chatting-minus-clear-btn {

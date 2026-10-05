@@ -4,7 +4,7 @@ import type { Provider } from "./types";
 import { CHATGPT_OAUTH_DEFAULT_MODEL, DEFAULT_PROVIDER_MODELS } from "./types";
 import type { ChatGPTDeviceAuthorization, PollHandle } from "./auth/chatgptOAuth";
 
-import { type ModelOption, type CatalogState, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, CATALOG_TTL } from "./api/model-catalog";
+import { type ModelOption, type CatalogState, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
 
 const FALLBACK_MODELS: Record<string, ModelOption[]> = {
   anthropic: [
@@ -34,6 +34,13 @@ export function getModelDisplayName(provider: string, modelId: string): string {
   return match?.label || modelId;
 }
 
+/** Chat header: model name, plus the effective thinking level when the model offers levels. */
+export function getModelHeaderLabel(provider: Provider, modelId: string, level: string): string {
+  const thinking = thinkingLevelLabel(catalogModel(provider, modelId), level);
+  const name = getModelDisplayName(provider, modelId);
+  return thinking ? `${name} · ${thinking}` : name;
+}
+
 // ─── Settings Tab ───────────────────────────────────────────────────────────
 
 export class ChatSettingTab extends PluginSettingTab {
@@ -60,6 +67,7 @@ export class ChatSettingTab extends PluginSettingTab {
         this.renderModelSection(setting.settingEl.parentElement!, setting);
         void this.loadCatalog(false);
       } },
+      { name: "Thinking level", visible: () => !!this.thinkingOptions(), render: setting => this.renderThinkingLevel(setting) },
       { name: "Web search", render: setting => this.renderWebSearch(setting) },
       { name: "Max tool iterations", render: setting => this.renderMaxIterations(setting) },
     ];
@@ -87,6 +95,7 @@ export class ChatSettingTab extends PluginSettingTab {
     // ─── Model ────────────────────────────────────────────────────────
     this.renderModelSection(containerEl);
     void this.loadCatalog(false);
+    if (this.thinkingOptions()) this.renderThinkingLevel(new Setting(containerEl));
 
     this.renderWebSearch(new Setting(containerEl));
     this.renderMaxIterations(new Setting(containerEl));
@@ -112,6 +121,8 @@ export class ChatSettingTab extends PluginSettingTab {
             this.catalogIdentity = "";
             s.provider = value as Provider;
             s.model = DEFAULT_PROVIDER_MODELS[s.provider];
+            // Levels are named per provider, so start from the model's default.
+            s.thinkingLevel = "";
             this.plugin.reloadApiKeyForProvider();
             await this.plugin.saveSettings();
             window.setTimeout(() => this.refreshSettingsTab(), 10);
@@ -342,6 +353,8 @@ export class ChatSettingTab extends PluginSettingTab {
           } else {
             s.model = value;
             await this.plugin.saveSettings();
+            // The thinking levels on offer depend on the model.
+            this.refreshSettingsTab();
           }
         });
       });
@@ -376,6 +389,39 @@ export class ChatSettingTab extends PluginSettingTab {
         );
     }
   }
+
+  // ─── Thinking level ───────────────────────────────────────────────────────
+
+  /** The selected model's catalog entry when it offers thinking levels. */
+  private thinkingOptions(): ModelOption | undefined {
+    const s = this.plugin.settings;
+    const option = this.catalogModels?.find(m => m.value === s.model);
+    return option?.reasoningEfforts?.length ? option : undefined;
+  }
+
+  private renderThinkingLevel(setting: Setting): void {
+    const s = this.plugin.settings;
+    const option = this.thinkingOptions();
+    if (!option?.reasoningEfforts) return;
+    const efforts = option.reasoningEfforts;
+    setting
+      .setName("Thinking level")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("", option.defaultReasoningEffort ? `Default (${option.defaultReasoningEffort})` : "Default");
+        for (const effort of efforts) dropdown.addOption(effort, effort);
+        // Keep a saved level this model doesn't offer; requests use the default.
+        if (s.thinkingLevel && !resolveThinkingLevel(option, s.thinkingLevel)) {
+          dropdown.addOption(s.thinkingLevel, `${s.thinkingLevel} (not available)`);
+        }
+        dropdown.setValue(s.thinkingLevel);
+        dropdown.onChange(async (value) => {
+          s.thinkingLevel = value;
+          await this.plugin.saveSettings();
+          this.refreshSettingsTab();
+        });
+      });
+  }
+
   private credentialIdentity(): string {
     const s = this.plugin.settings;
     if (s.provider !== "chatgpt-oauth") return s.apiKey;

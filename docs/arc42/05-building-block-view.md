@@ -32,7 +32,7 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID.
 | Module | Responsibility |
 |---|---|
 | `main.ts` | Plugin entry. Loads and saves settings (`data.json`) and API keys (SecretStorage), loads and saves chat history (`chat-state.json`), wires the ChatGPT OAuth service, registers the view, ribbon icon, commands and context menus. |
-| `settings.ts` | Settings tab: provider, API key or ChatGPT connect/disconnect, model picker with catalog refresh, web search, iteration limit. Also the device-login modal. |
+| `settings.ts` | Settings tab: provider, API key or ChatGPT connect/disconnect, model picker with catalog refresh, thinking level, web search, iteration limit. Also the device-login modal and the chat header label. |
 | `ui/chat-view.ts` | Obsidian `ItemView` that mounts the Svelte component and connects its events to the agent loop callbacks. |
 | `ui/ChatContainer.svelte` | The whole chat UI: messages (rendered as Obsidian Markdown), tool cards, thinking indicator, selection pill, image tray, input with send and stop. |
 | `agent/loop.ts` | The agent loop: owns the message history, calls the provider, runs tools, handles stop and `ask_user`, writes the debug log. |
@@ -44,7 +44,7 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID.
 | `api/openai.ts` | OpenAI Responses API adapter (`previous_response_id` chaining, full replay as fallback). |
 | `api/chatgpt-oauth.ts` | ChatGPT/Codex adapter: `store: false`, full replay each turn, buffered SSE parsing. |
 | `api/responses-format.ts` | Converts unified messages to and from the Responses API format (shared by OpenAI and Codex). |
-| `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account; Codex client version; reasoning and parallel-tool capabilities. |
+| `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account; Codex client version; thinking and parallel-tool capabilities, and the thinking parameters built from them. |
 | `auth/chatgptOAuth.ts` | Device login, token exchange and refresh against `auth.openai.com`. |
 | `auth/chatgptOAuthStore.ts` | Reads and writes the OAuth credential in SecretStorage. |
 | `tools/registry.ts` | The 14 tool definitions (JSON Schema) offered to the model. |

@@ -1,4 +1,4 @@
-import { catalogIdentity } from "./model-catalog";
+import { anthropicThinking, cachedCatalog, catalogIdentity } from "./model-catalog";
 import { requestUrl } from "obsidian";
 import type {
   ChatSettings,
@@ -26,6 +26,9 @@ export async function sendAnthropicMessage(
 ): Promise<UnifiedResponse> {
   const model = settings.model || "claude-sonnet-4-6";
   const identity = await catalogIdentity("anthropic", settings.apiKey);
+  if (settings.modelCatalog) {
+    cachedCatalog(settings.modelCatalog, "anthropic", identity);
+  }
   const body: Record<string, unknown> = {
     model,
     max_tokens: 16384,
@@ -41,19 +44,9 @@ export async function sendAnthropicMessage(
     messages: messages.map(msg => toAnthropicMessage(msg, model, identity)),
   };
 
-  // Opus 4.7+ rejects manual thinking. Keep older models on their budget mode.
-  const generation = model.match(/^claude-(?:sonnet|opus)-(\d+)[-.](\d{1,2})(?:-|$)/);
-  const supportsAdaptive = !!generation && (Number(generation[1]) > 4 ||
-    (Number(generation[1]) === 4 && Number(generation[2]) >= 6));
-  const supportsThinking = model.includes("claude-sonnet-4") || model.includes("claude-opus") || model.includes("claude-sonnet-3-7");
-
-  if (supportsAdaptive) {
-    // Adaptive: Claude decides when/how much to think per request
-    body.thinking = { type: "adaptive" };
-  } else if (supportsThinking) {
-    // Manual: fixed budget for older models
-    body.thinking = { type: "enabled", budget_tokens: 8192 };
-  }
+  // Thinking mode and effort come from the model catalog (`/v1/models`
+  // capabilities). Models without catalog data run on their defaults.
+  Object.assign(body, anthropicThinking(model, settings.thinkingLevel));
 
   if (tools.length > 0 || settings.enableWebSearch) {
     const apiTools: Record<string, unknown>[] = tools.map((t, i, arr) => {

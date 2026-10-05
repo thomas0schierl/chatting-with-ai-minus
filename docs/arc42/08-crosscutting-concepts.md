@@ -9,7 +9,7 @@
 
 | Store | Content | Limits |
 |---|---|---|
-| `data.json` (`saveData`) | Provider, model, iteration limit, web search, model catalogs (hashed account key, models, fetch time, Codex version) | API key always saved as `""`; at most 3 catalog entries |
+| `data.json` (`saveData`) | Provider, model, thinking level, iteration limit, web search, model catalogs (hashed account key, models with their capabilities, fetch time, Codex version) | API key always saved as `""`; at most 3 catalog entries |
 | SecretStorage `chatting-with-ai-minus-api-key-<provider>` | API key per provider | |
 | SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | OAuth credential (JSON) | Cleared by writing `""` |
 | `chat-state.json` in the plugin folder | Visible history (last 100 entries) and API history (last 80 messages), including images and native replay items | Written after every turn, Stop, Clear and unload |

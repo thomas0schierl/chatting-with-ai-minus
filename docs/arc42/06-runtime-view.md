@@ -11,7 +11,8 @@
    defaults. An empty model becomes the provider's default. The model
    catalog is restored, and the API key is read from SecretStorage.
 2. Create the ChatGPT OAuth store and service, and hand the service to the
-   Codex adapter.
+   Codex adapter. Activate the saved model catalog of the current provider
+   and account, so the chat header can show the thinking level.
 3. Create the `AgentLoop` with the shared settings object.
 4. `loadChatHistory()`: read `chat-state.json` and import the messages
    (trimmed to 40).
@@ -56,7 +57,7 @@ result instead of a new message.
 | | Anthropic | OpenAI | ChatGPT / Codex |
 |---|---|---|---|
 | History sent | All messages; native blocks (thinking signatures, search results) replayed when provider, model and key are unchanged | Only new items, chained with `previous_response_id`; full replay after model or key changes, restore, or trimming | Full replay every turn (`store: false`) |
-| Thinking | Adaptive for Opus/Sonnet 4.6+, fixed budget for older Opus/Sonnet, none otherwise (GAP-006) | `reasoning.effort: medium` for reasoning-capable names (GAP-006) | From the model catalog; fallback `medium` |
+| Thinking | From the model catalog: `thinking` adaptive or fixed budget (8192 tokens); `output_config.effort` only when the chosen level is offered. None without catalog data | None; `/v1/models` reports no reasoning data | From the model catalog: `reasoning.effort` = chosen level if offered, else the model's default; `summary` unless the model rejects it. None without catalog data |
 | Response | JSON | JSON | SSE, buffered by `requestUrl()` and parsed afterwards |
 | Caching | `cache_control` on the system prompt and last tool | provider-side | provider-side |
 
@@ -83,6 +84,20 @@ result instead of a new message.
    - **ChatGPT:** first look up the latest stable Codex version on GitHub
      (cached for 24 hours), then fetch `/codex/models` and keep the models
      marked `list`.
-   - **Anthropic, OpenAI:** fetch `/v1/models`.
+   - **Anthropic, OpenAI:** fetch `/v1/models`. For Anthropic, read each
+     model's thinking type (`capabilities.thinking.types`) and effort
+     levels (`capabilities.effort`).
 4. **Result:** the new list is saved to `data.json`. On failure the last
    list is kept, and there are no retries for 5 minutes.
+
+## Thinking level (`settings.ts`, adapters)
+
+1. **Options:** the settings row below Model lists "Default" plus the
+   levels the catalog reports for the selected model, in the provider's
+   order. It is hidden for models without levels (all OpenAI API models,
+   custom IDs).
+2. **Saved choice:** `thinkingLevel` stays saved when the model changes. A
+   level the new model doesn't offer is shown as "(not available)" and
+   requests use the model's default. Changing the provider resets it.
+3. **Header:** the chat header shows the model name and the effective
+   level (`GPT-5.5 · high`, `GPT-5.5 · medium (default)`).

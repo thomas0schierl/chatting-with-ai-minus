@@ -4,7 +4,6 @@ import type { Component } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
 import type { ToolResult, SelectionScope, ImageAttachment } from "../types";
-import { getModelDisplayName } from "../settings";
 
 export const VIEW_TYPE_CHAT = "chatting-minus-view";
 
@@ -78,7 +77,7 @@ export class ObsidianChatView extends ItemView {
         app: this.app,
         component: this,
         provider: this.plugin.settings.provider,
-        model: getModelDisplayName(this.plugin.settings.provider, this.plugin.settings.model),
+        model: this.plugin.modelHeaderLabel(),
         onSend: (text: string, selection: SelectionScope | null, images: ImageAttachment[]) => {
           void this.handleUserMessage(text, selection, images);
         },
