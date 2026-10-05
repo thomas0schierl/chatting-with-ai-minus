@@ -285,3 +285,26 @@ test('Rate limit: retried before any text was shown, not after', async () => {
     globalThis.window = previousWindow;
   }
 });
+
+test('Rate limit: the retry waits as Retry-After says; other errors mentioning 429 or a rate limit are not retried', async () => {
+  const previousWindow = globalThis.window;
+  const waits = [];
+  globalThis.window = { setTimeout(fn, ms) { waits.push(ms); queueMicrotask(fn); }, fetch: globalThis.fetch };
+  try {
+    let calls = fakeFetch(index => index ? streamedResponse(sseText(streamEvents('anthropic', [text('OK')])))
+      : new Response('{"error":{"type":"rate_limit_error","message":"Slow down"}}', { status: 429, headers: { 'retry-after': '2' } }));
+    await api.sendMessage(settings('anthropic'), [{ role: 'user', content: 'Hi' }], [], 'System');
+    assert.equal(calls.length, 2);
+    assert.deepEqual(waits, [2000]);
+
+    // A 400 whose text happens to say "429" or "rate limit" is no rate limit.
+    for (const message of ['Prompt is 429 tokens over the limit', 'Unknown parameter: rate_limit']) {
+      api.clearOpenAIState();
+      calls = fakeFetch(() => new Response(JSON.stringify({ error: { message } }), { status: 400 }));
+      await assert.rejects(api.sendMessage(settings('openai'), [{ role: 'user', content: 'Hi' }], [], 'System'), e => e instanceof Error && e.message.includes(message));
+      assert.equal(calls.length, 1, message);
+    }
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});

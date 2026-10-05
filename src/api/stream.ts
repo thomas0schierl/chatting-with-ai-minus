@@ -22,11 +22,15 @@ export interface StreamRequest {
   body: string;
 }
 
-/** The HTTP status; for errors (not 2xx) also the body, as text and JSON. */
+/**
+ * The HTTP status; for errors (not 2xx) also the body, as text and JSON,
+ * and the wait the `Retry-After` header asks for.
+ */
 export interface StreamResult {
   status: number;
   text?: string;
   json?: unknown;
+  retryAfterMs?: number;
 }
 
 export type SSEHandler = (event: Record<string, unknown>) => void;
@@ -87,6 +91,7 @@ export async function streamSSE(
 
 interface NodeResponse {
   statusCode?: number;
+  headers?: Record<string, string | string[] | undefined>;
   setEncoding(encoding: string): void;
   on(event: "data", listener: (chunk: string) => void): void;
   on(event: "end", listener: () => void): void;
@@ -139,7 +144,9 @@ function viaNode(https: NodeHttps, url: string, request: StreamRequest, onEvent:
           parser.end();
           resolve({ status });
         } else {
-          resolve({ status, text: errorText, json: parseJson(errorText) });
+          const retryAfter = res.headers?.["retry-after"];
+          resolve({ status, text: errorText, json: parseJson(errorText),
+            retryAfterMs: retryAfterMs(Array.isArray(retryAfter) ? retryAfter[0] : retryAfter) });
         }
       });
     });
@@ -161,7 +168,7 @@ function viaNode(https: NodeHttps, url: string, request: StreamRequest, onEvent:
 async function readFetchResponse(response: Response, onEvent: SSEHandler, signal?: AbortSignal): Promise<StreamResult> {
   if (!response.ok) {
     const text = await response.text();
-    return { status: response.status, text, json: parseJson(text) };
+    return { status: response.status, text, json: parseJson(text), retryAfterMs: retryAfterMs(response.headers.get("retry-after")) };
   }
   const parser = createSSEParser(onEvent);
   const reader = response.body?.getReader();
@@ -211,7 +218,8 @@ async function viaRequestUrl(url: string, request: StreamRequest, onEvent: SSEHa
     } catch {
       json = undefined;
     }
-    return { status: response.status, text, json };
+    const header = Object.entries(response.headers ?? {}).find(([name]) => name.toLowerCase() === "retry-after")?.[1];
+    return { status: response.status, text, json, retryAfterMs: retryAfterMs(header) };
   }
   const parser = createSSEParser(onEvent);
   parser.push(text ?? "");
@@ -278,6 +286,15 @@ export function createSSEParser(onEvent: SSEHandler): { push(text: string): void
       dispatch();
     },
   };
+}
+
+/** `Retry-After` in ms: seconds, or an HTTP date. */
+function retryAfterMs(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
 }
 
 function parseJson(text: string): unknown {

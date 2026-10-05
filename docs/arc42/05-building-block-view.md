@@ -47,7 +47,8 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
 | `agent/history.ts` | Trims and cuts history only at the start of a user turn, so a tool call is never separated from its result. Creates turn IDs and adds them to chats saved without them. |
 | `agent/context.ts` | Collects per-turn context: vault name, note count, active note path, selection, and whether the turn comes from voice. |
 | `agent/system-prompt.ts` | The static system prompt and the per-turn context prefix. |
-| `api/client.ts` | Picks the adapter for the current provider; one retry on rate limits while no text has been shown (not on a ChatGPT usage limit). |
+| `api/client.ts` | Picks the adapter for the current provider; one retry on rate limits while no text has been shown (not on a ChatGPT usage limit), decided from the `ProviderError`'s status and code. |
+| `api/errors.ts` | `ProviderError`, the one error class the adapters throw for a provider's error answer: message, HTTP status (0 inside a stream), error code, `Retry-After` wait. |
 | `api/stream.ts` | The transport for chat: POST with `fetch`, an incremental SSE parser, abort; falls back to `requestUrl()` (and stays there for the session) when `fetch` fails before a response. The only module using `fetch` besides the device check. |
 | `api/anthropic.ts` | Anthropic Messages API adapter (streamed; thinking, prompt caching, web search, native replay). Rebuilds the message from stream events. |
 | `api/openai.ts` | OpenAI Responses API adapter (`previous_response_id` chaining, full replay as fallback). |

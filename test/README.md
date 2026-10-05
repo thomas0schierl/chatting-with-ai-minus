@@ -25,7 +25,8 @@ Disconnect) and retry after a 401
 requests, and canvas drawing (`view-tools.test.mjs`),
 math conversion (`math-markdown.test.mjs`), streamed answers: SSE
 parsing, rebuilt responses, fallback and when `fetch` is skipped, Stop
-and the rate-limit retry (also Anthropic errors inside the stream)
+and the rate-limit retry (also Anthropic errors inside the stream;
+Retry-After; none for other errors that mention 429)
 (`streaming.test.mjs`), editing a message, regenerating and copying
 an answer through the chat view with a fake Svelte component
 (`message-actions.test.mjs`, also Stop and Clear while `ask_user`

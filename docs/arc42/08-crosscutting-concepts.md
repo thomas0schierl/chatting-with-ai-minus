@@ -24,7 +24,10 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 ## Error handling
 
 - **Adapters** send through `api/stream.ts`, which returns the status and,
-  for errors, the body; they throw an error with the provider's message.
+  for errors, the body and the `Retry-After` wait; they throw a
+  `ProviderError` (`api/errors.ts`) with the provider's message, the
+  status (0 inside a stream), its error code and that wait. Network errors
+  pass through unchanged.
   Errors reported inside a stream (`error`, `response.failed`) and a stream
   that ends before its final event are errors too, never partial answers. ChatGPT errors say how to
   recover: sign in again (401, after one token refresh and retry), or try again later
@@ -36,10 +39,12 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   kept in the history.
 - **Tools never throw** to the loop. Failures and invalid arguments return
   an error result to the model.
-- **Rate limits and overload** (429, 529, or Anthropic's
-  `rate_limit_error` / `overloaded_error` inside the stream): one retry after the server's suggested delay (5 s
-  default, 30 s maximum), only if no answer text was shown yet, and never
-  for a ChatGPT usage limit; otherwise
+- **Rate limits and overload** (status 429 or 529, or the code
+  `rate_limit_error` / `overloaded_error` from Anthropic or
+  `rate_limit_exceeded` from OpenAI inside the stream; decided from the
+  error's status and code, never its text): one retry after the server's
+  `Retry-After` (5 s default, 30 s maximum), only if no answer text was
+  shown yet, and never for a ChatGPT usage limit; otherwise
   the error is shown below the partial answer.
 - **Notices** are only for user actions (connection test, model refresh,
   copy), and for saved chats that couldn't be read at start.

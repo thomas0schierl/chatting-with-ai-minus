@@ -9,6 +9,7 @@ import type {
   StreamOptions,
 } from "../types";
 import { streamSSE } from "./stream";
+import { ProviderError } from "./errors";
 import { withoutOldToolImages } from "../agent/history";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -81,33 +82,22 @@ export async function sendAnthropicMessage(
   }
 
   const collected = collectAnthropicStream(stream.onTextDelta);
-  let response;
-  try {
-    response = await streamSSE(ANTHROPIC_API_URL, {
-      headers: {
-        "x-api-key": settings.apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-        accept: "text/event-stream",
-        // Required for the CORS answer to `fetch` from Obsidian's origins.
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify(body),
-    }, collected.onEvent, stream.signal);
-  } catch (e: unknown) {
-    // requestUrl throws on network errors; extract API details if available
-    const err = asRecord(e);
-    const status = typeof err.status === "number" ? err.status : "unknown";
-    const apiMsg = getNestedString(err, ["json", "error", "message"]);
-    if (apiMsg) {
-      throw new Error(`Anthropic API error (${status}): ${apiMsg}`);
-    }
-    throw e;
-  }
+  const response = await streamSSE(ANTHROPIC_API_URL, {
+    headers: {
+      "x-api-key": settings.apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+      accept: "text/event-stream",
+      // Required for the CORS answer to `fetch` from Obsidian's origins.
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify(body),
+  }, collected.onEvent, stream.signal);
 
   if (response.status !== 200) {
     const errorText = getNestedString(response.json, ["error", "message"]) ?? `HTTP ${response.status}`;
-    throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
+    throw new ProviderError(`Anthropic API error (${response.status}): ${errorText}`, response.status,
+      getNestedString(response.json, ["error", "type"]), response.retryAfterMs);
   }
 
   const data = parseAnthropicResponse(collected.finish());
@@ -145,7 +135,7 @@ function collectAnthropicStream(onTextDelta?: (text: string) => void): {
   const blocks: Record<string, unknown>[] = [];
   const inputJson = new Map<number, string>();
   let stopped = false;
-  let failure: string | undefined;
+  let failure: ProviderError | undefined;
   return {
     onEvent: (event) => {
       const index = typeof event.index === "number" ? event.index : -1;
@@ -201,13 +191,13 @@ function collectAnthropicStream(onTextDelta?: (text: string) => void): {
         case "error": {
           const error = asRecord(event.error);
           const type = typeof error.type === "string" ? error.type : "error";
-          failure = `Anthropic API error (${type}): ${typeof error.message === "string" ? error.message : "stream failed"}`;
+          failure = new ProviderError(`Anthropic API error (${type}): ${typeof error.message === "string" ? error.message : "stream failed"}`, 0, type);
           break;
         }
       }
     },
     finish: () => {
-      if (failure) throw new Error(failure);
+      if (failure) throw failure;
       if (!message || !stopped) throw new Error("Anthropic stream ended before the message was complete.");
       return { ...message, content: blocks.filter(Boolean) };
     },

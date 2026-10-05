@@ -3,13 +3,22 @@ import { sendAnthropicMessage } from "./anthropic";
 import { sendOpenAIMessage } from "./openai";
 import { sendChatGPTOAuthMessage } from "./chatgpt-oauth";
 import { ChatGPTUsageLimitError } from "../auth/chatgptOAuth";
+import { ProviderError } from "./errors";
+
+/** HTTP statuses of a rate limit or an overload. */
+const RETRY_STATUSES = [429, 529];
+/** The same inside a stream: Anthropic's error types, OpenAI's code. */
+const RETRY_CODES = ["rate_limit_error", "overloaded_error", "rate_limit_exceeded"];
+/** Wait before the retry when the provider names none, and the longest wait. */
+const RETRY_DELAY_MS = 5000;
+const MAX_RETRY_DELAY_MS = 30_000;
 
 /**
  * Dispatches a message to the appropriate provider adapter.
  * Handles single retry on a rate limit or overload (429, 529, or such an
  * error inside the stream), but only while no answer text has been shown:
  * a retry would show it twice.
- * A ChatGPT usage limit (also 429) is not retried.
+ * A ChatGPT usage limit (also 429) is its own error class and not retried.
  */
 export async function sendMessage(
   settings: ChatSettings,
@@ -41,11 +50,8 @@ export async function sendMessage(
   try {
     return await doSend();
   } catch (e) {
-    // Single retry on rate limit
-    if (isRateLimitError(e) && !shown) {
-      const retryAfter = extractRetryAfter(e);
-      const delay = retryAfter ? retryAfter * 1000 : 5000;
-      await sleep(Math.min(delay, 30000));
+    if (isRateLimit(e) && !shown) {
+      await sleep(Math.min(e.retryAfterMs ?? RETRY_DELAY_MS, MAX_RETRY_DELAY_MS));
       return await doSend();
     }
     throw e;
@@ -57,22 +63,9 @@ export function errorKind(e: unknown): ChatErrorKind | undefined {
   return e instanceof ChatGPTUsageLimitError ? "usage-limit" : undefined;
 }
 
-function isRateLimitError(e: unknown): boolean {
-  if (e instanceof ChatGPTUsageLimitError) return false;
-  if (e instanceof Error) {
-    // HTTP 429 or 529, or an error inside the stream such as Anthropic's
-    // `rate_limit_error` or `overloaded_error`.
-    return /\b(429|529)\b|rate.?limit|overloaded/i.test(e.message);
-  }
-  return false;
-}
-
-function extractRetryAfter(e: unknown): number | null {
-  if (e instanceof Error) {
-    const match = e.message.match(/retry.after[:\s]*(\d+)/i);
-    if (match) return parseInt(match[1], 10);
-  }
-  return null;
+function isRateLimit(e: unknown): e is ProviderError {
+  return e instanceof ProviderError &&
+    (RETRY_STATUSES.includes(e.status) || (e.code !== undefined && RETRY_CODES.includes(e.code)));
 }
 
 function sleep(ms: number): Promise<void> {

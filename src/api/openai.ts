@@ -10,6 +10,7 @@ import type {
 
 import { buildResponsesInput, collectResponsesStream, fromResponsesOutput } from "./responses-format";
 import { streamSSE } from "./stream";
+import { ProviderError } from "./errors";
 
 const DEFAULT_OPENAI_URL = "https://api.openai.com";
 
@@ -90,35 +91,24 @@ export async function sendOpenAIMessage(
   body.instructions = systemPrompt;
 
   const collected = collectResponsesStream(stream.onTextDelta);
-  let response;
-  try {
-    response = await streamSSE(`${baseUrl}/v1/responses`, {
-      headers: {
-        Authorization: `Bearer ${settings.apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-      },
-      body: JSON.stringify(body),
-    }, collected.onEvent, stream.signal);
-  } catch (e: unknown) {
-    const err = asRecord(e);
-    const status = typeof err.status === "number" || typeof err.status === "string" ? String(err.status) : "";
-    const message = typeof err.message === "string" ? err.message : String(e);
-    const apiMsg = getNestedString(err, ["json", "error", "message"]);
-    if (apiMsg) {
-      throw new Error(`OpenAI API error (${status || "unknown"}): ${apiMsg}`);
-    }
-    throw new Error(`OpenAI request failed (${status}): ${message}`);
-  }
+  const response = await streamSSE(`${baseUrl}/v1/responses`, {
+    headers: {
+      Authorization: `Bearer ${settings.apiKey}`,
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify(body),
+  }, collected.onEvent, stream.signal);
 
   if (response.status !== 200) {
     const errorBody = getNestedString(response.json, ["error", "message"]) ?? `HTTP ${response.status}`;
-    throw new Error(`OpenAI API error (${response.status}): ${errorBody}`);
+    throw new ProviderError(`OpenAI API error (${response.status}): ${errorBody}`, response.status,
+      getNestedString(response.json, ["error", "code"]), response.retryAfterMs);
   }
 
   const { data, failure } = collected.finish();
   if (failure) {
-    throw new Error(`OpenAI API error${failure.code ? ` (${failure.code})` : ""}: ${failure.message}`);
+    throw new ProviderError(`OpenAI API error${failure.code ? ` (${failure.code})` : ""}: ${failure.message}`, 0, failure.code);
   }
   if (!data) throw new Error("OpenAI stream ended without a completed response.");
 
@@ -138,10 +128,6 @@ function getNestedString(value: unknown, path: string[]): string | undefined {
     current = current[key];
   }
   return typeof current === "string" ? current : undefined;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
