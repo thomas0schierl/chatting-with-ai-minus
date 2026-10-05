@@ -8,9 +8,7 @@ import type {
   ImageAttachment,
   ToolResult,
 } from "../types";
-import { errorKind, sendMessage } from "../api/client";
-import { clearOpenAIState } from "../api/openai";
-import { clearChatGPTOAuthState } from "../api/chatgpt-oauth";
+import { errorKind, resetProviderState, sendMessage } from "../api/client";
 import { TOOL_DEFINITIONS } from "../tools/registry";
 import { executeTool } from "../tools/executor";
 import { buildContext } from "./context";
@@ -62,7 +60,7 @@ export class AgentLoop {
   private messages: UnifiedMessage[] = [];
   private app: App;
   private settings: ChatSettings;
-  private aborted = false;
+  /** Counts runs and stops; a run whose number is no longer current is stopped. */
   private runVersion = 0;
   /** Cancels the running turn's HTTP request (streamed answers, ADR-12). */
   private request: AbortController | null = null;
@@ -74,19 +72,15 @@ export class AgentLoop {
 
   /** Abort a running loop (e.g. user navigates away) */
   abort(): void {
-    this.aborted = true;
     this.runVersion++;
     this.request?.abort();
   }
 
-  /** Clear conversation history */
+  /** Stop a running turn and clear the history. */
   clear(): void {
-    this.runVersion++;
-    this.request?.abort();
+    this.abort();
     this.messages = [];
-    this.aborted = false;
-    clearOpenAIState();
-    clearChatGPTOAuthState();
+    resetProviderState();
   }
 
   /**
@@ -107,8 +101,7 @@ export class AgentLoop {
   /** Continue from a saved API history (trimmed when it was saved). */
   importMessages(messages: UnifiedMessage[]): void {
     this.messages = [...messages];
-    clearOpenAIState();
-    clearChatGPTOAuthState();
+    resetProviderState();
   }
 
   /** Export the full conversation as a readable markdown transcript */
@@ -188,9 +181,8 @@ export class AgentLoop {
     turnId: string = newTurnId(),
     { voice = false }: { voice?: boolean } = {}
   ): Promise<void> {
-    this.aborted = false;
     const version = ++this.runVersion;
-    const isStopped = () => this.aborted || version !== this.runVersion;
+    const isStopped = () => version !== this.runVersion;
     const request = new AbortController();
     this.request = request;
     const onTextDelta = (text: string) => {

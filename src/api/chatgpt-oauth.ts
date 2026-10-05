@@ -41,13 +41,6 @@ export function setChatGPTOAuthService(service: ChatGPTOAuthService | null): voi
   oauthService = service;
 }
 
-/**
- * Reset per-conversation client state (called from AgentLoop.clear()).
- * Nothing to reset: history lives entirely in AgentLoop.messages.
- */
-export function clearChatGPTOAuthState(): void {
-  /* no-op */
-}
 
 export async function sendChatGPTOAuthMessage(
   settings: ChatSettings,

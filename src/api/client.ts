@@ -1,6 +1,6 @@
 import type { ChatErrorKind, ChatSettings, UnifiedMessage, UnifiedToolDef, UnifiedResponse, StreamOptions } from "../types";
 import { sendAnthropicMessage } from "./anthropic";
-import { sendOpenAIMessage } from "./openai";
+import { clearOpenAIState, sendOpenAIMessage } from "./openai";
 import { sendChatGPTOAuthMessage } from "./chatgpt-oauth";
 import { ChatGPTUsageLimitError } from "../auth/chatgptOAuth";
 import { ProviderError } from "./errors";
@@ -56,6 +56,14 @@ export async function sendMessage(
     }
     throw e;
   }
+}
+
+/**
+ * Forget what the adapters keep per conversation (OpenAI's response to
+ * chain to), when the history is replaced or cleared.
+ */
+export function resetProviderState(): void {
+  clearOpenAIState();
 }
 
 /** How the chat shows an error from `sendMessage`; undefined for a plain error message. */

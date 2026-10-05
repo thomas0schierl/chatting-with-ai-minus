@@ -425,14 +425,13 @@ export default class ChatPlugin extends Plugin {
     const deleted = this.conversations.find((conversation) => conversation.id === id);
     if (!deleted) return;
     this.conversations = this.conversations.filter((conversation) => conversation !== deleted);
-    if (deleted.id === this.activeConversationId) {
-      const next = newestFirst(this.conversations)[0] ?? newConversation();
-      if (!this.conversations.includes(next)) this.conversations.push(next);
-      this.agent.abort();
-      this.activeConversationId = next.id;
-      this.agent.importMessages(next.agentMessages);
+    if (deleted.id !== this.activeConversationId) {
+      void this.saveChatHistory();
+      return;
     }
-    void this.saveChatHistory();
+    const next = newestFirst(this.conversations)[0] ?? newConversation();
+    if (!this.conversations.includes(next)) this.conversations.push(next);
+    this.activate(next);
   }
 
   /** Called when a turn starts or the conversation is cleared: order and title. */
@@ -444,12 +443,13 @@ export default class ChatPlugin extends Plugin {
 
   /** Switches the agent to `next`; an empty conversation left behind is dropped. */
   private activate(next: ConversationRecord): void {
-    const previous = this.activeConversation;
+    // None when the active conversation was just deleted.
+    const previous = this.conversations.find((conversation) => conversation.id === this.activeConversationId);
     this.agent.abort();
     this.activeConversationId = next.id;
     // A new history array: OpenAI can't chain to the other conversation's responses.
     this.agent.importMessages(next.agentMessages);
-    if (previous !== next && isEmptyConversation(previous)) {
+    if (previous && previous !== next && isEmptyConversation(previous)) {
       this.conversations = this.conversations.filter((conversation) => conversation !== previous);
     }
     void this.saveChatHistory();

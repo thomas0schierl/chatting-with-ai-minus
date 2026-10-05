@@ -478,7 +478,6 @@ export class ObsidianChatView extends ItemView {
 
   private handleClear(): void {
     this.endVoice();
-    this.plugin.agent.abort();
     this.plugin.agent.clear();
     this.streaming = null;
     this.plugin.chatHistory = [];
