@@ -6,6 +6,7 @@ import type {
   AgentCallbacks,
   SelectionScope,
   ImageAttachment,
+  ToolResult,
 } from "../types";
 import { sendMessage } from "../api/client";
 import { clearOpenAIState } from "../api/openai";
@@ -36,6 +37,20 @@ function debugLog(app: App, label: string, data: unknown): void {
   } catch {
     // Debug logging should never break the app
   }
+}
+
+/**
+ * What the chat view shows and saves for a tool result: the text and a
+ * marker, never the image data, which lives only in the agent history
+ * (otherwise chat-state.json would hold it twice, GAP-011).
+ */
+function displayResult(result: ToolResult): ToolResult {
+  const count = result.images?.length ?? 0;
+  if (!count) return result;
+  return {
+    result: `${result.result}\n\n[${count === 1 ? "1 image" : `${count} images`} sent to the model]`,
+    isError: result.isError,
+  };
 }
 
 /**
@@ -136,6 +151,10 @@ export class AgentLoop {
             parts.push(block.content || "(empty)");
             parts.push("```");
             parts.push(``);
+            for (const image of block.images ?? []) {
+              parts.push(`[Image: ${image.fileName}]`);
+              parts.push(``);
+            }
           }
         }
       }
@@ -296,8 +315,9 @@ export class AgentLoop {
           tool_use_id: tc.id,
           content: result.result,
           is_error: result.isError,
+          ...(result.images?.length ? { images: result.images } : {}),
         };
-        callbacks.onToolResult(tc.name!, result);
+        callbacks.onToolResult(tc.name!, displayResult(result));
       }
 
       if (isStopped()) return;

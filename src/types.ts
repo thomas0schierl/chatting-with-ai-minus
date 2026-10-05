@@ -59,6 +59,8 @@ export interface ContentBlock {
   tool_use_id?: string;
   content?: string;
   is_error?: boolean;
+  /** tool_result only: images the tool returned (view_image, view_canvas). */
+  images?: ImageAttachment[];
 }
 
 export interface UnifiedMessage {
@@ -119,6 +121,11 @@ export interface SelectionScope {
 export interface ToolResult {
   result: string;
   isError: boolean;
+  /**
+   * Images for the model. They are kept only in the agent history; the
+   * chat view gets the text with a marker instead (`AgentLoop`, GAP-011).
+   */
+  images?: ImageAttachment[];
 }
 
 // ─── Agent Loop Callbacks ───────────────────────────────────────────────────

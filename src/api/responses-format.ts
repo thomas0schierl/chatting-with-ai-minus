@@ -1,4 +1,4 @@
-import type { ContentBlock, Provider, UnifiedMessage, UnifiedResponse } from "../types";
+import type { ContentBlock, ImageAttachment, Provider, UnifiedMessage, UnifiedResponse } from "../types";
 
 /** The ChatGPT route takes function tools only inside a namespace; this is ours. */
 export const CHATGPT_TOOL_NAMESPACE = "vault";
@@ -31,19 +31,38 @@ export function buildResponsesInput(
           ? { type: "output_text", text: block.text, annotations: [] }
           : { type: "input_text", text: block.text });
       } else if (block.type === "image" && block.image && message.role === "user") {
-        content.push({ type: "input_image", image_url: `data:${block.image.mediaType};base64,${block.image.data}`, detail: "auto" });
+        content.push(inputImage(block.image));
       } else if (block.type === "tool_use" && block.id && block.name) {
         flush();
         items.push({ type: "function_call", call_id: block.id, name: block.name, arguments: JSON.stringify(block.input ?? {}),
           ...(provider === "chatgpt-oauth" ? { namespace: CHATGPT_TOOL_NAMESPACE } : {}) });
       } else if (block.type === "tool_result" && block.tool_use_id) {
         flush();
-        items.push({ type: "function_call_output", call_id: block.tool_use_id, output: block.content ?? "" });
+        items.push({ type: "function_call_output", call_id: block.tool_use_id, output: functionOutput(block) });
       }
     }
     flush();
   }
   return items;
+}
+
+/**
+ * A tool result's `output`. With images it is a content array: the Responses
+ * API reference allows `output` to be a string or an array of `input_text`,
+ * `input_image` and `input_file` items (developers.openai.com/api/reference,
+ * "Create a model response", function_call_output). The ChatGPT route takes
+ * the same request format and accepts images (siwc preview limitations), so
+ * both providers get the image inside the result rather than in an extra
+ * user message.
+ */
+function functionOutput(block: ContentBlock): string | Record<string, unknown>[] {
+  const text = block.content ?? "";
+  if (!block.images?.length) return text;
+  return [{ type: "input_text", text: text || "(image)" }, ...block.images.map(inputImage)];
+}
+
+function inputImage(image: ImageAttachment): Record<string, unknown> {
+  return { type: "input_image", image_url: `data:${image.mediaType};base64,${image.data}`, detail: "auto" };
 }
 
 /** Preserve native reasoning/search/refusal items even when they have no UI block. */
