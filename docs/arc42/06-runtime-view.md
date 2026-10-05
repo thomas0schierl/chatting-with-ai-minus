@@ -43,7 +43,10 @@ No network requests happen at start.
    6. Otherwise, first store placeholder results ("cancelled"), then run
       the tools one by one, replacing each placeholder with the real
       result. This keeps every call paired with a result even if the user
-      presses Stop.
+      presses Stop. A result may carry images (`view_image`,
+      `view_canvas`): they go into the agent history with the result; the
+      view gets only the text and an "image sent to the model" marker, so
+      `chat-state.json` doesn't hold them twice.
 4. **Finish:** the view re-enables input and saves the chat history after
    every turn.
 
@@ -60,6 +63,7 @@ result instead of a new message.
 | History sent | All messages; native blocks (thinking signatures, search results) replayed when provider, model and key are unchanged | Only new items, chained with `previous_response_id`; full replay after model or key changes, restore, or trimming | Full replay every turn (`store: false`, no `previous_response_id`); function tools inside the `vault` namespace |
 | Thinking | From the model catalog: `thinking` adaptive or fixed budget (8192 tokens); `output_config.effort` only when the chosen level is offered. None without catalog data | None; `/v1/models` reports no reasoning data | From the model catalog: `reasoning.effort` = chosen level if offered, else the model's default; `summary` unless the model rejects it. None without catalog data |
 | Response | JSON | JSON | SSE (`stream: true`), buffered by `requestUrl()` and parsed afterwards; done only at `response.completed` |
+| Images in tool results | `image` blocks inside the `tool_result` content | `function_call_output.output` as an array of `input_text` and `input_image` (data URL) | same as OpenAI |
 | Caching | `cache_control` on the system prompt and last tool | provider-side | provider-side |
 
 ## ChatGPT sign-in (`auth/chatgptOAuth.ts`)

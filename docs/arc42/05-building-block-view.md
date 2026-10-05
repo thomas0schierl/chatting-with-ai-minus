@@ -25,7 +25,8 @@ main.ts ──▶ settings.ts ─────────────┐
                        api/model-catalog.ts ◀── adapters, settings ┘
 ```
 
-All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID.
+All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
+`images.ts` (image limits and re-encoding) serves the image tools.
 
 ## Modules
 
@@ -47,9 +48,11 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID.
 | `api/model-catalog.ts` | Loads, caches and normalises model lists per provider and account; thinking and parallel-tool capabilities, and the thinking parameters built from them. |
 | `auth/chatgptOAuth.ts` | Device login, token exchange and refresh against `auth.openai.com`. |
 | `auth/chatgptOAuthStore.ts` | Reads and writes the OAuth credential in SecretStorage. |
-| `tools/registry.ts` | The 16 tool definitions (JSON Schema) offered to the model. |
-| `tools/executor.ts` | Runs a tool call against the Obsidian vault and returns a result or an error for the model. |
+| `tools/registry.ts` | The 18 tool definitions (JSON Schema) offered to the model. |
+| `tools/executor.ts` | Runs a tool call against the Obsidian vault and returns a result (text, and images for `view_image` and `view_canvas`) or an error for the model. |
 | `tools/canvas.ts` | JSON Canvas 1.0 without vault access: parse, write in Obsidian's format, the outline for `read_canvas`, the `edit_canvas` operations (IDs, placement without overlap, validation) and the searchable canvas text. |
+| `tools/canvas-render.ts` | Draws a canvas for `view_canvas` with Canvas 2D: layout and scaling (whole canvas or one group or node), groups, cards with plain text, image files, links, edges with arrows and labels, colour presets, an ID tag per node, and the text legend. The drawing surface and image loading are passed in, so tests use fakes. |
+| `images.ts` | Image limits (5 MB, 2048 px long side) and re-encoding via `createImageBitmap` and `<canvas>`, shared by the image tools. Attachments in `ChatContainer.svelte` still have their own copy. |
 | `types.ts` | Settings, unified message and response types, defaults. |
 | `plugin-id.ts` | The plugin ID, used for keychain keys, paths and User-Agents. |
 
@@ -60,8 +63,10 @@ All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID.
 | `read_document` | `vault.cachedRead()` | Active note if no path given |
 | `edit_document` | `vault.process()` / `vault.modify()` | Find/replace, insert, or replace all |
 | `search_vault` | `getMarkdownFiles()`, `getFiles()` + `cachedRead()` | Linear scan of notes and canvases (card text, group and edge labels, with the node or edge ID), up to 50 results |
-| `read_file` | `vault.getFileByPath()` + `cachedRead()` | Any file type, raw |
+| `read_file` | `vault.getFileByPath()` + `cachedRead()` | Any text file, raw; refuses images (hint: `view_image`) and other binary files by extension |
+| `view_image` | `vault.readBinary()` | PNG, JPEG, GIF or WebP, returned as an image; scaled down past 2048 px or 5 MB (GIFs are never re-encoded) |
 | `read_canvas` | `vault.getFileByPath()` + `cachedRead()` | `.canvas` only: groups with their nodes, other nodes, edges, with IDs, positions and sizes |
+| `view_canvas` | `cachedRead()`, `readBinary()` for image nodes | `.canvas` only: a PNG of the layout (at most 1600 px, optional `focus` on a group or node) and a legend of the node tags; Markdown in cards is drawn as plain text |
 | `edit_canvas` | `vault.process()` | `.canvas` only: add, update, move or remove nodes and edges; all operations or none; keeps unknown fields |
 | `create_file` | `vault.create()` | Creates parent folders |
 | `list_files` | `vault.getFiles()` | Up to 100 results |

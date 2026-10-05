@@ -24,9 +24,9 @@ It is a fork of [Chatting with AI](https://github.com/o1xhack/obsidian-chatting)
 
 - Chat in a side panel, with three providers: Anthropic (API key), OpenAI
   (API key) and ChatGPT account sign-in (uses the ChatGPT plan).
-- 16 vault tools: read, search, list, create, edit, rename, trash, open,
-  frontmatter, backlinks, canvas reading and editing, date and time, and
-  asking the user a question.
+- 18 vault tools: read, search, list, create, edit, rename, trash, open,
+  frontmatter, backlinks, canvas reading and editing, looking at images and
+  canvases, date and time, and asking the user a question.
 - Selection scope: send selected text to the chat, and edits stay inside it.
 - Image attachments for models that accept images.
 - Model lists loaded from each provider's API.

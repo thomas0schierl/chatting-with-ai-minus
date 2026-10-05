@@ -13,7 +13,7 @@
 | SecretStorage `chatting-with-ai-minus-api-key-<provider>` | API key per provider | |
 | SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | ChatGPT credential (JSON): access, refresh and ID token, expiry, granted scopes, account `sub` and email | Cleared by writing `""` on disconnect or an unusable refresh token. Records without `scopes` (former Codex sign-in) count as not connected |
 | SecretStorage `chatting-with-ai-minus-chatgpt-registration` | This device's `ext_agent_host_id` (`urn:uuid:…`), the issued client ID, the registered account's `sub` and email | Kept on disconnect. Not a secret, but per device: `data.json` syncs, and each device needs its own host ID |
-| `chat-state.json` in the plugin folder | Visible history (last 100 entries) and API history (last 80 messages), including images and native replay items | Written after every turn, Stop, Clear and unload; never before it has been read at start |
+| `chat-state.json` in the plugin folder | Visible history (last 100 entries) and API history (last 80 messages), including images and native replay items. Images from tools are only in the API history | Written after every turn, Stop, Clear and unload; never before it has been read at start |
 | `debug.log` in the plugin folder | Requests and errors | Only when `DEBUG = true` in `agent/loop.ts` |
 
 Settings and catalogs are checked field by field when loaded; anything
@@ -44,7 +44,9 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 - Hashing uses pure JavaScript (`@noble/hashes`), since `SubtleCrypto`
   isn't always available.
 - Images are re-encoded through a canvas when needed (HEIC, oversized):
-  at most 4 per message, 5 MB each.
+  at most 4 per message, 5 MB each. `view_image` scales vault images the
+  same way (`images.ts`), and `view_canvas` draws canvases with Canvas 2D
+  instead of screenshotting the canvas view, which works only on desktop.
 - 16 px input font (prevents zoom on iOS) and safe-area padding.
 
 ## Security and privacy
@@ -53,8 +55,8 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   the account or key.
 - Data leaves the device only in requests the user starts: the message,
   images, per-turn context (vault name, note count, active note path, up
-  to 200 characters of selection), and note content the model reads
-  through tools.
+  to 200 characters of selection), and note content and images the model
+  reads through tools.
 - ChatGPT sign-in: PKCE, `state` and `nonce` per attempt; only the full
   callback address is accepted. The ID token's issuer, audience, expiry
   and nonce are checked; tokens never go into URLs, logs or `data.json`.

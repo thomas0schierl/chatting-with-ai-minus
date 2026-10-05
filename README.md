@@ -14,7 +14,8 @@ It works the same on desktop, iPhone, iPad and Android.
   with your ChatGPT account.
 - **Works with your vault:** the AI can read, search, list, create, edit,
   rename and trash notes, change frontmatter, find backlinks, read and edit
-  canvases, and ask you when something is unclear.
+  canvases, look at images and canvases, and ask you when something is
+  unclear.
 - **Selection scope:** select text in a note, choose *Send selection to
   Chat*, and the AI changes only that text.
 - **Images:** attach or paste up to four images per message, for models
@@ -51,7 +52,8 @@ signs in separately.
 
 - **Sent to the provider:** your messages and attached images, the vault
   name, the number of notes, the active note's path, selected text, and
-  whatever note content the AI reads with its tools during that turn.
+  whatever note content and images the AI reads with its tools during that
+  turn.
   Nothing is sent in the background, and there is no vault index.
 - **API keys and ChatGPT tokens:** stored in your OS keychain, never in
   plugin files.
