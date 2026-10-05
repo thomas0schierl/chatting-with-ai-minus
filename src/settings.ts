@@ -2,6 +2,7 @@ import { App, Modal, Notice, PluginSettingTab, Setting, type SettingDefinitionIt
 import type ChatPlugin from "./main";
 import type { Provider, VoiceMicMode } from "./types";
 import { DEFAULT_PROVIDER_MODELS } from "./types";
+import { clearDebugLog } from "./debug";
 import {
   ChatGPTOAuthError,
   NEW_REGISTRATION_CLIENT_ID,
@@ -91,6 +92,7 @@ export class ChatSettingTab extends PluginSettingTab {
         { name: "Voice", render: setting => this.renderVoiceName(setting) },
         { name: "Microphone", aliases: ["Hold to talk", "Hands-free"], render: setting => this.renderMicMode(setting) },
       ] },
+      { name: "Debug log", aliases: ["Troubleshooting"], render: setting => this.renderDebugLog(setting) },
     ];
   }
 
@@ -158,6 +160,24 @@ export class ChatSettingTab extends PluginSettingTab {
       );
 
   }
+  private renderDebugLog(setting: Setting): void {
+    const s = this.plugin.settings;
+    setting
+      .setName("Debug log")
+      .setDesc("For troubleshooting: writes requests, errors, background and voice events to debug.log in the plugin folder, including your messages (never keys). Copy it to send it on.")
+      .addToggle((toggle) =>
+        toggle.setValue(s.debugLog).onChange(async (value) => {
+          s.debugLog = value;
+          await this.plugin.saveSettings();
+        })
+      )
+      .addButton((button) => button.setButtonText("Copy").onClick(() => void this.plugin.copyDebugLog()))
+      .addButton((button) => button.setButtonText("Clear").onClick(async () => {
+        await clearDebugLog(this.app);
+        new Notice("Debug log cleared.");
+      }));
+  }
+
   private renderMaxIterations(setting: Setting): void {
     const s = this.plugin.settings;
     setting

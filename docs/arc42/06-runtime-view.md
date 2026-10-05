@@ -217,7 +217,7 @@ it stays active and, being empty, leaves the list.
    shows why (on mobile in the background: see *Back from the
    background*).
 
-With `DEBUG` on in `debug.ts`, `debug.log` gets every data-channel
+With the *Debug log* setting on, `debug.log` gets every data-channel
 event type and its keys (`VOICE_EVENT`), what was sent (`VOICE_SEND`),
 the call ID, channel and connection states, and `VOICE_NO_EVENTS` when
 nothing arrived within 10 s of the channel opening.

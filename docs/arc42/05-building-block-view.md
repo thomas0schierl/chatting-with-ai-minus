@@ -75,7 +75,7 @@ the components' scoped ones).
 | `chat-state.ts` | The conversation record (with the marker of a running turn, `pendingTurn`), the saved format and its version, titles (first user message), per-conversation caps, the one-time migrations from older versions (turn IDs for chats saved without them; image data dropped from the visible history; the single chat becoming the first conversation), and storing each image once: the visible history keeps an image's name, type and size, and gets its data back from the API history on load. |
 | `platform/lifecycle.ts` | Foreground or background (ADR-15), from hints: document `visibilitychange`, Capacitor `pause`/`resume`, window `focus` and `pageshow`. Records when the app went away; `isHidden()`, `hiddenSince(t)`, `whenVisible()`, and listeners for leaving and coming back (with the time away). |
 | `types.ts` | Settings, unified message and response types, defaults. |
-| `debug.ts` | `debugLog()`: requests, errors, resends, lifecycle hints and voice events to `debug.log` in the plugin folder, only while its `DEBUG` flag is on. |
+| `debug.ts` | `debugLog()`: requests, errors, resends, lifecycle hints and voice events to `debug.log` in the plugin folder, only while the *Debug log* setting is on (`setDebugLogging`); `readDebugLog`/`clearDebugLog` for the *Copy debug log* command and the settings buttons. |
 | `json.ts` | Reading untrusted JSON without casts: `isRecord` (objects, not arrays), `asRecord`, `getNestedString`, and `readJson` for a `requestUrl()` response whose `json` getter may throw. |
 | `globals.d.ts` | The `__CODEX_VOICE__` build flag (ADR-14). |
 | `plugin-id.ts` | The plugin ID, used for keychain keys, paths and User-Agents. |

@@ -16,6 +16,8 @@ export interface ChatSettings {
   enableWebSearch: boolean;
   /** The one-time "You're using your ChatGPT plan" welcome was shown. */
   chatgptPlanWelcomeShown: boolean;
+  /** Write `debug.log` in the plugin folder (troubleshooting; logs messages, never keys). */
+  debugLog: boolean;
   /** Model lists per provider and account; set when the settings load. */
   modelCatalog: import("./api/model-catalog").CatalogState;
   /**
@@ -54,6 +56,7 @@ export const DEFAULT_SETTINGS: Omit<ChatSettings, "modelCatalog"> = {
   maxIterations: 20,
   enableWebSearch: true,
   chatgptPlanWelcomeShown: false,
+  debugLog: false,
   voiceRoute: "openai",
   voice: "marin",
   codexVoice: "cove",

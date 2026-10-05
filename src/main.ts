@@ -37,7 +37,7 @@ import { openAILiveRoute } from "./voice/openai-live";
 import { isRecord } from "./json";
 import { CodexVoiceAuth, codexVoiceRoute } from "./voice/codex";
 import { appLifecycle } from "./platform/lifecycle";
-import { debugLog } from "./debug";
+import { debugLog, readDebugLog, setDebugLogging } from "./debug";
 
 export default class ChatPlugin extends Plugin {
   settings: ChatSettings = { ...DEFAULT_SETTINGS, modelCatalog: { entries: [] } };
@@ -143,6 +143,13 @@ export default class ChatPlugin extends Plugin {
       id: "clear-chat",
       name: "Clear conversation",
       callback: () => this.clearChat(),
+    });
+
+    // Gets the debug log off a phone: paste it into a note or a message.
+    this.addCommand({
+      id: "copy-debug-log",
+      name: "Copy debug log",
+      callback: () => void this.copyDebugLog(),
     });
 
     // Diagnostics for live voice and streaming on this device (ADR-11, ADR-12)
@@ -556,6 +563,7 @@ export default class ChatPlugin extends Plugin {
 
     // Load API key for the current provider from SecretStorage
     this.settings.apiKey = this.loadApiKey(this.settings.provider);
+    setDebugLogging(this.settings.debugLog);
   }
 
   async saveSettings(): Promise<void> {
@@ -565,11 +573,27 @@ export default class ChatPlugin extends Plugin {
     // Save all other settings to data.json (syncs), but strip the API key
     const toSave = { ...this.settings, apiKey: "" };
     await this.saveData(toSave);
+    setDebugLogging(this.settings.debugLog);
 
     // Update the chat view header with the new model name and thinking level
     const view = this.getChatView();
     view?.updateModel(this.modelHeaderLabel(), this.settings.provider);
     view?.updateVoiceAvailable();
+  }
+
+  /** Copy `debug.log` to the clipboard (the "Debug log" setting writes it). */
+  async copyDebugLog(): Promise<void> {
+    const log = await readDebugLog(this.app);
+    if (!log) {
+      new Notice(this.settings.debugLog ? "The debug log is empty." : "The debug log is empty. Turn on Debug log in settings first.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(log);
+      new Notice(`Debug log copied (${Math.ceil(log.length / 1024)} KB).`);
+    } catch {
+      new Notice("Couldn't copy the debug log.");
+    }
   }
 
   /** Model name and thinking level, as shown in the chat view header. */
@@ -634,6 +658,7 @@ function normalizeSettings(value: unknown): Partial<ChatSettings> & Pick<ChatSet
   }
   if (typeof value.enableWebSearch === "boolean") settings.enableWebSearch = value.enableWebSearch;
   if (typeof value.chatgptPlanWelcomeShown === "boolean") settings.chatgptPlanWelcomeShown = value.chatgptPlanWelcomeShown;
+  if (typeof value.debugLog === "boolean") settings.debugLog = value.debugLog;
   if (value.voiceRoute === "openai" || value.voiceRoute === "codex") settings.voiceRoute = value.voiceRoute;
   if (typeof value.voice === "string" && value.voice) settings.voice = value.voice;
   if (typeof value.codexVoice === "string" && value.codexVoice) settings.codexVoice = value.codexVoice;

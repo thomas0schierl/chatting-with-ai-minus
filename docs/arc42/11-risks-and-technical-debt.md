@@ -63,7 +63,7 @@ gap or drop.
 - Voice (ADR-11) is built but not yet tried live: check with an API key
   (*Check device capabilities* starts and closes one session) that
   `gpt-live-1` answers, delegations arrive, the answer is spoken and
-  the end closes cleanly (`debug.log` with `DEBUG` on shows every event).
+  the end closes cleanly (with the *Debug log* setting on, `debug.log` shows every event).
   In the iOS and Android apps: WebRTC, the microphone prompt and a
   denial, autoplay, earpiece vs speaker, echo causing false interruptions
   on speaker, screen lock.
@@ -76,7 +76,7 @@ gap or drop.
   tool call, and during voice; check that the answer continues
   ("Resuming…") without duplicated text, that voice comes back
   ("Reconnecting…") or has ended after 60 s, and, after iOS ended the
-  app, that Continue appears and finishes the turn. With `DEBUG` on,
+  app, that Continue appears and finishes the turn. With the *Debug log* setting on,
   `debug.log` shows each hint (`LIFECYCLE`) and each resend
   (`API_RESUME`): check whether `pause`/`resume` fire (or only
   `visibilitychange`), and how long iOS lets an open request finish in

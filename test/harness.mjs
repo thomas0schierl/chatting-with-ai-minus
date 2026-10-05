@@ -20,6 +20,7 @@ export const bundled = await build({
     export { buildResponsesInput, fromResponsesOutput, canReplay } from './src/api/responses-format';
     export { streamSSE, createSSEParser, resetStreamTransport } from './src/api/stream';
     export * as lifecycle from './src/platform/lifecycle';
+    export * as debug from './src/debug';
     export { default as ChatPlugin } from './src/main';
     export { ObsidianChatView } from './src/ui/chat-view';
     export { executeTool } from './src/tools/executor';
