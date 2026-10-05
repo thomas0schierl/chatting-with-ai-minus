@@ -2,6 +2,7 @@
   import type { App, Component as ObsidianComponent } from "obsidian";
   import { MarkdownRenderer, Notice } from "obsidian";
   import type { ToolResult, SelectionScope, ImageAttachment } from "../types";
+  import { normalizeMathMarkdown } from "./math-markdown";
 
   const MAX_IMAGE_COUNT = 4;
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -342,10 +343,11 @@
     attachments = attachments.filter((image) => image.id !== id);
   }
 
-  // Render markdown into a DOM node using Obsidian's renderer
+  // Render markdown into a DOM node using Obsidian's renderer. Math
+  // delimiters are normalized for display only; the message stays unchanged.
   function renderMarkdown(node: HTMLElement, text: string): void {
     node.empty();
-    MarkdownRenderer.render(app, text, node, "", component);
+    MarkdownRenderer.render(app, normalizeMathMarkdown(text), node, "", component);
   }
 
   // Use action for markdown rendering

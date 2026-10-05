@@ -1,0 +1,56 @@
+// Math delimiter normalization used when rendering answers (GAP-009).
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+
+const bundled = await build({
+  entryPoints: ['src/ui/math-markdown.ts'],
+  bundle: true, write: false, platform: 'node', format: 'esm',
+});
+const { normalizeMathMarkdown: normalize } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
+
+test('inline \\(...\\) becomes $...$ and is trimmed', () => {
+  assert.equal(normalize('Let \\( x^2 \\) be given.'), 'Let $x^2$ be given.');
+});
+
+test('display \\[...\\] becomes $$...$$ and keeps its lines', () => {
+  assert.equal(normalize('Sum:\n\\[\n\\sum_{i=1}^n i\n\\]\nDone.'), 'Sum:\n$$\n\\sum_{i=1}^n i\n$$\nDone.');
+  assert.equal(normalize('Inline \\[a+b\\] display'), 'Inline $$a+b$$ display');
+  assert.equal(normalize('- item\n  \\[\n  x\n  \\]'), '- item\n  $$\n  x\n  $$');
+});
+
+test('several delimiters in one message', () => {
+  assert.equal(
+    normalize('If \\(a\\) and \\(b\\), then\n\\[a+b\\]\nand \\[c\\].'),
+    'If $a$ and $b$, then\n$$a+b$$\nand $$c$$.',
+  );
+});
+
+test('empty delimiters, escaped backslashes and dollars stay as they are', () => {
+  assert.equal(normalize('Empty \\( \\) and \\[\\]'), 'Empty \\( \\) and \\[\\]');
+  // `\\[2pt]` is a LaTeX line break inside existing math, not a delimiter.
+  const matrix = '$$\\begin{matrix} a \\\\[2pt] b \\end{matrix}$$';
+  assert.equal(normalize(matrix), matrix);
+  assert.equal(normalize('A path \\\\(x\\\\) stays'), 'A path \\\\(x\\\\) stays');
+  assert.equal(normalize('Costs \\$5, or $x$ and $$y$$'), 'Costs \\$5, or $x$ and $$y$$');
+  assert.equal(normalize('Price \\(\\$5\\)'), 'Price $\\$5$');
+});
+
+test('inline code and code fences are untouched', () => {
+  assert.equal(normalize('Write `\\(x\\)` or ``\\[y\\]`` for \\(z\\)'), 'Write `\\(x\\)` or ``\\[y\\]`` for $z$');
+  const fenced = '```js\nconst s = "\\\\(x\\\\)";\n```\n~~~\n\\[y\\]\n~~~';
+  assert.equal(normalize(fenced), fenced);
+  // An unclosed fence runs to the end of the message.
+  assert.equal(normalize('```\n\\(x\\)'), '```\n\\(x\\)');
+  // A math fence shown as an example inside a longer fence is code too.
+  const example = '````markdown\n```math\nx\n```\n````';
+  assert.equal(normalize(example), example);
+});
+
+test('math, latex and tex fences become $$ blocks', () => {
+  assert.equal(normalize('Before\n```math\nE = mc^2\n```\nAfter'), 'Before\n$$\nE = mc^2\n$$\nAfter');
+  assert.equal(normalize('```latex\n\n\\frac{a}{b}\n\n```'), '$$\n\\frac{a}{b}\n$$');
+  assert.equal(normalize('~~~TeX\nx\n~~~'), '$$\nx\n$$');
+  assert.equal(normalize('```math\r\nx\r\n```\r\n'), '$$\nx\n$$\n');
+  assert.equal(normalize('```math\n\n```'), '```math\n\n```');
+});
