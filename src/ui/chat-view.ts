@@ -412,7 +412,12 @@ export class ObsidianChatView extends ItemView {
           this.endStream(false);
           chat.setInputEnabled(true);
           voice?.onAskUser(question);
+          // Question and answer stay in the history, the answer without a
+          // turn ID: it isn't a turn of its own, so it can't be edited.
+          history.push({ type: "assistant", text: question });
           const answer = await chat.showAskUser(question);
+          // Empty: the question was dropped (Stop, Clear, switching).
+          if (answer) history.push({ type: "user", text: answer });
           chat.setInputEnabled(false);
           return answer;
         },

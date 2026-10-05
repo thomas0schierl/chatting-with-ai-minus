@@ -269,7 +269,7 @@ test('Switching stops a running turn; it ends in its own conversation', async ()
   assert.deepEqual(userTurns(requests[1]), ['Other topic']);
 
   view.openConversation(a);
-  assert.deepEqual(plugin.chatHistory.map(e => e.text), ['Waiting question']);
+  assert.deepEqual(plugin.chatHistory.map(e => e.text), ['Waiting question', 'Which note?']);
   // The stopped tool call keeps its (cancelled) result, so the conversation goes on.
   await view.handleUserMessage('Go on', null);
   assert.deepEqual(userTurns(requests[2]), ['Waiting question', 'Go on']);

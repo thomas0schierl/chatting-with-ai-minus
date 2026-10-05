@@ -77,7 +77,9 @@ error. A pending `ask_user` question is dropped. A stopped turn that ends
 after a newer one has started leaves the newer one's state alone.
 
 **`ask_user`:** shows the question; the user's next input becomes the tool
-result instead of a new message.
+result instead of a new message. Question and answer stay in the visible
+history (and are saved); the answer has no turn ID, so it is no turn of
+its own and can't be edited.
 
 ## Editing a message / regenerating
 
