@@ -1,9 +1,8 @@
-import { ItemView, WorkspaceLeaf, Notice, type App } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
 import { mount, unmount } from "svelte";
-import type { Component } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
-import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind, ChatHistoryEntry } from "../types";
+import type { ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry } from "../types";
 import { newTurnId } from "../agent/history";
 import { savedToolInput } from "../chat-state";
 import { debugLog } from "../agent/loop";
@@ -11,30 +10,14 @@ import { VoiceController, type VoiceTurnHooks, type VoiceViewState } from "../vo
 
 export const VIEW_TYPE_CHAT = "chatting-minus-view";
 
-interface ChatContainerProps {
-  app: App;
-  component: ObsidianChatView;
-  provider: string;
-  model: string;
-  onSend: (text: string, selection: SelectionScope | null, images: ImageAttachment[]) => void;
-  onClear: () => void;
-  onStop: () => void;
-  onEdit: (turnId: string, text: string) => void;
-  onRegenerate: () => void;
-  onCopy: (text: string) => void;
-  title: string;
-  onNewChat: () => void;
-  listConversations: () => ConversationSummary[];
-  onOpenConversation: (id: string) => void;
-  onRenameConversation: (id: string, title: string) => void;
-  onDeleteConversation: (id: string) => void;
-  voiceAvailable: boolean;
-  onVoice: (action: VoiceAction) => void;
-}
-
 /** Voice bar controls and the microphone button. */
 export type VoiceAction = "start" | "end" | "mute" | "talk-start" | "talk-end" | "play";
 
+/**
+ * What the view calls on ChatContainer.svelte. tsc sees `.svelte` imports
+ * as untyped (Svelte's ambient module), so the exports are spelled out
+ * here; svelte-check checks the props passed to `mount()`.
+ */
 interface ChatContainerApi extends Record<string, unknown> {
   addUserMessage(text: string, images?: ImageAttachment[], turnId?: string, selection?: SelectionScope): void;
   addAssistantMessage(text: string, streaming?: boolean): number;
@@ -101,15 +84,11 @@ export class ObsidianChatView extends ItemView {
     container.empty();
     container.addClass("chatting-minus-view-container");
 
-    this.chatContainer = mount<ChatContainerProps, ChatContainerApi>(
-      ChatContainer as unknown as Component<ChatContainerProps, ChatContainerApi>,
-      {
+    const chat = mount(ChatContainer, {
       target: container,
       props: {
         app: this.app,
         component: this,
-        provider: this.plugin.settings.provider,
-        model: this.plugin.modelHeaderLabel(),
         onSend: (text: string, selection: SelectionScope | null, images: ImageAttachment[]) => {
           void this.handleUserMessage(text, selection, images);
         },
@@ -118,19 +97,20 @@ export class ObsidianChatView extends ItemView {
         onEdit: (turnId: string, text: string) => void this.editMessage(turnId, text),
         onRegenerate: () => void this.regenerate(),
         onCopy: (text: string) => this.copyAnswer(text),
-        title: this.plugin.activeConversation.title,
         onNewChat: () => this.newChat(),
         listConversations: () => this.plugin.listConversations(),
         onOpenConversation: (id: string) => this.openConversation(id),
         onRenameConversation: (id: string, title: string) => this.renameConversation(id, title),
         onDeleteConversation: (id: string) => this.deleteConversation(id),
-        voiceAvailable: this.plugin.voiceRoute() !== null,
         onVoice: (action: VoiceAction) => this.handleVoice(action),
       },
-    });
-
+    }) as ChatContainerApi;
+    this.chatContainer = chat;
+    chat.setModel(this.plugin.modelHeaderLabel(), this.plugin.settings.provider);
+    chat.setTitle(this.plugin.activeConversation.title);
+    this.updateVoiceAvailable();
     this.renderHistory();
-    this.chatContainer.focus();
+    chat.focus();
   }
 
   /** Show the plugin's chat history in the UI, replacing what it shows. */

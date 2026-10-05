@@ -34,41 +34,34 @@
     errorKind?: ChatErrorKind;
   }
 
+  /** Header, title and voice button are set through setModel, setTitle and setVoiceAvailable. */
   interface Props {
     app: App;
     component: Component;
-    provider: string;
-    model: string;
     onSend: (text: string, selection: SelectionScope | null, images: ImageAttachment[]) => void;
     onClear: () => void;
     onStop: () => void;
     onEdit: (turnId: string, text: string) => void;
     onRegenerate: () => void;
     onCopy: (text: string) => void;
-    /** The current conversation's title. */
-    title: string;
     onNewChat: () => void;
     listConversations: () => ConversationSummary[];
     onOpenConversation: (id: string) => void;
     onRenameConversation: (id: string, title: string) => void;
     onDeleteConversation: (id: string) => void;
-    /** A voice route is set up: show the microphone button. */
-    voiceAvailable: boolean;
     onVoice: (action: VoiceAction) => void;
   }
 
   let {
-    app, component, provider, model, onSend, onClear, onStop, onEdit, onRegenerate, onCopy,
-    title, onNewChat, listConversations, onOpenConversation, onRenameConversation, onDeleteConversation,
-    voiceAvailable, onVoice,
+    app, component, onSend, onClear, onStop, onEdit, onRegenerate, onCopy,
+    onNewChat, listConversations, onOpenConversation, onRenameConversation, onDeleteConversation,
+    onVoice,
   }: Props = $props();
 
   // ─── Voice (ADR-11) ───────────────────────────────────────────────────
+  /** A voice route is set up: show the microphone button. */
   let canVoice = $state(false);
   let voice = $state<VoiceViewState | null>(null);
-  $effect(() => {
-    canVoice = voiceAvailable;
-  });
 
   const VOICE_STATUS: Record<VoiceViewState["status"], string> = {
     connecting: "Connecting…",
@@ -115,10 +108,6 @@
   let renamingId = $state<string | null>(null);
   let renameText = $state("");
   let deletingId = $state<string | null>(null);
-
-  $effect(() => {
-    displayTitle = title;
-  });
 
   function refreshConversations(): void {
     conversations = listConversations();
@@ -240,13 +229,6 @@
     canVoice && !voice && !askUserResolve && inputText.trim() === "" && attachments.length === 0,
   );
 
-  // Sync model prop to local state (also updateable via setModel)
-  $effect(() => {
-    displayModel = model;
-  });
-  $effect(() => {
-    displayProvider = provider;
-  });
 
   /** ChatGPT usage settings (OpenAI's guidelines for "Sign in with ChatGPT"). */
   function openUsage(): void {
@@ -481,10 +463,6 @@
     return selection;
   }
 
-  /** Clear the selection scope */
-  export function clearSelection(): void {
-    selection = null;
-  }
 
   // ─── Internal handlers ────────────────────────────────────────────────
 
