@@ -19,9 +19,11 @@ credentials or network needed. They cover history encoding and replay per
 provider, tool flows, cancellation, model catalogs and caching, thinking
 parameters, the ChatGPT sign-in (`chatgpt-signin.test.mjs`), canvas tools
 (`canvas.test.mjs`), image tools and canvas drawing (`view-tools.test.mjs`),
-math conversion (`math-markdown.test.mjs`) and streamed answers: SSE
+math conversion (`math-markdown.test.mjs`), streamed answers: SSE
 parsing, rebuilt responses, fallback, Stop and rate-limit retry
-(`streaming.test.mjs`). They don't prove live-service or mobile behaviour.
+(`streaming.test.mjs`), and editing a message, regenerating and copying
+an answer through the chat view with a fake Svelte component
+(`message-actions.test.mjs`). They don't prove live-service or mobile behaviour.
 
 ## Live checks
 

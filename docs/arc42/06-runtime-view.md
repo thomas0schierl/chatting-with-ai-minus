@@ -15,8 +15,10 @@
    and account, so the chat header can show the thinking level.
 3. Create the `AgentLoop` with the shared settings object.
 4. `loadChatHistory()`: read `chat-state.json` and import the messages
-   (trimmed to 40). Until this has finished, `saveChatHistory()` does
-   nothing, so an early unload can't overwrite the saved chat.
+   (trimmed to 40). Turns saved without a turn ID get one in both
+   histories (`assignLegacyTurnIds()`, paired from the end; see *Editing a
+   message*). Until this has finished, `saveChatHistory()` does nothing, so
+   an early unload can't overwrite the saved chat.
 5. Register the settings tab, view, ribbon icon, commands and menus.
 
 No network requests happen at start.
@@ -24,12 +26,13 @@ No network requests happen at start.
 ## Sending a message
 
 1. **Send:** the user presses Enter or Send (or a command such as *Chat
-   about this note*). `chat-view.ts` shows the message, saves it to the UI
-   history and calls `AgentLoop.run(text, callbacks, selection, images)`.
+   about this note*). `chat-view.ts` creates a turn ID, shows the message,
+   saves it to the UI history (with the ID, images and selection scope) and
+   calls `AgentLoop.run(text, callbacks, selection, images, turnId)`.
 2. **Turn setup:** `run()` takes a snapshot of the settings, so provider
    and model stay fixed for the turn. It adds the context prefix (and the
-   selection-scope instruction), appends the user message, and trims the
-   history if it is over 50 messages.
+   selection-scope instruction), appends the user message with the turn ID,
+   and trims the history if it is over 50 messages.
 3. **Loop, up to the iteration limit:**
    1. Show the thinking indicator.
    2. Call `client.sendMessage()`, which sends through the provider's
@@ -63,16 +66,56 @@ No network requests happen at start.
 streamed `fetch` stops reading at once. A request on the `requestUrl()`
 fallback can't be cancelled; its result is ignored. Text already shown
 stays and is saved in the UI history (not in the API history), as on an
-error.
+error. A pending `ask_user` question is dropped. A stopped turn that ends
+after a newer one has started leaves the newer one's state alone.
 
 **`ask_user`:** shows the question; the user's next input becomes the tool
 result instead of a new message.
+
+## Editing a message / regenerating
+
+Both histories hold each user turn under one ID: the user entry in
+`plugin.chatHistory` and the message that starts the turn in
+`AgentLoop.messages` (tool calls and results after it belong to the same
+turn). Cutting before that message never separates a tool call from its
+result.
+
+1. **Edit:** the pencil under a user message (on hover with a mouse,
+   always shown on touch screens) turns it into an edit box with its
+   images and selection scope, and the note "Changes the AI already made
+   to notes stay." Enter or *Save* saves, Esc or *Cancel* cancels,
+   Shift+Enter adds a line.
+2. **Regenerate:** the action under the last answer (not while a turn
+   runs) takes the last user turn's text unchanged.
+3. **Cut** (`ObsidianChatView.editMessage()`):
+   1. Stop a running turn (as **Stop** above).
+   2. `AgentLoop.cutBeforeTurn(id)` keeps the messages before the turn, as
+      a new array. A turn missing from the API history was trimmed away,
+      so nothing is kept.
+   3. Cut the UI history and the shown messages at the turn's entry.
+   4. Save `chat-state.json`.
+4. **Run:** the text runs as a new turn (new ID) with the old turn's
+   images and selection scope, as in *Sending a message*. The context
+   prefix (active note) is the current one.
+
+- **Providers:** the request after a cut sends the cut history. OpenAI
+  finds no response to chain to for the new array and replays in full,
+  without `previous_response_id`; chaining resumes with the next turn.
+- **Not undone:** notes the AI created or changed after that point stay as
+  they are. The removed continuation is gone; there are no branches.
+- **Saved without IDs:** each turn added one user entry and one turn
+  start, so `assignLegacyTurnIds()` pairs them from the end. Where one
+  history reaches further back, its older turns get IDs of their own.
+
+**Copy:** the action under each finished answer copies its Markdown
+source (the text as received, before math conversion) and shows
+"Copied". Answers still streaming have no actions.
 
 ## Provider requests
 
 | | Anthropic | OpenAI | ChatGPT |
 |---|---|---|---|
-| History sent | All messages; native blocks (thinking signatures, search results) replayed when provider, model and key are unchanged | Only new items, chained with `previous_response_id`; full replay after model or key changes, restore, or trimming | Full replay every turn (`store: false`, no `previous_response_id`); function tools inside the `vault` namespace |
+| History sent | All messages; native blocks (thinking signatures, search results) replayed when provider, model and key are unchanged | Only new items, chained with `previous_response_id`; full replay after model or key changes, restore, trimming, or a cut (edit, regenerate) | Full replay every turn (`store: false`, no `previous_response_id`); function tools inside the `vault` namespace |
 | Request headers | `anthropic-dangerous-direct-browser-access: true` (CORS for `fetch`) | | |
 | Thinking | From the model catalog: `thinking` adaptive or fixed budget (8192 tokens); `output_config.effort` only when the chosen level is offered. None without catalog data | None; `/v1/models` reports no reasoning data | From the model catalog: `reasoning.effort` = chosen level if offered, else the model's default; `summary` unless the model rejects it. None without catalog data |
 | Response | SSE (`stream: true`); content blocks rebuilt from `content_block_*` events (text, thinking and signature deltas, tool input JSON, citations); done only at `message_stop` | SSE (`stream: true`); `response.output_text.delta` for text, items from `response.output_item.done`; done only at `response.completed` | same as OpenAI (the route requires `stream: true`) |
