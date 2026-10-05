@@ -107,31 +107,51 @@
   - Every doc starts with a sentence saying what belongs in it.
 - **Consequences:** each fact has one home; changes update one file.
 
-## ADR-11: Live voice through the OpenAI Realtime API over WebRTC
+## ADR-11: Live voice through OpenAI GPT-Live over WebRTC, with client delegation
 
-- **Status:** accepted. Open until the device spike: Realtime API or
-  GPT-Live (both OpenAI, both WebRTC). Settled: the ChatGPT sign-in can't
-  get voice, so voice needs an OpenAI API key (GAP-013).
+- **Status:** accepted; settled 2026-10-05 (was open between the Realtime
+  API and GPT-Live until then). Built (GAP-013 closed); not yet verified
+  live or on phones (§11).
 - **Context:** users want a voice mode like in the ChatGPT, Claude and
-  Codex apps: talk, hear the answer, interrupt (GAP-013). That needs a
-  continuous two-way audio stream, which `requestUrl()` can't carry.
-  WebRTC isn't HTTP, so the CORS reason behind ADR-01 doesn't apply to it.
-  Of the three providers, only OpenAI offers a speech-to-speech API.
+  Codex apps: talk, hear the answer, interrupt. That needs a continuous
+  two-way audio stream, which `requestUrl()` can't carry. WebRTC isn't
+  HTTP, so the CORS reason behind ADR-01 doesn't apply to it. Of the three
+  providers, only OpenAI offers a speech-to-speech API; OpenAI's official
+  ChatGPT-plan access (ADR-13) excludes audio. Two OpenAI options: the
+  Realtime API, where the voice model itself calls our tools, and
+  GPT-Live, where the voice model only talks and hands tasks to the app
+  ("delegation").
 - **Decision:**
-  - Live voice uses the OpenAI Realtime API over a WebRTC peer
-    connection: audio both ways, plus a data channel for events and tool
-    calls.
-  - The two HTTP setup calls go through `requestUrl()` as usual: minting
-    a short-lived client secret, and exchanging the WebRTC offer.
-  - Vault tools run through the existing tool executor, and both sides'
-    transcripts are added to the chat history.
+  - **GPT-Live with client delegation.** The voice model (`gpt-live-1`)
+    talks; when it needs an answer it delegates. The request runs as a
+    normal chat turn through the chat view and the agent loop, on
+    whichever chat provider is selected (Anthropic, OpenAI or the ChatGPT
+    plan), with a line in the per-turn context asking for a short,
+    speakable answer (the system prompt stays static, ADR-05). Tool
+    progress goes back as silent context (`session.thinking.append`), the
+    answer as text to speak (`session.commentary.append`), in chunks.
+  - **Official route:** the user's OpenAI API key, shared with the OpenAI
+    provider's keychain entry. `POST /v1/live/sessions` through
+    `requestUrl()` carries the WebRTC offer and returns the answer; audio
+    and events then go over the peer connection and its `oai-events` data
+    channel.
+  - **Voices:** no API lists them, so each route has one constant list
+    taken from the docs (`gpt-live-1`'s 32 voices). This is an exception
+    to ADR-08.
+  - **No server push-to-talk:** GPT-Live always detects turns itself.
+    *Hold to talk* is done locally: the microphone track is enabled only
+    while the button is held.
 - **Consequences:**
-  - Voice needs microphone and WebRTC support in the Obsidian apps, to be
-    confirmed on iOS and Android before building.
-  - It works with an OpenAI API key, and with the ChatGPT sign-in only if
-    that account can get Realtime credentials (open).
-  - Anthropic users get no voice mode.
-  - Voice runs only while the chat panel is open.
+  - One agent, one conversation: voice and typed turns share tools,
+    history and turn IDs. Only the voice runs on OpenAI.
+  - Billed per minute ($0.05/min, silence included) on the user's OpenAI
+    account; the settings say so.
+  - Small talk the voice model handles itself appears only in the live
+    caption, not in the history.
+  - Voice runs only while the chat panel is open, and ends with a
+    conversation switch, a new chat, Clear or closing the view.
+  - Microphone, WebRTC and audio in the iOS and Android apps are not
+    verified yet.
 
 ## ADR-12: Stream chat answers with `fetch`, `requestUrl()` as fallback
 
@@ -216,3 +236,44 @@
   - One extra copy step at sign-in; each device signs in separately.
   - The programme is a preview and may change.
   - Users of the old route sign in again.
+
+## ADR-14: Private, opt-in Codex voice route (unofficial)
+
+- **Status:** accepted 2026-10-05. Partly revisits ADR-13 for private
+  builds only: public releases stay on OpenAI's official routes.
+- **Context:**
+  - OpenAI's official ChatGPT-plan access excludes audio (ADR-11), so the
+    official voice needs an API key and costs per minute.
+  - Codex's own voice mode runs on the user's ChatGPT plan through an
+    internal route: it signs in as the Codex app (device code flow) and
+    creates calls at `chatgpt.com/backend-api/codex/realtime/calls`. The
+    route is undocumented, may change or be blocked, and using it as
+    another app is a risk to the user's account.
+- **Decision:**
+  - A second voice route, compiled only into private builds: esbuild's
+    `__CODEX_VOICE__` flag is true for `npm run dev` and
+    `npm run build:private`, false for `npm run build` (CI and releases).
+    Every use sits behind `if (__CODEX_VOICE__)`; production builds fold
+    the condition (`minifySyntax`) and drop the code. A test checks the
+    public bundle has none of it.
+  - Opt-in and labelled unofficial: a separate sign-in as the Codex app
+    (client `app_EMoamEEZ73f0CkXaXp7hrann`, device code at
+    `auth.openai.com/codex/device`), stored in its own SecretStorage key,
+    independent of the ChatGPT provider's sign-in.
+  - The same voice core as the official route. The call carries Codex's
+    headers (`originator: codex_cli_rs`, `openai-alpha: quicksilver=v2`,
+    `ChatGPT-Account-ID`, session IDs, the latest Codex version) and
+    model `gpt-live-1-codex`. Codex itself reads events over a separate
+    WebSocket with auth headers; we read the WebRTC data channel and
+    parse both event dialects (Codex's `delegation.created`, … and
+    GPT-Live's `session.*`), picking the outbound one from the first
+    events.
+  - Desktop and mobile alike: call creation, sign-in and refresh go
+    through `requestUrl()`, and the device code needs no redirect. A
+    WebSocket fallback, if the data channel carries no events, would be
+    desktop-only (browsers can't set its headers).
+- **Consequences:**
+  - The public plugin and its docs (README) don't mention the route; it
+    is documented here and in §11.
+  - It can break without notice; whether the data channel carries the
+    events at all is still to be checked live (§11).

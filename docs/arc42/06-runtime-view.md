@@ -153,6 +153,55 @@ switching or listing.
 **Clear** (header, command) empties the current conversation's histories;
 it stays active and, being empty, leaves the list.
 
+## Voice conversation (`voice/`, ADR-11)
+
+1. **Start:** the microphone button (shown when `main.voiceRoute()` finds
+   a route: an OpenAI API key, or in private builds the Codex sign-in)
+   calls `ChatView.startVoice()`, which creates a `VoiceController`.
+2. **Connect** (`VoiceSession.start()`): microphone with echo
+   cancellation, noise suppression and gain control; peer connection with
+   the track and the `oai-events` data channel; the offer, after ICE
+   gathering (at most 3 s). The route sends it with our instructions and
+   the last 8 chat messages as text:
+   - official: `POST https://api.openai.com/v1/live/sessions` (model
+     `gpt-live-1`, voice, `delegation: {type: "client"}`, `input`); the
+     JSON answer holds the answer SDP.
+   - Codex (private builds): `POST
+     https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas`;
+     the answer SDP is the body, the call ID the end of `Location`.
+   The answer SDP is applied. The official route waits for
+   `session.started` (15 s at most), the Codex route only for the open
+   data channel. Remote audio plays in an `<audio>` element; if autoplay
+   is blocked, the bar shows **Tap to play audio**.
+3. **Talking:** transcript events fill the caption lines; the first
+   dialect-specific event decides which dialect we send. *Hold to talk*
+   enables the microphone track only while the button is held; *Mute*
+   disables it.
+4. **Delegation:** the request text is the delegation's text (Codex) or
+   the user's words since the last delegation (GPT-Live sends none; we
+   wait until no words arrived for 700 ms, at most 2.5 s). A running turn
+   is stopped first. The request runs through `handleUserMessage()` like
+   a typed message, with a turn ID, tool cards and history, and with
+   `voice: true` (a context line asks for a short, speakable answer).
+   Text before a tool call and each tool call go back as progress
+   (`session.thinking.append`, or Codex `delegation.context.append` on
+   the `commentary` channel); the final answer as text to speak
+   (`session.commentary.append`, ≤1500 characters each; Codex `speakable`,
+   ≤500 bytes each). Answers over 3000 characters are cut and end with
+   "The full answer is in the chat." An `ask_user` question is spoken; the
+   user answers by voice (a new delegation) or by typing.
+5. **End:** **End**, a conversation switch, a new chat, Clear, closing the
+   view or unloading sends `session.close`, waits up to 5 s for
+   `session.closed`, then closes the connection and stops the microphone.
+   A running turn finishes in the chat but isn't spoken. If the server
+   ends the session (e.g. `expired`) or the connection fails, the chat
+   shows why.
+
+With `DEBUG` on in `agent/loop.ts`, `debug.log` gets every data-channel
+event type and its keys (`VOICE_EVENT`), what was sent (`VOICE_SEND`),
+the call ID, channel and connection states, and `VOICE_NO_EVENTS` when
+nothing arrived within 10 s of the channel opening.
+
 ## Provider requests
 
 | | Anthropic | OpenAI | ChatGPT |

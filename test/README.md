@@ -30,7 +30,13 @@ titles, and isolation of histories and OpenAI chaining
 (`conversations.test.mjs`), `edit_document` without content
 (`edit-document.test.mjs`), and the ChatGPT plan cues: no retry on a
 usage limit, its own message, the one-time welcome
-(`chatgpt-usage.test.mjs`). They don't prove live-service or mobile behaviour.
+(`chatgpt-usage.test.mjs`), and live voice with fake WebRTC, microphone
+and audio (`voice.test.mjs`): session creation on both routes, both event
+dialects, delegation through the chat view with progress, chunked
+answers and a stopped older turn, hold to talk, ending, and the Codex
+sign-in. The harness builds with `__CODEX_VOICE__` true;
+`voice-build.test.mjs` runs the real build config and checks that the
+public bundle has no Codex voice code. They don't prove live-service or mobile behaviour.
 
 ## Live checks
 

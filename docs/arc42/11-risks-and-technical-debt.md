@@ -15,19 +15,19 @@
 | OpenAI changes or ends the "Sign in with ChatGPT" preview | ChatGPT sign-in breaks until updated | API-key providers stay available; errors point to them. |
 | OpenAI objects to signing in by pasting the callback address (not described in its docs) | ChatGPT sign-in on mobile stops working | Desktop could catch the callback with a loopback server; watch for a device flow. |
 | Provider APIs change request or response formats | Errors until fixed | Offline regression tests; live checks before releases ([10](10-quality-requirements.md)). |
+| OpenAI changes or blocks Codex's internal voice route, or objects to its use (private builds only, ADR-14) | Codex voice stops working | Opt-in and labelled unofficial; the official route with an API key stays available. |
 | Upstream fixes don't reach the fork automatically | Bugs fixed upstream stay here | Review upstream changes now and then (o1xhack/obsidian-chatting and its origin omarshahine/obsidian-chat); port what fits. |
 
 ## Gaps
 
-| ID | Gap | Kind | Impact |
-|---|---|---|---|
-| [GAP-013](11-gaps/013-no-live-voice-conversation.md) | No live voice conversation | Feature | High |
+None open (GAP-013, live voice, was closed with ADR-11; what's left to
+check is under *To investigate*).
 
 Numbers are kept from the first gap analysis. 001, 004 and 005 were fixed
 upstream before the fork (stale ChatGPT model list, reasoning guessed from
 model names, failing follow-up messages). 002 (settings rewritten on every
-load) went away with the legacy migration code (ADR-09). 003, 006–012 and
-014–021 were fixed in the fork.
+load) went away with the legacy migration code (ADR-09). 003 and 006–021
+were fixed in the fork.
 
 ## To investigate
 
@@ -72,5 +72,19 @@ gap or drop.
 - Canvas placement (`edit_canvas`) avoids other cards but not edge paths
   or the label above a group. A group that grows can overlap its
   neighbours, and moving a card out of a group doesn't shrink the group.
+- Voice (ADR-11) is built but not yet tried live: check with an API key
+  that `gpt-live-1` answers, delegations arrive, the answer is spoken and
+  the end closes cleanly (`debug.log` with `DEBUG` on shows every event).
+  In the iOS and Android apps: WebRTC, the microphone prompt and a
+  denial, autoplay, earpiece vs speaker, echo causing false interruptions
+  on speaker, screen lock.
+- Voice: small talk the voice model handles itself appears only in the
+  live caption, not in the chat history. GPT-Live's delegation carries no
+  text; the request is the transcript since the last delegation, which
+  may be cut or include words that weren't meant for it.
+- Codex voice route (private builds): whether the WebRTC data channel
+  carries the events at all (Codex reads them over a WebSocket) and in
+  which dialect; `VOICE_EVENT` and `VOICE_NO_EVENTS` in `debug.log` show
+  it. A WebSocket fallback would be desktop-only.
 - Stale comments: `tools/registry.ts` says 9 tools, and
   `ChatContainer.svelte` mentions a `chat-modal.ts` that doesn't exist.

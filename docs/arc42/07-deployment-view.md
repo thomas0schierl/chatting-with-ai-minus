@@ -7,7 +7,9 @@
 ## Build and release
 
 1. `npm run build` bundles `src/` (TypeScript and Svelte) with esbuild into
-   `main.js`. The Check workflow (`.github/workflows/check.yml`) runs lint,
+   `main.js`. It is the public build: `__CODEX_VOICE__` is false and the
+   private Codex voice route is left out (ADR-14). `npm run build:private`
+   (and `npm run dev`) include it; such builds are never released. The Check workflow (`.github/workflows/check.yml`) runs lint,
    tests, type and Svelte checks and the build on every pull request and
    push to `main`. Lint fails on any warning. Workflows pin each action to
    a commit SHA; Dependabot (`.github/dependabot.yml`) opens weekly update
@@ -38,4 +40,5 @@
 | API keys, ChatGPT tokens | OS keychain via Obsidian `SecretStorage` | No |
 
 The same bundle runs on desktop (Electron) and mobile (iOS, Android);
-nothing is platform-specific at build time.
+nothing is platform-specific at build time. Public and private builds
+differ only in the Codex voice route.

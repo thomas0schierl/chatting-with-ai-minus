@@ -26,6 +26,9 @@ It works the same on desktop, iPhone, iPad and Android.
   that accept them.
 - **Current models:** model lists are loaded from each provider when you
   open the settings, and kept for a day.
+- **Voice:** talk with the assistant in the current chat and hear the
+  answer. Requests about your notes run through the same assistant, with
+  your chosen provider, and appear in the chat.
 
 ## Install
 
@@ -53,12 +56,30 @@ shown as **Using ChatGPT plan** above the chat input; **Manage usage**
 there or in the settings opens your usage limits. Each device
 signs in separately.
 
+## Voice
+
+Voice uses OpenAI GPT-Live and needs an **OpenAI API key**, whichever
+provider you chat with (the ChatGPT sign-in doesn't include audio). Enter
+it under **Settings → Chatting with AI Minus → Voice** (it is the same key
+as for the OpenAI provider) and use **Check access** to see whether your
+account can use `gpt-live-1`. OpenAI bills voice at **$0.05 per minute**
+of conversation, silence included; the chat model's answers are billed as
+usual.
+
+Press the microphone button next to the chat input to start. A bar shows
+whether the assistant is listening, working or speaking, with the latest
+words of both sides. Choose **Hands-free** (just talk) or **Hold to talk**
+in the settings; **End** stops the conversation. Switching or starting a
+chat ends it too. Voice on phones is not tested yet.
+
 ## Privacy
 
 - **Sent to the provider:** your messages and attached images, the vault
   name, the number of notes, the active note's path, selected text, and
   whatever note content and images the AI reads with its tools during that
   turn.
+- **Voice:** while a voice conversation runs, your microphone audio and
+  the last few chat messages (as text) go to OpenAI.
   Nothing is sent in the background, and there is no vault index.
 - **API keys and ChatGPT tokens:** stored in your OS keychain, never in
   plugin files.

@@ -10,9 +10,12 @@
 | Agent host ID | `ext_agent_host_id`: a random `urn:uuid:` ID per device, sent at every ChatGPT sign-in so OpenAI can tell the user's devices apart. Not a secret. |
 | Agent loop | The cycle send → run requested tools → send results → … until the model stops (`src/agent/loop.ts`). |
 | Callback address | The `http://127.0.0.1:<port>/auth/callback?code=…` address the browser lands on after the ChatGPT sign-in; the user pastes it into the plugin. |
+| Delegation | In a voice conversation, the voice model handing a request to the plugin, which runs it as a chat turn and returns the answer to speak. |
+| GPT-Live | OpenAI's speech-to-speech model for voice apps (`gpt-live-1`), used over WebRTC. |
 | Issued client ID | The `oaiapp_…` client ID OpenAI issues at the first ChatGPT sign-in (started with `dynamic_agent_client`); reused for later sign-ins, refresh and sign-out. |
 | Model catalog | A provider's list of models with their capabilities, loaded from its API and cached for 24 hours. |
 | PKCE | Proof Key for Code Exchange: the sign-in sends a hash of a one-time secret, the code exchange the secret itself, so a stolen code is useless. |
+| Private build | A build with `__CODEX_VOICE__` true (`npm run build:private`, `npm run dev`): includes the unofficial Codex voice route. Never released. |
 | Provider | One of `anthropic`, `openai`, `chatgpt-oauth`. |
 | `requestUrl()` | Obsidian's HTTP function; works around CORS on mobile and returns complete responses only. |
 | SSE | Server-Sent Events: the `event:`/`data:` text format in which providers stream answers; parsed in `src/api/stream.ts`. |

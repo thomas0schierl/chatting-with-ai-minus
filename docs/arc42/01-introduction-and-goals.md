@@ -32,6 +32,9 @@ It is a fork of [Chatting with AI](https://github.com/o1xhack/obsidian-chatting)
 - Model lists loaded from each provider's API.
 - Named conversations: start a new chat, switch, rename and delete them
   from a history list; they survive restarts.
+- Live voice: talk and listen in the current chat; requests run through
+  the same agent and appear in the chat (OpenAI GPT-Live, needs an OpenAI
+  API key).
 
 ## Quality goals
 

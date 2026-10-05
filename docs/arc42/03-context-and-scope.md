@@ -33,6 +33,9 @@ Anthropic API   OpenAI API              OpenAI auth
 | OpenAI auth | `https://auth.openai.com/api/accounts/authorize` | Sign-in page, opened in the system browser | User's browser |
 | OpenAI auth | `POST https://auth.openai.com/api/accounts/oauth/token` | Code exchange and refresh | Issued client ID, PKCE verifier or refresh token; no secret |
 | OpenAI auth | `POST https://auth.openai.com/api/accounts/oauth/revoke` | Sign-out (revokes the refresh token) | Issued client ID |
+| OpenAI | `POST https://api.openai.com/v1/live/sessions` | Voice: create a GPT-Live session (WebRTC offer in, answer out) | `Authorization: Bearer <API key>` |
+| OpenAI | WebRTC (audio both ways, `oai-events` data channel) | Voice conversation | the session created above |
+| Codex (private builds only, ADR-14) | `POST https://chatgpt.com/backend-api/codex/realtime/calls`; device code, token and refresh at `auth.openai.com` | Voice on the ChatGPT plan, unofficial | Codex sign-in token, `ChatGPT-Account-ID` |
 | Loopback | `http://127.0.0.1:<port>/auth/callback` | Where the sign-in lands; nothing listens there, the user copies the address | none |
 
 Web search runs on the provider's side (Anthropic and OpenAI
@@ -41,6 +44,6 @@ Web search runs on the provider's side (Anthropic and OpenAI
 ## Scope
 
 - **In scope:** chat in a side panel, vault tools, three providers, model
-  lists, ChatGPT sign-in.
+  lists, ChatGPT sign-in, live voice (OpenAI GPT-Live).
 - **Out of scope:** vault indexing or embeddings, background work, local
   models, other providers (ADR-06, ADR-07).

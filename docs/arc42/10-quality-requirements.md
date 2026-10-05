@@ -28,6 +28,9 @@ check against the real services and note the result in the release notes:
   the middle keeps the text shown so far (Q-09).
 - For ChatGPT: the model list loads for the signed-in account and the
   default model answers.
+- Voice (OpenAI key): a question about a note is delegated, runs as a
+  chat turn with tool cards, and the answer is spoken; End closes the
+  session.
 - On a physical phone: Q-01, Q-02 and Q-09.
 
 A model being in the list doesn't prove the account may use it; only a
