@@ -15,7 +15,8 @@
    and account, so the chat header can show the thinking level.
 3. Create the `AgentLoop` with the shared settings object.
 4. `loadChatHistory()`: read `chat-state.json` and import the messages
-   (trimmed to 40).
+   (trimmed to 40). Until this has finished, `saveChatHistory()` does
+   nothing, so an early unload can't overwrite the saved chat.
 5. Register the settings tab, view, ribbon icon, commands and menus.
 
 No network requests happen at start.

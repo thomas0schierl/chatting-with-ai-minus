@@ -21,7 +21,6 @@
 
 | ID | Gap | Kind | Impact |
 |---|---|---|---|
-| [GAP-007](11-gaps/007-chat-history-wiped-on-early-unload.md) | Chat history can be wiped when the plugin unloads early | Debt | Medium |
 | [GAP-008](11-gaps/008-single-conversation-only.md) | Only one conversation | Feature | Medium |
 | [GAP-009](11-gaps/009-math-not-rendered.md) | Math in answers isn't rendered | Debt | Low–medium |
 | [GAP-010](11-gaps/010-answer-scrolls-question-away.md) | New answers scroll the question out of view | Debt | Medium (mobile) |

@@ -14,12 +14,19 @@ const bundled = await build({
     export { sendOpenAIMessage, clearOpenAIState } from './src/api/openai';
     export { sendChatGPTOAuthMessage, setChatGPTOAuthService } from './src/api/chatgpt-oauth';
     export { buildResponsesInput, fromResponsesOutput } from './src/api/responses-format';
+    export { default as ChatPlugin } from './src/main';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, write: false, platform: 'node', format: 'esm',
   plugins: [{ name: 'obsidian-test-transport', setup(build) {
     build.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian', namespace: 'test' }));
+    // The chat view's Svelte UI isn't under test; main.ts only needs it to import.
+    build.onResolve({ filter: /^svelte$|\.svelte$/ }, () => ({ path: 'svelte', namespace: 'test-svelte' }));
+    build.onLoad({ filter: /.*/, namespace: 'test-svelte' }, () => ({ contents: 'export const mount = () => ({}); export const unmount = () => {}; export default {};', loader: 'js' }));
     build.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: `
       export class App {}
+      export class Plugin {}
+      export class ItemView {}
+      export class Menu {}
       export class Modal {}
       export class PluginSettingTab { hide() {} }
       // Records rendered rows and their controls in globalThis.__settingRows.
@@ -793,4 +800,32 @@ test('Settings: "Custom..." is UI state only and never saves an empty model', as
     assert.equal(plugin.settings.model, original);
     assert.equal(render().some(row => row.name === 'Custom model ID'), false);
   }
+});
+
+test('Chat history is not saved before the saved chat has been read', async () => {
+  const { app } = vaultApp();
+  const writes = [];
+  let finishRead;
+  app.vault.adapter = { read: () => new Promise(resolve => { finishRead = resolve; }), write: async (path, data) => { writes.push(JSON.parse(data)); } };
+  const plugin = new api.ChatPlugin();
+  plugin.app = app;
+  plugin.agent = new api.AgentLoop(app, settings('openai'));
+  const loading = plugin.loadChatHistory();
+  // Unloading while the read is pending must not overwrite the saved chat.
+  plugin.onunload();
+  await plugin.saveChatHistory();
+  assert.deepEqual(writes, []);
+  finishRead(JSON.stringify({ chatHistory: [{ type: 'user', text: 'Saved question' }], agentMessages: [{ role: 'user', content: 'Saved question' }] }));
+  await loading;
+  await plugin.saveChatHistory();
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].chatHistory[0].text, 'Saved question');
+  // Without a saved file yet, saving is allowed once the read has failed.
+  const fresh = new api.ChatPlugin();
+  fresh.app = { vault: { configDir: '.obsidian', adapter: { read: async () => { throw new Error('ENOENT'); }, write: async (path, data) => { writes.push(JSON.parse(data)); } } } };
+  fresh.agent = new api.AgentLoop(app, settings('openai'));
+  await fresh.loadChatHistory();
+  await fresh.saveChatHistory();
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[1].chatHistory, []);
 });

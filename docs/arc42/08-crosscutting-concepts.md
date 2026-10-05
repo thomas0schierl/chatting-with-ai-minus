@@ -12,7 +12,7 @@
 | `data.json` (`saveData`) | Provider, model, thinking level, iteration limit, web search, model catalogs (hashed account key, models with their capabilities, fetch time, Codex version) | API key always saved as `""`; at most 3 catalog entries |
 | SecretStorage `chatting-with-ai-minus-api-key-<provider>` | API key per provider | |
 | SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | OAuth credential (JSON) | Cleared by writing `""` |
-| `chat-state.json` in the plugin folder | Visible history (last 100 entries) and API history (last 80 messages), including images and native replay items | Written after every turn, Stop, Clear and unload |
+| `chat-state.json` in the plugin folder | Visible history (last 100 entries) and API history (last 80 messages), including images and native replay items | Written after every turn, Stop, Clear and unload; never before it has been read at start |
 | `debug.log` in the plugin folder | Requests and errors | Only when `DEBUG = true` in `agent/loop.ts` |
 
 Settings and catalogs are checked field by field when loaded; anything

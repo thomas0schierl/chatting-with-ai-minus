@@ -33,6 +33,8 @@ export default class ChatPlugin extends Plugin {
     toolInput?: Record<string, unknown>;
     toolResult?: { result: string; isError: boolean };
   }> = [];
+  /** Set once the saved chat has been read; saving earlier would overwrite it with an empty one. */
+  private chatHistoryLoaded = false;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -286,6 +288,7 @@ export default class ChatPlugin extends Plugin {
   // ─── Chat history persistence ─────────────────────────────────────────
 
   async saveChatHistory(): Promise<void> {
+    if (!this.chatHistoryLoaded) return;
     try {
       const state = {
         chatHistory: this.chatHistory.slice(-100), // Cap at 100 UI messages
@@ -313,6 +316,8 @@ export default class ChatPlugin extends Plugin {
       }
     } catch {
       // No saved state or parse error — start fresh
+    } finally {
+      this.chatHistoryLoaded = true;
     }
   }
 
