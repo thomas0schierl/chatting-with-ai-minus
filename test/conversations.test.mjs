@@ -222,6 +222,19 @@ test('OpenAI: after a restart the open conversation replays in full once, then c
   assert.equal(requests[1].previous_response_id, 'resp_0');
 });
 
+test('A view whose opening fails is still ready, so commands waiting for it go on', async () => {
+  const { plugin } = await chatSetup('anthropic');
+  // The fake ItemView has no contentEl, so mounting throws.
+  const view = new api.ObsidianChatView({}, plugin);
+  await assert.rejects(view.onOpen());
+  const ready = await Promise.race([view.ready.then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 500))]);
+  assert.equal(ready, true);
+  // Without the UI its methods do nothing.
+  view.newChat();
+  view.sendMessage('Hello');
+  assert.equal(view.running, false);
+});
+
 test('"Chat about this note" and "Send selection to chat" start a new conversation', async () => {
   globalThis.window ??= globalThis;
   const { plugin, view, chat } = await chatSetup('anthropic');

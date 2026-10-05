@@ -60,7 +60,7 @@ export class ObsidianChatView extends ItemView {
   /** The live voice conversation, while one runs (ADR-11). */
   private voice: VoiceController | null = null;
   private markReady!: () => void;
-  /** Resolves once onOpen() has mounted the chat UI. */
+  /** Resolves once onOpen() has mounted the chat UI, or failed to. */
   readonly ready: Promise<void> = new Promise((resolve) => { this.markReady = resolve; });
 
   constructor(leaf: WorkspaceLeaf, plugin: ChatPlugin) {
@@ -83,6 +83,16 @@ export class ObsidianChatView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    try {
+      this.mountChat();
+    } finally {
+      // Also when mounting failed: commands waiting for the view go on
+      // (its methods do nothing without the UI) instead of waiting forever.
+      this.markReady();
+    }
+  }
+
+  private mountChat(): void {
     const container = this.contentEl;
     container.empty();
     container.addClass("chatting-minus-view-container");
@@ -114,7 +124,6 @@ export class ObsidianChatView extends ItemView {
     this.updateVoiceAvailable();
     this.renderHistory();
     chat.focus();
-    this.markReady();
   }
 
   /** Show the plugin's chat history in the UI, replacing what it shows. */
