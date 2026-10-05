@@ -2,7 +2,7 @@ import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
 import { mount, unmount } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
-import type { ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry } from "../types";
+import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry } from "../types";
 import { newTurnId } from "../agent/history";
 import { savedToolInput } from "../chat-state";
 import { debugLog } from "../debug";
@@ -42,6 +42,8 @@ interface ChatContainerApi extends Record<string, unknown> {
   getSelection(): SelectionScope | null;
   setVoice(state: VoiceViewState | null): void;
   setVoiceAvailable(available: boolean): void;
+  /** Offer Continue for a turn that was cut off (ADR-15). */
+  setContinue(show: boolean): void;
 }
 
 /**
@@ -117,6 +119,7 @@ export class ObsidianChatView extends ItemView {
         onRenameConversation: (id: string, title: string) => this.renameConversation(id, title),
         onDeleteConversation: (id: string) => this.deleteConversation(id),
         onVoice: (action: VoiceAction) => this.handleVoice(action),
+        onContinue: () => void this.continueTurn(),
       },
     }) as ChatContainerApi;
     this.chatContainer = chat;
@@ -131,6 +134,21 @@ export class ObsidianChatView extends ItemView {
   renderHistory(): void {
     this.chatContainer?.clearMessages();
     for (const entry of this.plugin.chatHistory) this.render(entry);
+    this.chatContainer?.setContinue(this.canContinue());
+  }
+
+  /**
+   * The saved conversation's turn was cut off (Obsidian was ended in the
+   * middle of it, ADR-15) and the model still owes an answer.
+   */
+  private canContinue(): boolean {
+    return !this.running && !!this.plugin.activeConversation.pendingTurn && this.plugin.agent.owesAnswer();
+  }
+
+  /** Forget a cut-off turn: no Continue (Stop, Clear, switching). */
+  private dismissContinue(): void {
+    delete this.plugin.activeConversation.pendingTurn;
+    this.chatContainer?.setContinue(false);
   }
 
   /** Show one history entry at the end of the chat. */
@@ -264,6 +282,7 @@ export class ObsidianChatView extends ItemView {
   newChat(): void {
     this.endVoice();
     if (this.running) this.stopTurn();
+    this.dismissContinue();
     this.plugin.startNewConversation();
     this.showConversation();
   }
@@ -273,6 +292,7 @@ export class ObsidianChatView extends ItemView {
     if (id === this.plugin.activeConversationId) return;
     this.endVoice();
     if (this.running) this.stopTurn();
+    this.dismissContinue();
     this.plugin.openConversation(id);
     this.showConversation();
   }
@@ -354,16 +374,47 @@ export class ObsidianChatView extends ItemView {
       new Notice("Please wait for the current response to complete.");
       return;
     }
+    const chat = this.chatContainer;
+    if (!chat) return;
+    this.append(this.plugin.chatHistory, { type: "user", text, images, turnId, ...(selection ? { selection } : {}) });
+    this.plugin.touchConversation();
+    chat.setTitle(this.plugin.activeConversation.title);
+    await this.runTurn(turnId, (callbacks) =>
+      this.plugin.agent.run(text, callbacks, selection, images, turnId, { voice: !!voice }), voice);
+  }
 
+  /**
+   * Continue the turn that was cut off when Obsidian was ended in the
+   * middle of it (ADR-15): the agent runs on its history as saved, with
+   * no new user message; tool results already there aren't run again.
+   */
+  async continueTurn(): Promise<void> {
+    const pending = this.plugin.activeConversation.pendingTurn;
+    if (!pending || !this.canContinue()) return;
+    await this.runTurn(pending.turnId, (callbacks) => this.plugin.agent.continueTurn(callbacks));
+  }
+
+  /**
+   * Run turn `turnId` through `start` with the view's callbacks: progress,
+   * tool cards and the answer go to the chat and its history; saved at the
+   * end. While it runs the conversation carries it as its pending turn.
+   */
+  private async runTurn(
+    turnId: string,
+    start: (callbacks: AgentCallbacks) => Promise<void>,
+    voice?: VoiceTurnHooks,
+  ): Promise<void> {
     const chat = this.chatContainer;
     if (!chat) return;
     const history = this.plugin.chatHistory;
+    const conversation = this.plugin.activeConversation;
 
     this.running = true;
     const turn = ++this.turnCount;
-    this.append(history, { type: "user", text, images, turnId, ...(selection ? { selection } : {}) });
-    this.plugin.touchConversation();
-    chat.setTitle(this.plugin.activeConversation.title);
+    // Saved with the chat when the app goes to the background; still there
+    // at the next start, the turn was cut off.
+    conversation.pendingTurn = { turnId, startedAt: Date.now() };
+    chat.setContinue(false);
     chat.setInputEnabled(false);
     chat.setBusy(true);
 
@@ -371,7 +422,7 @@ export class ObsidianChatView extends ItemView {
     this.streaming = null;
 
     try {
-      await this.plugin.agent.run(text, {
+      await start({
         onThinking: () => {
           this.endStream(false);
           chat.showThinking();
@@ -437,11 +488,12 @@ export class ObsidianChatView extends ItemView {
           this.append(history, { type: "error", text: error, ...(kind ? { errorKind: kind } : {}) });
           voice?.onError(error);
         },
-      }, selection, images, turnId, { voice: !!voice });
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       this.append(history, { type: "error", text: `Unexpected error: ${msg}` });
     } finally {
+      if (conversation.pendingTurn?.turnId === turnId) delete conversation.pendingTurn;
       // A stopped turn can end after a newer one has started (edit, or Stop
       // and send again); only the latest turn ends the running state.
       if (turn === this.turnCount) {
@@ -476,6 +528,7 @@ export class ObsidianChatView extends ItemView {
     this.plugin.agent.abort();
     this.endStream(true);
     this.running = false;
+    this.dismissContinue();
     this.chatContainer?.cancelAskUser();
     this.chatContainer?.hideThinking();
   }
@@ -493,6 +546,7 @@ export class ObsidianChatView extends ItemView {
 
   private handleClear(): void {
     this.endVoice();
+    this.dismissContinue();
     this.plugin.agent.clear();
     this.streaming = null;
     this.plugin.chatHistory = [];

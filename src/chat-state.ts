@@ -31,6 +31,18 @@ export interface ConversationRecord {
   chatHistory: ChatHistoryEntry[];
   /** API history; the only place with image data. */
   agentMessages: UnifiedMessage[];
+  /**
+   * Set while a turn runs (saved with it when the app goes to the
+   * background); still there at the next start, the turn was cut off
+   * (ADR-15).
+   */
+  pendingTurn?: PendingTurn;
+}
+
+/** The turn a conversation was running. */
+export interface PendingTurn {
+  turnId: string;
+  startedAt: number;
 }
 
 /** `chat-state.json` as written by this version. */
@@ -82,6 +94,11 @@ export function migrateChatState(value: unknown): ChatState | null {
     .map((item): ConversationRecord => {
       const chatHistory = arrayOf<ChatHistoryEntry>(item.chatHistory);
       const customTitle = item.customTitle === true && typeof item.title === "string";
+      // Optional, so no new format version: an older plugin just drops it.
+      const pending = item.pendingTurn;
+      const pendingTurn = isRecord(pending) && typeof pending.turnId === "string" && typeof pending.startedAt === "number"
+        ? { turnId: pending.turnId, startedAt: pending.startedAt }
+        : undefined;
       return {
         id: item.id as string,
         title: customTitle ? item.title as string : conversationTitle(chatHistory),
@@ -90,6 +107,7 @@ export function migrateChatState(value: unknown): ChatState | null {
         updatedAt: typeof item.updatedAt === "number" ? item.updatedAt : 0,
         chatHistory,
         agentMessages: arrayOf<UnifiedMessage>(item.agentMessages),
+        ...(pendingTurn ? { pendingTurn } : {}),
       };
     });
   if (conversations.length === 0) conversations.push(newConversation());

@@ -51,13 +51,26 @@
     onRenameConversation: (id: string, title: string) => void;
     onDeleteConversation: (id: string) => void;
     onVoice: (action: VoiceAction) => void;
+    onContinue: () => void;
   }
 
   let {
     app, component, onSend, onClear, onStop, onEdit, onRegenerate, onCopy,
     onNewChat, listConversations, onOpenConversation, onRenameConversation, onDeleteConversation,
-    onVoice,
+    onVoice, onContinue,
   }: Props = $props();
+
+  /** A turn was cut off when Obsidian was ended (ADR-15): offer Continue. */
+  let canContinue = $state(false);
+
+  export function setContinue(show: boolean): void {
+    canContinue = show;
+  }
+
+  function continueTurn(): void {
+    canContinue = false;
+    onContinue();
+  }
 
   // ─── Voice (ADR-11) ───────────────────────────────────────────────────
   /** A voice route is set up: show the microphone button. */
@@ -1017,6 +1030,13 @@
     </div>
   {/if}
 
+  {#if canContinue}
+    <div class="chatting-minus-continue-row" role="status">
+      <span>The last answer was interrupted.</span>
+      <button class="mod-cta" type="button" onclick={continueTurn}>Continue</button>
+    </div>
+  {/if}
+
   {#if displayProvider === "chatgpt-oauth"}
     <div class="chatting-minus-plan-row">
       <span>Using ChatGPT plan</span>
@@ -1568,6 +1588,18 @@
   }
 
   /* ─── ChatGPT plan line above the input ───────────────────────────── */
+  .chatting-minus-continue-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 12px;
+    border-top: 1px solid var(--background-modifier-border);
+    font-size: var(--font-ui-small);
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
   .chatting-minus-plan-row {
     display: flex;
     align-items: center;

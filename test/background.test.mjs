@@ -3,7 +3,7 @@
 // same turn, and Continue after the phone ended Obsidian mid-turn.
 import assert from 'node:assert/strict';
 import { test, beforeEach, afterEach } from 'node:test';
-import { api, chatSetup, text, streamEvents, sseText, sse, transport } from './harness.mjs';
+import { api, chatSetup, text, call, response, streamEvents, sseText, sse, transport } from './harness.mjs';
 
 const { AppLifecycle, appLifecycle } = api.lifecycle;
 
@@ -308,3 +308,80 @@ test('Desktop: a minimised window keeps its open request (no watchdog)', () => o
   await turn;
   assert.equal(cancelled, true);
 }, { mobile: false }));
+
+// ─── Continue after Obsidian was ended mid-turn ─────────────────────────────
+
+const roles = messages => messages.map(m => m.role);
+const hasToolResult = message => Array.isArray(message.content) && message.content.some(b => b.type === 'tool_result');
+
+test('A turn cut off mid-way is saved with its marker and finished tool results; Continue completes it after a restart without running the tool again', async () => {
+  const { plugin, view, writes } = await chatSetup('anthropic');
+  const requests = transport((body, index) => index === 0
+    ? response('anthropic', [text('Reading'), call('read', 'read_file', { path: 'Untitled.md' })], 'tool_use')
+    // The phone ends Obsidian while this request runs.
+    : new Promise(() => {}));
+  void view.handleUserMessage('What does my note say?', null);
+  await until(() => requests.length === 2);
+  // What leaving the app saves (see the test above).
+  await plugin.saveChatHistory();
+  const saved = JSON.parse(JSON.stringify(writes.at(-1)));
+  const [conversation] = saved.conversations;
+  assert.equal(conversation.pendingTurn.turnId, plugin.chatHistory[0].turnId);
+  assert.deepEqual(roles(conversation.agentMessages), ['user', 'assistant', 'user']);
+  assert.ok(hasToolResult(conversation.agentMessages[2]));
+  assert.match(JSON.stringify(conversation.agentMessages[2]), /Original/);
+  assert.deepEqual(conversation.chatHistory.map(e => e.type), ['user', 'assistant', 'tool-result']);
+
+  const restored = await chatSetup('anthropic', saved);
+  restored.view.renderHistory();
+  assert.equal(restored.chat.continueShown, true);
+  const after = transport(() => response('anthropic', [text('Your note says Original.')]));
+  await restored.view.continueTurn();
+  assert.equal(after.length, 1);
+  // The saved history as it was: no new user message, the tool result sent, not run again.
+  assert.deepEqual(roles(after[0].messages), ['user', 'assistant', 'user']);
+  assert.ok(hasToolResult(after[0].messages[2]));
+  assert.deepEqual(restored.plugin.chatHistory.map(e => [e.type, e.text]),
+    [['user', 'What does my note say?'], ['assistant', 'Reading'], ['tool-result', undefined], ['assistant', 'Your note says Original.']]);
+  assert.deepEqual(restored.chat.shown.filter(m => m.type === 'user').map(m => m.text), ['What does my note say?']);
+  assert.equal(restored.chat.continueShown, false);
+  assert.equal(restored.plugin.activeConversation.pendingTurn, undefined);
+  await tick();
+  assert.equal(restored.writes.at(-1).conversations[0].pendingTurn, undefined);
+});
+
+test('A finished turn leaves no marker; Continue only while the model owes an answer; a new message, Stop, Clear or a new chat dismiss it', async () => {
+  const cutOff = (agentMessages) => ({
+    version: 3, activeConversationId: 'c1',
+    conversations: [{
+      id: 'c1', title: 'Q', customTitle: false, createdAt: 1, updatedAt: 1,
+      chatHistory: [{ type: 'user', text: 'Q', turnId: 't1' }],
+      agentMessages, pendingTurn: { turnId: 't1', startedAt: 1 },
+    }],
+  });
+  const owed = [{ role: 'user', content: 'ctx\n\nQ', turnId: 't1' }];
+
+  const fresh = await chatSetup('anthropic');
+  transport(() => response('anthropic', [text('A')]));
+  await fresh.view.handleUserMessage('Q', null);
+  await tick();
+  assert.equal(fresh.writes.at(-1).conversations[0].pendingTurn, undefined);
+
+  // Answered before Obsidian ended: nothing to continue.
+  const answered = await chatSetup('anthropic', cutOff([...owed, { role: 'assistant', content: [text('A')] }]));
+  answered.view.renderHistory();
+  assert.equal(answered.chat.continueShown, false);
+
+  for (const action of ['message', 'stop', 'clear', 'new chat']) {
+    const { plugin, view, chat } = await chatSetup('anthropic', cutOff(owed));
+    view.renderHistory();
+    assert.equal(chat.continueShown, true, action);
+    transport(() => response('anthropic', [text('A')]));
+    if (action === 'message') await view.handleUserMessage('Something else', null);
+    else if (action === 'stop') view.handleStop();
+    else if (action === 'clear') view.clearConversation();
+    else view.newChat();
+    assert.equal(chat.continueShown, false, action);
+    assert.equal(plugin.conversations.find(c => c.id === 'c1')?.pendingTurn, undefined, action);
+  }
+});

@@ -218,7 +218,8 @@ export function fakeChat() {
     cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
     setInputEnabled() {}, setBusy(value) { chat.busy = value; },
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle(value) { chat.title = value; }, setSelection() {}, getSelection: () => null,
-    voice: null, voiceAvailable: false,
+    voice: null, voiceAvailable: false, continueShown: false,
+    setContinue(value) { chat.continueShown = value; },
     setVoice(state) { chat.voice = state; }, setVoiceAvailable(value) { chat.voiceAvailable = value; },
   };
   return chat;
