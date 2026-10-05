@@ -149,12 +149,14 @@ export class VoiceSession {
   async end(): Promise<void> {
     if (this.ended) return;
     if (this.started && this.channel?.readyState === "open") {
+      let timer = 0;
       const closed = new Promise<void>((resolve) => {
         this.onClosed = resolve;
-        window.setTimeout(resolve, SESSION_TIMING.closeWait);
+        timer = window.setTimeout(resolve, SESSION_TIMING.closeWait);
       });
       this.send(CLOSE_EVENT);
       await closed;
+      window.clearTimeout(timer);
     }
     this.finish();
   }

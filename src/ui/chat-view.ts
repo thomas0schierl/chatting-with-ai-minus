@@ -59,6 +59,9 @@ export class ObsidianChatView extends ItemView {
   private streaming: { id: number; text: string } | null = null;
   /** The live voice conversation, while one runs (ADR-11). */
   private voice: VoiceController | null = null;
+  private markReady!: () => void;
+  /** Resolves once onOpen() has mounted the chat UI. */
+  readonly ready: Promise<void> = new Promise((resolve) => { this.markReady = resolve; });
 
   constructor(leaf: WorkspaceLeaf, plugin: ChatPlugin) {
     super(leaf);
@@ -111,6 +114,7 @@ export class ObsidianChatView extends ItemView {
     this.updateVoiceAvailable();
     this.renderHistory();
     chat.focus();
+    this.markReady();
   }
 
   /** Show the plugin's chat history in the UI, replacing what it shows. */

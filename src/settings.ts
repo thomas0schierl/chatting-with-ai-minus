@@ -97,6 +97,8 @@ export class ChatSettingTab extends PluginSettingTab {
   hide(): void {
     super.hide();
     this.editingCustomModel = false;
+    window.clearTimeout(this.apiKeyTimer);
+    this.apiKeyEditing = false;
   }
 
   /** After a ChatGPT sign-in: the one-time plan welcome, later a short notice. */

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { App } from "obsidian";
   import { Component, MarkdownRenderer, Notice } from "obsidian";
+  import { onDestroy } from "svelte";
   import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind } from "../types";
   import { normalizeMathMarkdown } from "./math-markdown";
   import { USAGE_URL } from "../auth/chatgptOAuth";
@@ -332,6 +333,9 @@
   const STREAM_RENDER_MS = 100;
   const pendingText = new Map<number, string>();
   let renderTimer: number | null = null;
+  onDestroy(() => {
+    if (renderTimer !== null) window.clearTimeout(renderTimer);
+  });
 
   /** Replace an assistant message's text; `final` renders it at once. */
   export function updateAssistantMessage(id: number, text: string, final = false): void {

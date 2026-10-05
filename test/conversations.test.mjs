@@ -227,7 +227,7 @@ test('"Chat about this note" and "Send selection to chat" start a new conversati
   const { plugin, view, chat } = await chatSetup('anthropic');
   const requests = answering('anthropic');
   plugin.isProviderConfigured = () => true;
-  plugin.activateView = async () => {};
+  plugin.activateView = async () => view;
   plugin.getChatView = () => view;
   await view.handleUserMessage('Earlier topic', null);
   const earlier = plugin.activeConversationId;
@@ -242,10 +242,27 @@ test('"Chat about this note" and "Send selection to chat" start a new conversati
   chat.setSelection = selection => selected.push(selection);
   const noteChat = plugin.activeConversationId;
   await plugin.openChatWithSelection({ text: 'Some words', filePath: 'Notes/Plan.md' });
-  await new Promise(resolve => setTimeout(resolve, 120));
   assert.notEqual(plugin.activeConversationId, noteChat);
   assert.deepEqual(chat.shown, []);
   assert.deepEqual(selected, [{ text: 'Some words', filePath: 'Notes/Plan.md' }]);
+});
+
+test('Commands act on the chat view as soon as its UI is mounted, not after a fixed delay', async () => {
+  const { plugin, view, chat, app } = await chatSetup('anthropic');
+  plugin.isProviderConfigured = () => true;
+  const revealed = [];
+  app.workspace.getLeavesOfType = () => [{ view }];
+  app.workspace.revealLeaf = async leaf => { revealed.push(leaf); };
+  const selected = [];
+  chat.setSelection = selection => selected.push(selection);
+
+  const opening = plugin.openChatWithSelection({ text: 'Words', filePath: 'Plan.md' });
+  await tick();
+  assert.equal(revealed.length, 1);
+  assert.deepEqual(selected, []);
+  view.markReady();
+  await opening;
+  assert.deepEqual(selected, [{ text: 'Words', filePath: 'Plan.md' }]);
 });
 
 test('Switching stops a running turn; it ends in its own conversation', async () => {
