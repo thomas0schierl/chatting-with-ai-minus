@@ -9,6 +9,7 @@
     "test": "node scripts/test.mjs",
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
+    "build:private": "node esbuild.config.mjs production private",
     "lint": "eslint --max-warnings 0 .",
     "svelte-check": "svelte-check --tsconfig tsconfig.json",
     "release": "./scripts/release.sh"

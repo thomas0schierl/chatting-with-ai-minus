@@ -4,10 +4,15 @@ import { sveltePreprocess } from "svelte-preprocess";
 import process from "process";
 
 const prod = process.argv[2] === "production";
+// The unofficial Codex voice route (ADR-14) is compiled only into private
+// builds: `npm run dev` and `npm run build:private`. `npm run build` (CI and
+// releases) leaves it out; esbuild drops the code behind the false flag.
+const codexVoice = !prod || process.argv[3] === "private";
 
 const context = await esbuild.context({
   entryPoints: ["src/main.ts"],
   bundle: true,
+  define: { __CODEX_VOICE__: codexVoice ? "true" : "false" },
   plugins: [
     esbuildSvelte({
       compilerOptions: {
@@ -39,8 +44,12 @@ const context = await esbuild.context({
   target: "es2022",
   logLevel: "info",
   sourcemap: prod ? false : "inline",
+  // Folds constant conditions, so code behind a false __CODEX_VOICE__ is
+  // removed, not just left unreachable. Names and layout stay readable.
+  minifySyntax: prod,
   treeShaking: true,
-  outfile: "main.js",
+  // Tests build into a temporary file (test/voice-build.test.mjs).
+  outfile: process.env.OUTFILE ?? "main.js",
 });
 
 if (prod) {
