@@ -45,3 +45,9 @@ npm run svelte-check   # Svelte check
 - Record decisions that are hard to reverse as an ADR in
   [arc42 §9](docs/arc42/09-architecture-decisions.md).
 - Closing a gap deletes its file and its row in §11.
+
+## Commits
+
+- Commit with explicit paths (`git commit -- <paths>`). Several agents may
+  work in one worktree and share its staging area; a plain `git commit`
+  can take another agent's staged changes.

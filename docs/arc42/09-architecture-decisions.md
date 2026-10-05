@@ -106,6 +106,9 @@
 
 ## ADR-11: Live voice through the OpenAI Realtime API over WebRTC
 
+- **Status:** accepted. Open until the device spike: Realtime API or
+  GPT-Live (both OpenAI, both WebRTC). Settled: the ChatGPT sign-in can't
+  get voice, so voice needs an OpenAI API key (GAP-013).
 - **Context:** users want a voice mode like in the ChatGPT, Claude and
   Codex apps: talk, hear the answer, interrupt (GAP-013). That needs a
   continuous two-way audio stream, which `requestUrl()` can't carry.
