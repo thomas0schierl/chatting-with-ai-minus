@@ -31,7 +31,6 @@
 | [GAP-015](11-gaps/015-no-message-actions.md) | No actions on single messages (copy, regenerate) | Feature | Medium |
 | [GAP-016](11-gaps/016-answers-not-streamed.md) | Answers appear only when complete | Feature | High |
 | [GAP-017](11-gaps/017-agent-cannot-see-images-or-canvases.md) | The agent can't look at images or canvases | Feature | Medium–high |
-| [GAP-018](11-gaps/018-canvas-editing-is-raw-json.md) | Canvas editing is raw JSON; canvases aren't searchable | Debt | Medium |
 | [GAP-019](11-gaps/019-chatgpt-provider-uses-internal-backend.md) | The ChatGPT provider uses Codex's internal backend | Risk | High |
 
 Numbers are kept from the first gap analysis. 001, 004 and 005 were fixed
@@ -58,5 +57,8 @@ gap or drop.
   Check live after a model change or restart.
 - A corrupt `chat-state.json` is silently treated as empty and overwritten
   on the next save.
+- Canvas placement (`edit_canvas`) avoids other cards but not edge paths
+  or the label above a group. A group that grows can overlap its
+  neighbours, and moving a card out of a group doesn't shrink the group.
 - Stale comments: `tools/registry.ts` says 9 tools, and
   `ChatContainer.svelte` mentions a `chat-modal.ts` that doesn't exist.
