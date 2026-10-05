@@ -98,6 +98,29 @@ test('Editing a turn while its tool call waits stops it and cuts before it', asy
   assert.deepEqual(chat.shown.map(m => m.text), ['Q1', 'A1', 'Q2 again', 'A2']);
 });
 
+for (const action of ['Stop', 'Clear']) {
+  test(`${action} while ask_user waits drops the question: the next message starts a new turn`, async () => {
+    const { plugin, view, chat } = await setup('anthropic');
+    const requests = transport((body, index) => index === 0
+      ? response('anthropic', [call('ask', 'ask_user', { question: 'Which note?' })], 'tool_use')
+      : response('anthropic', [text('A2')]));
+    const asking = view.handleUserMessage('Q1', null);
+    while (!chat.askUser) await new Promise(resolve => setTimeout(resolve, 1));
+
+    if (action === 'Stop') view.handleStop(); else view.clearConversation();
+    await asking;
+    // The pending answer is gone, so typed text goes to onSend (a new turn).
+    assert.equal(chat.askUser, null);
+    assert.equal(view.running, false);
+    await view.handleUserMessage('Q2', null);
+    assert.equal(requests.length, 2);
+    assert.deepEqual(userTurns(requests[1]), action === 'Stop' ? ['Q1', 'Q2'] : ['Q2']);
+    // A stopped call keeps its cancelled result, so the history stays valid.
+    assert.deepEqual(toolResultIds(requests[1]), action === 'Stop' ? ['ask'] : []);
+    assert.deepEqual(plugin.chatHistory.filter(e => e.type === 'user').map(e => e.text), action === 'Stop' ? ['Q1', 'Q2'] : ['Q2']);
+  });
+}
+
 test('A chat saved without turn IDs gets matching IDs on load and can be edited', async () => {
   const saved = {
     chatHistory: [

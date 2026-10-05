@@ -34,8 +34,6 @@ were fixed in the fork.
 Found while reading the code, not yet confirmed. Confirm, then turn into a
 gap or drop.
 
-- Stop during `ask_user` may leave the pending answer open, so the next
-  message would answer the stopped run instead of starting a new one.
 - Anthropic web search results are read from `search_results`, which may
   not match the API's response shape.
 - ChatGPT: no refresh-and-retry after a 401 (parallel refreshes are merged).

@@ -23,7 +23,8 @@ math conversion (`math-markdown.test.mjs`), streamed answers: SSE
 parsing, rebuilt responses, fallback, Stop and rate-limit retry
 (`streaming.test.mjs`), editing a message, regenerating and copying
 an answer through the chat view with a fake Svelte component
-(`message-actions.test.mjs`), saving each image once with the
+(`message-actions.test.mjs`, also Stop and Clear while `ask_user`
+waits), saving each image once with the
 migration of older saved chats (`images-once.test.mjs`), named
 conversations: migration, new chat, switch, rename, delete, restore, an
 unreadable saved file kept aside,
