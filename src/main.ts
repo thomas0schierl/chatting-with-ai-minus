@@ -7,11 +7,12 @@ import {
   TFile,
   type TAbstractFile,
 } from "obsidian";
-import type { ChatSettings, SelectionScope, ImageAttachment } from "./types";
+import type { ChatSettings, SelectionScope, ChatHistoryEntry } from "./types";
 import { DEFAULT_SETTINGS, DEFAULT_PROVIDER_MODELS } from "./types";
 import { ChatSettingTab, getModelHeaderLabel } from "./settings";
 import { ObsidianChatView, VIEW_TYPE_CHAT } from "./ui/chat-view";
 import { AgentLoop } from "./agent/loop";
+import { assignLegacyTurnIds } from "./agent/history";
 import { ChatGPTOAuthStore } from "./auth/chatgptOAuthStore";
 import { ChatGPTOAuthService } from "./auth/chatgptOAuth";
 import { cachedCatalog, catalogIdentity, normalizeCatalogState } from "./api/model-catalog";
@@ -26,14 +27,7 @@ export default class ChatPlugin extends Plugin {
   /** ChatGPT OAuth service (used by the chatgpt-oauth provider). */
   chatgptOAuth!: ChatGPTOAuthService;
   /** Chat messages for replaying into the UI when the view reopens */
-  chatHistory: Array<{
-    type: string;
-    text?: string;
-    images?: ImageAttachment[];
-    toolName?: string;
-    toolInput?: Record<string, unknown>;
-    toolResult?: { result: string; isError: boolean };
-  }> = [];
+  chatHistory: ChatHistoryEntry[] = [];
   /** Set once the saved chat has been read; saving earlier would overwrite it with an empty one. */
   private chatHistoryLoaded = false;
 
@@ -319,12 +313,12 @@ export default class ChatPlugin extends Plugin {
       const raw = await this.app.vault.adapter.read(this.chatStatePath);
       const state: unknown = JSON.parse(raw);
       if (!isPersistedChatState(state)) return;
-      if (Array.isArray(state.chatHistory)) {
-        this.chatHistory = state.chatHistory;
-      }
-      if (Array.isArray(state.agentMessages)) {
-        this.agent.importMessages(state.agentMessages);
-      }
+      const chatHistory = Array.isArray(state.chatHistory) ? state.chatHistory : [];
+      const agentMessages = Array.isArray(state.agentMessages) ? state.agentMessages : [];
+      // Chats saved before turn IDs get them here; saved with the next turn.
+      assignLegacyTurnIds(chatHistory, agentMessages);
+      this.chatHistory = chatHistory;
+      this.agent.importMessages(agentMessages);
     } catch {
       // No saved state or parse error — start fresh
     } finally {

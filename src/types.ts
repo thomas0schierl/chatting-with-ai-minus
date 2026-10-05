@@ -68,6 +68,11 @@ export interface UnifiedMessage {
   content: string | ContentBlock[];
   /** Exact provider output for replay, separate from user-visible content. */
   replay?: ProviderReplay;
+  /**
+   * On the message that starts a user turn: the turn's ID, also on its
+   * entry in the chat view's history, so both can be cut there.
+   */
+  turnId?: string;
 }
 
 export interface ProviderReplay {
@@ -120,6 +125,22 @@ export interface SelectionScope {
   text: string;
   /** Path to the file containing the selection */
   filePath: string;
+}
+
+// ─── Chat View History ──────────────────────────────────────────────────────
+
+/** One entry of the visible chat history (`plugin.chatHistory`). */
+export interface ChatHistoryEntry {
+  type: string;
+  text?: string;
+  images?: ImageAttachment[];
+  /** User entries: the turn's ID, shared with the agent history. */
+  turnId?: string;
+  /** User entries: the selection scope the turn ran with. */
+  selection?: SelectionScope;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolResult?: { result: string; isError: boolean };
 }
 
 // ─── Tool Execution ─────────────────────────────────────────────────────────

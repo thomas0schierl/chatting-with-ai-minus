@@ -18,6 +18,7 @@ export const bundled = await build({
     export { buildResponsesInput, fromResponsesOutput } from './src/api/responses-format';
     export { streamSSE, createSSEParser, resetStreamTransport } from './src/api/stream';
     export { default as ChatPlugin } from './src/main';
+    export { ObsidianChatView } from './src/ui/chat-view';
     export { executeTool } from './src/tools/executor';
     export * as canvasRender from './src/tools/canvas-render';
     export * as auth from './src/auth/chatgptOAuth';
@@ -52,7 +53,8 @@ export const bundled = await build({
         addButton(fn) { return this.control(fn); }
       }
       export const requireApiVersion = () => globalThis.__supportsNewObsidian === true;
-      export class Notice {}
+      // Shown notices are recorded in globalThis.__notices.
+      export class Notice { constructor(message) { (globalThis.__notices ??= []).push(message); } }
       export const Platform = { isDesktopApp: true, isMobile: false, isIosApp: false, isAndroidApp: false };
       export class TFile { constructor(path) { this.path = path; this.extension = 'md'; } }
       export const normalizePath = path => path;

@@ -4,6 +4,7 @@ import type { Component } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
 import type { ToolResult, SelectionScope, ImageAttachment } from "../types";
+import { newTurnId } from "../agent/history";
 
 export const VIEW_TYPE_CHAT = "chatting-minus-view";
 
@@ -15,13 +16,17 @@ interface ChatContainerProps {
   onSend: (text: string, selection: SelectionScope | null, images: ImageAttachment[]) => void;
   onClear: () => void;
   onStop: () => void;
+  onEdit: (turnId: string, text: string) => void;
+  onRegenerate: () => void;
+  onCopy: (text: string) => void;
 }
 
 interface ChatContainerApi extends Record<string, unknown> {
-  addUserMessage(text: string, images?: ImageAttachment[]): void;
-  addAssistantMessage(text: string): number;
+  addUserMessage(text: string, images?: ImageAttachment[], turnId?: string, selection?: SelectionScope): void;
+  addAssistantMessage(text: string, streaming?: boolean): number;
   updateAssistantMessage(id: number, text: string, final?: boolean): void;
   removeMessage(id: number): void;
+  cutMessages(turnId: string): void;
   addToolCall(name: string, input: Record<string, unknown>): number;
   updateToolResult(msgId: number, name: string, result: ToolResult): void;
   addError(text: string): void;
@@ -29,6 +34,8 @@ interface ChatContainerApi extends Record<string, unknown> {
   hideThinking(): void;
   showAskUser(question: string): Promise<string>;
   setInputEnabled(enabled: boolean): void;
+  setBusy(busy: boolean): void;
+  cancelAskUser(): void;
   clearMessages(): void;
   focus(): void;
   setModel(name: string): void;
@@ -46,6 +53,8 @@ export class ObsidianChatView extends ItemView {
   private plugin: ChatPlugin;
   private chatContainer: ChatContainerApi | undefined;
   private running = false;
+  /** Counts turns started here; only the latest one may end the running state. */
+  private turnCount = 0;
   /** The assistant message being streamed, until the loop delivers it whole. */
   private streaming: { id: number; text: string } | null = null;
 
@@ -87,6 +96,9 @@ export class ObsidianChatView extends ItemView {
         },
         onClear: () => this.handleClear(),
         onStop: () => this.handleStop(),
+        onEdit: (turnId: string, text: string) => void this.editMessage(turnId, text),
+        onRegenerate: () => void this.regenerate(),
+        onCopy: (text: string) => this.copyAnswer(text),
       },
     });
 
@@ -94,7 +106,7 @@ export class ObsidianChatView extends ItemView {
     for (const msg of this.plugin.chatHistory) {
       switch (msg.type) {
         case "user":
-          this.chatContainer.addUserMessage(msg.text!, msg.images);
+          this.chatContainer.addUserMessage(msg.text ?? "", msg.images, msg.turnId, msg.selection);
           break;
         case "assistant":
           this.chatContainer.addAssistantMessage(msg.text!);
@@ -152,10 +164,46 @@ export class ObsidianChatView extends ItemView {
     this.handleClear();
   }
 
+  /**
+   * Edit and continue: stop a running turn, cut both histories to
+   * just before the turn `turnId`, save, and run `text` as a new turn with
+   * that turn's images and selection scope. Vault changes stay. Resolves
+   * when the new turn has ended.
+   */
+  async editMessage(turnId: string, text: string): Promise<void> {
+    const history = this.plugin.chatHistory;
+    const index = history.findIndex((entry) => entry.type === "user" && entry.turnId === turnId);
+    if (index < 0) return;
+    const { images = [], selection = null } = history[index];
+    if (!text.trim() && images.length === 0) return;
+    if (this.running) this.stopTurn();
+    this.plugin.agent.cutBeforeTurn(turnId);
+    this.plugin.chatHistory = this.plugin.chatHistory.slice(0, index);
+    this.chatContainer?.cutMessages(turnId);
+    // The saved state is taken now, before the new turn starts.
+    void this.plugin.saveChatHistory();
+    await this.handleUserMessage(text, selection, images);
+  }
+
+  /** Regenerate the last answer: run the last user turn again, unchanged. */
+  async regenerate(): Promise<void> {
+    const last = this.plugin.chatHistory.filter((entry) => entry.type === "user" && entry.turnId).pop();
+    if (last?.turnId) await this.editMessage(last.turnId, last.text ?? "");
+  }
+
+  /** Copy an answer's Markdown source. */
+  copyAnswer(text: string): void {
+    void navigator.clipboard.writeText(text).then(
+      () => new Notice("Copied"),
+      () => new Notice("Couldn't copy the answer."),
+    );
+  }
+
   private async handleUserMessage(
     text: string,
     selection: SelectionScope | null,
-    images: ImageAttachment[] = []
+    images: ImageAttachment[] = [],
+    turnId: string = newTurnId()
   ): Promise<void> {
     if (this.running) {
       new Notice("Please wait for the current response to complete.");
@@ -166,9 +214,11 @@ export class ObsidianChatView extends ItemView {
     const history = this.plugin.chatHistory;
 
     this.running = true;
-    chat.addUserMessage(text, images);
-    history.push({ type: "user", text, images });
+    const turn = ++this.turnCount;
+    chat.addUserMessage(text, images, turnId, selection ?? undefined);
+    history.push({ type: "user", text, images, turnId, ...(selection ? { selection } : {}) });
     chat.setInputEnabled(false);
+    chat.setBusy(true);
 
     const toolCallIds = new Map<string, number>();
     this.streaming = null;
@@ -185,7 +235,7 @@ export class ObsidianChatView extends ItemView {
             this.streaming.text += delta;
             chat.updateAssistantMessage(this.streaming.id, this.streaming.text);
           } else {
-            this.streaming = { id: chat.addAssistantMessage(delta), text: delta };
+            this.streaming = { id: chat.addAssistantMessage(delta, true), text: delta };
           }
         },
         onToolCall: (name, input) => {
@@ -227,17 +277,22 @@ export class ObsidianChatView extends ItemView {
           chat.addError(error);
           history.push({ type: "error", text: error });
         },
-      }, selection, images);
+      }, selection, images, turnId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       chat.addError(`Unexpected error: ${msg}`);
       history.push({ type: "error", text: `Unexpected error: ${msg}` });
     } finally {
-      this.running = false;
-      chat.setInputEnabled(true);
-      chat.focus();
-      // Persist after each turn
-      void this.plugin.saveChatHistory();
+      // A stopped turn can end after a newer one has started (edit, or Stop
+      // and send again); only the latest turn ends the running state.
+      if (turn === this.turnCount) {
+        this.running = false;
+        chat.setInputEnabled(true);
+        chat.setBusy(false);
+        chat.focus();
+        // Persist after each turn
+        void this.plugin.saveChatHistory();
+      }
     }
   }
 
@@ -257,14 +312,21 @@ export class ObsidianChatView extends ItemView {
     }
   }
 
-  private handleStop(): void {
+  /** Stops the running turn; text already shown stays. */
+  private stopTurn(): void {
     this.plugin.agent.abort();
     this.endStream(true);
     this.running = false;
+    this.chatContainer?.cancelAskUser();
+    this.chatContainer?.hideThinking();
+  }
+
+  private handleStop(): void {
+    this.stopTurn();
     const chat = this.chatContainer;
     if (chat) {
-      chat.hideThinking();
       chat.setInputEnabled(true);
+      chat.setBusy(false);
       chat.focus();
     }
     void this.plugin.saveChatHistory();
@@ -277,7 +339,9 @@ export class ObsidianChatView extends ItemView {
     this.plugin.chatHistory = [];
     this.chatContainer?.clearMessages();
     this.running = false;
+    this.chatContainer?.cancelAskUser();
     this.chatContainer?.setInputEnabled(true);
+    this.chatContainer?.setBusy(false);
     // Clear persisted state
     void this.plugin.saveChatHistory();
   }

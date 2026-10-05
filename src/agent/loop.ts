@@ -15,7 +15,7 @@ import { TOOL_DEFINITIONS } from "../tools/registry";
 import { executeTool } from "../tools/executor";
 import { buildContext } from "./context";
 import { buildSystemPrompt, buildContextMessage } from "./system-prompt";
-import { trimHistory } from "./history";
+import { trimHistory, cutBeforeTurn, newTurnId } from "./history";
 import { PLUGIN_ID } from "../plugin-id";
 
 const MAX_CONVERSATION_LENGTH = 50;
@@ -89,6 +89,16 @@ export class AgentLoop {
     this.aborted = false;
     clearOpenAIState();
     clearChatGPTOAuthState();
+  }
+
+  /**
+   * Stop a running turn and cut the history to just before the turn
+   * `turnId` (editing a message, regenerating). The cut history is
+   * a new array, so OpenAI replays it in full instead of chaining.
+   */
+  cutBeforeTurn(turnId: string): void {
+    this.abort();
+    this.messages = cutBeforeTurn(this.messages, turnId);
   }
 
   /** Export API messages for persistence */
@@ -167,12 +177,13 @@ export class AgentLoop {
     return parts.join("\n");
   }
 
-  /** Run one user turn through the agentic loop */
+  /** Run one user turn through the agentic loop; `turnId` marks where it starts. */
   async run(
     userMessage: string,
     callbacks: AgentCallbacks,
     selection?: SelectionScope | null,
-    images: ImageAttachment[] = []
+    images: ImageAttachment[] = [],
+    turnId: string = newTurnId()
   ): Promise<void> {
     this.aborted = false;
     const version = ++this.runVersion;
@@ -212,7 +223,7 @@ export class AgentLoop {
           { type: "text", text: fullMessage },
         ]
       : fullMessage;
-    this.messages.push({ role: "user", content });
+    this.messages.push({ role: "user", content, turnId });
 
     // Prune if conversation is too long
     this.pruneHistory();

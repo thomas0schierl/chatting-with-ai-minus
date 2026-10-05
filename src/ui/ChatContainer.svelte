@@ -22,6 +22,11 @@
     toolName?: string;
     toolInput?: Record<string, unknown>;
     toolResult?: ToolResult;
+    /** User messages of a turn (not `ask_user` answers): editable. */
+    turnId?: string;
+    selection?: SelectionScope;
+    /** Assistant messages: text still arriving (no actions yet). */
+    streaming?: boolean;
   }
 
   interface Props {
@@ -32,9 +37,12 @@
     onSend: (text: string, selection: SelectionScope | null, images: ImageAttachment[]) => void;
     onClear: () => void;
     onStop: () => void;
+    onEdit: (turnId: string, text: string) => void;
+    onRegenerate: () => void;
+    onCopy: (text: string) => void;
   }
 
-  let { app, component, provider, model, onSend, onClear, onStop }: Props = $props();
+  let { app, component, provider, model, onSend, onClear, onStop, onEdit, onRegenerate, onCopy }: Props = $props();
 
   let displayModel = $state("");
   let messages = $state<ChatMessage[]>([]);
@@ -46,6 +54,22 @@
   let fileInputEl: HTMLInputElement | undefined = $state();
   let attachments = $state<ImageAttachment[]>([]);
   let nextId = 0;
+  /** A turn is running (set by the view); regenerate waits for it. */
+  let busy = $state(false);
+
+  // Editing a user message in place
+  let editingId = $state<number | null>(null);
+  let editText = $state("");
+
+  /** The last answer (no user turn after it): the one that can be regenerated. */
+  const lastAnswerId = $derived.by(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.type === "assistant") return msg.id;
+      if (msg.type === "user" && msg.turnId) return -1;
+    }
+    return -1;
+  });
 
   // Selection scope (shown as a pill above input)
   let selection = $state<SelectionScope | null>(null);
@@ -136,13 +160,18 @@
 
   // ─── Public API (called from chat-view.ts / chat-modal.ts) ────────────
 
-  export function addUserMessage(text: string, images: ImageAttachment[] = []): void {
-    messages.push({ id: nextId++, type: "user", text, images: images.slice() });
+  export function addUserMessage(
+    text: string,
+    images: ImageAttachment[] = [],
+    turnId?: string,
+    selection?: SelectionScope,
+  ): void {
+    messages.push({ id: nextId++, type: "user", text, images: images.slice(), turnId, selection });
   }
 
-  export function addAssistantMessage(text: string): number {
+  export function addAssistantMessage(text: string, streaming = false): number {
     const id = nextId++;
-    messages.push({ id, type: "assistant", text });
+    messages.push({ id, type: "assistant", text, streaming });
     return id;
   }
 
@@ -154,8 +183,13 @@
   /** Replace an assistant message's text; `final` renders it at once. */
   export function updateAssistantMessage(id: number, text: string, final = false): void {
     pendingText.set(id, text);
-    if (final) flushPendingText();
-    else renderTimer ??= window.setTimeout(flushPendingText, STREAM_RENDER_MS);
+    if (final) {
+      flushPendingText();
+      const msg = messages.find((m) => m.id === id);
+      if (msg) msg.streaming = false;
+    } else {
+      renderTimer ??= window.setTimeout(flushPendingText, STREAM_RENDER_MS);
+    }
   }
 
   function flushPendingText(): void {
@@ -172,6 +206,15 @@
     pendingText.delete(id);
     const idx = messages.findIndex((m) => m.id === id);
     if (idx !== -1) messages.splice(idx, 1);
+  }
+
+  /** Remove the turn `turnId` and everything after it (edit, regenerate). */
+  export function cutMessages(turnId: string): void {
+    const idx = messages.findIndex((m) => m.type === "user" && m.turnId === turnId);
+    if (idx === -1) return;
+    for (const msg of messages.slice(idx)) pendingText.delete(msg.id);
+    messages.splice(idx);
+    editingId = null;
   }
 
   export function addToolCall(name: string, input: Record<string, unknown>): number {
@@ -221,9 +264,21 @@
     placeholder = enabled ? "Ask anything..." : "Waiting for response...";
   }
 
+  export function setBusy(value: boolean): void {
+    busy = value;
+  }
+
+  /** Drop a pending `ask_user` question (its turn was stopped). */
+  export function cancelAskUser(): void {
+    const resolve = askUserResolve;
+    askUserResolve = null;
+    resolve?.("");
+  }
+
   export function clearMessages(): void {
     pendingText.clear();
     messages = [];
+    editingId = null;
     attachments = [];
     if (fileInputEl) fileInputEl.value = "";
     selection = null;
@@ -290,6 +345,47 @@
       e.preventDefault();
       handleSend();
     }
+  }
+
+  function startEdit(msg: ChatMessage): void {
+    editingId = msg.id;
+    editText = msg.text ?? "";
+  }
+
+  function saveEdit(msg: ChatMessage): void {
+    const text = editText.trim();
+    if (!msg.turnId || (!text && !msg.images?.length)) return;
+    editingId = null;
+    onEdit(msg.turnId, text);
+  }
+
+  function handleEditKeydown(e: KeyboardEvent, msg: ChatMessage): void {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      saveEdit(msg);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      editingId = null;
+    }
+  }
+
+  /** The edit box: focused with the cursor at the end, grows with its text. */
+  function editBox(node: HTMLTextAreaElement) {
+    const grow = () => {
+      node.style.height = "auto";
+      node.style.height = Math.min(node.scrollHeight, 300) + "px";
+    };
+    node.addEventListener("input", grow);
+    grow();
+    node.focus();
+    node.setSelectionRange(node.value.length, node.value.length);
+    return {
+      destroy() {
+        node.removeEventListener("input", grow);
+      },
+    };
   }
 
   function autoGrow(): void {
@@ -485,22 +581,91 @@
     <div class="chatting-minus-message-list" bind:this={messageListEl}>
     {#each messages as msg (msg.id)}
       {#if msg.type === "user"}
-        <div class="chatting-minus-msg chatting-minus-user-msg">
-          {#if msg.images?.length}
-            <div class="chatting-minus-user-images">
-              {#each msg.images as image (image.id)}
-                <img src={imageDataUrl(image)} alt={image.fileName} />
-              {/each}
+        <div class="chatting-minus-user-turn" class:chatting-minus-editing={editingId === msg.id}>
+          {#if editingId === msg.id}
+            <div class="chatting-minus-msg chatting-minus-user-msg chatting-minus-user-edit">
+              {#if msg.images?.length}
+                <div class="chatting-minus-user-images">
+                  {#each msg.images as image (image.id)}
+                    <img src={imageDataUrl(image)} alt={image.fileName} />
+                  {/each}
+                </div>
+              {/if}
+              {#if msg.selection}
+                <div class="chatting-minus-edit-note">Selection from {msg.selection.filePath.split("/").pop()}</div>
+              {/if}
+              <textarea
+                class="chatting-minus-edit-input"
+                bind:value={editText}
+                use:editBox
+                rows="1"
+                aria-label="Edit message"
+                onkeydown={(e) => handleEditKeydown(e, msg)}
+              ></textarea>
+              <div class="chatting-minus-edit-note">Changes the AI already made to notes stay.</div>
+              <div class="chatting-minus-edit-buttons">
+                <button type="button" onclick={() => editingId = null}>Cancel</button>
+                <button type="button" class="mod-cta" onclick={() => saveEdit(msg)}>Save</button>
+              </div>
             </div>
-          {/if}
-          {#if msg.text}
-            <div class="chatting-minus-msg-content">{msg.text}</div>
+          {:else}
+            <div class="chatting-minus-msg chatting-minus-user-msg">
+              {#if msg.images?.length}
+                <div class="chatting-minus-user-images">
+                  {#each msg.images as image (image.id)}
+                    <img src={imageDataUrl(image)} alt={image.fileName} />
+                  {/each}
+                </div>
+              {/if}
+              {#if msg.text}
+                <div class="chatting-minus-msg-content">{msg.text}</div>
+              {/if}
+            </div>
+            {#if msg.turnId}
+              <div class="chatting-minus-msg-actions chatting-minus-hover-actions">
+                <button
+                  class="chatting-minus-action-btn"
+                  type="button"
+                  onclick={() => startEdit(msg)}
+                  aria-label="Edit message"
+                  title="Edit"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+                </button>
+              </div>
+            {/if}
           {/if}
         </div>
 
       {:else if msg.type === "assistant"}
-        <div class="chatting-minus-msg chatting-minus-assistant-msg">
-          <div class="chatting-minus-msg-content" use:markdown={msg.text ?? ""}></div>
+        <div class="chatting-minus-answer">
+          <div class="chatting-minus-msg chatting-minus-assistant-msg">
+            <div class="chatting-minus-msg-content" use:markdown={msg.text ?? ""}></div>
+          </div>
+          {#if !msg.streaming}
+            <div class="chatting-minus-msg-actions" class:chatting-minus-hover-actions={msg.id !== lastAnswerId}>
+              <button
+                class="chatting-minus-action-btn"
+                type="button"
+                onclick={() => onCopy(msg.text ?? "")}
+                aria-label="Copy answer"
+                title="Copy"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              </button>
+              {#if msg.id === lastAnswerId && !busy}
+                <button
+                  class="chatting-minus-action-btn"
+                  type="button"
+                  onclick={onRegenerate}
+                  aria-label="Regenerate answer"
+                  title="Regenerate"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"></path><polyline points="21 3 21 8 16 8"></polyline></svg>
+                </button>
+              {/if}
+            </div>
+          {/if}
         </div>
 
       {:else if msg.type === "tool-call"}
@@ -720,6 +885,115 @@
     background: var(--interactive-accent);
     color: var(--text-on-accent);
     border-bottom-right-radius: var(--radius-s);
+  }
+
+  /* A user message with its edit action, or its edit box */
+  .chatting-minus-user-turn {
+    align-self: flex-end;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    max-width: 90%;
+  }
+
+  .chatting-minus-user-turn.chatting-minus-editing {
+    width: 90%;
+  }
+
+  .chatting-minus-user-turn > .chatting-minus-msg,
+  .chatting-minus-answer > .chatting-minus-msg {
+    max-width: 100%;
+  }
+
+  .chatting-minus-user-edit {
+    width: 100%;
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    border: 1px solid var(--interactive-accent);
+    border-bottom-right-radius: var(--radius-m);
+  }
+
+  .chatting-minus-edit-input {
+    width: 100%;
+    resize: none;
+    max-height: 300px;
+    padding: 6px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-family: var(--font-interface);
+    font-size: var(--font-ui-medium);
+    line-height: 1.4;
+  }
+
+  .chatting-minus-edit-note {
+    margin: 4px 0;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+  }
+
+  .chatting-minus-edit-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  /* An answer with its action row */
+  .chatting-minus-answer {
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    max-width: 90%;
+  }
+
+  /* ─── Message actions (edit, copy, regenerate) ──────────────────────── */
+  .chatting-minus-msg-actions {
+    display: flex;
+    gap: 2px;
+    margin-top: 2px;
+  }
+
+  .chatting-minus-action-btn {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-s);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .chatting-minus-action-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
+
+  /* With a mouse, these appear on hover; on touch screens they stay visible. */
+  @media (hover: hover) and (pointer: fine) {
+    .chatting-minus-hover-actions {
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .chatting-minus-user-turn:hover .chatting-minus-hover-actions,
+    .chatting-minus-answer:hover .chatting-minus-hover-actions,
+    .chatting-minus-hover-actions:focus-within {
+      opacity: 1;
+    }
+  }
+
+  @media (hover: none) {
+    .chatting-minus-action-btn {
+      width: 32px;
+      height: 32px;
+    }
   }
 
   .chatting-minus-user-images {
@@ -1075,8 +1349,18 @@
 
   /* ─── Responsive ────────────────────────────────────────────────────── */
   @media (max-width: 768px) {
-    .chatting-minus-msg {
+    .chatting-minus-msg,
+    .chatting-minus-user-turn,
+    .chatting-minus-answer {
       max-width: 95%;
+    }
+
+    .chatting-minus-user-turn.chatting-minus-editing {
+      width: 95%;
+    }
+
+    .chatting-minus-edit-input {
+      font-size: 16px; /* Prevents iOS zoom on focus */
     }
 
     .chatting-minus-input-bar {
