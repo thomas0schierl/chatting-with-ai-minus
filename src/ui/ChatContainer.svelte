@@ -257,81 +257,69 @@
     window.open(USAGE_URL, "_blank");
   }
 
-  // ─── Scrolling: the latest question stays at the top ──────────────────
-  // When a question is added, it is scrolled to the top of the message
-  // area and the answer reads downward from it (like chat apps). Temporary
-  // bottom padding (the "tail") makes that position reachable while the
-  // content below is still short; it shrinks as the answer grows. Once the
-  // user scrolls by hand, the position is left alone until the next question.
-  // Adapted from scrollToLastQuestion() in nagisa525/obsidian-chatting-plus (MIT).
-  const MESSAGES_PADDING = 12; // matches .chatting-minus-messages padding
+  // ─── Scrolling: stick to the bottom, like a chat ──────────────────────
+  // While the user is at the bottom, new messages and a streaming answer
+  // keep the view there. Scrolling up stops that; back at the bottom it
+  // follows again. Sending a question always brings the view down. While
+  // scrolled up, a button jumps back to the bottom.
+  /** Pixels from the bottom that still count as "at the bottom". */
+  const BOTTOM_SLACK = 32;
   let messageListEl: HTMLElement | undefined = $state();
-  let anchoredQuestionId = -1;
-  let followQuestion = false;
-  let scrollTail = 0;
+  let stickToBottom = true;
+  let showJump = $state(false);
+  let lastQuestionId = -1;
 
-  // A new question starts a new turn.
-  $effect(() => {
-    let lastQuestionId = -1;
-    for (const msg of messages) if (msg.type === "user") lastQuestionId = msg.id;
-    if (lastQuestionId !== anchoredQuestionId) {
-      anchoredQuestionId = lastQuestionId;
-      followQuestion = true;
+  function isAtBottom(el: HTMLElement): boolean {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK;
+  }
+
+  /** Follow new content while sticking to the bottom; otherwise offer the jump button. */
+  function followBottom(): void {
+    const el = messagesEl;
+    if (!el) return;
+    if (stickToBottom) {
+      el.scrollTop = el.scrollHeight;
+      showJump = false;
+    } else if (!isAtBottom(el)) {
+      showJump = true;
     }
-    keepQuestionInView();
+  }
+
+  function jumpToBottom(): void {
+    stickToBottom = true;
+    followBottom();
+  }
+
+  // A new question (sent, or the history shown anew) brings the view down.
+  $effect(() => {
+    let lastId = -1;
+    for (const msg of messages) if (msg.type === "user") lastId = msg.id;
+    if (lastId !== lastQuestionId) {
+      lastQuestionId = lastId;
+      stickToBottom = true;
+    }
+    followBottom();
   });
 
-  // Rendered Markdown, math, images and a resized panel or phone keyboard
-  // change heights after the messages do.
+  // Streamed text, rendered Markdown, math, images and a resized panel or
+  // phone keyboard change heights after the messages do.
   $effect(() => {
     const el = messagesEl;
     if (!el || !messageListEl) return;
-    const observer = new ResizeObserver(() => keepQuestionInView());
+    const observer = new ResizeObserver(() => followBottom());
     observer.observe(el, { box: "border-box" });
     observer.observe(messageListEl);
-    const stopFollowing = () => {
-      followQuestion = false;
+    // Any scroll (wheel, touch, scrollbar, keys) decides whether to follow.
+    const onScroll = () => {
+      stickToBottom = isAtBottom(el);
+      showJump = !stickToBottom;
     };
-    const stopOnScrollbar = (e: PointerEvent) => {
-      if (e.target === el) stopFollowing();
-    };
-    const stopOnScrollKey = (e: KeyboardEvent) => {
-      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(e.key)) stopFollowing();
-    };
-    el.addEventListener("wheel", stopFollowing, { passive: true });
-    el.addEventListener("touchmove", stopFollowing, { passive: true });
-    el.addEventListener("pointerdown", stopOnScrollbar);
-    el.addEventListener("keydown", stopOnScrollKey);
+    el.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       observer.disconnect();
-      el.removeEventListener("wheel", stopFollowing);
-      el.removeEventListener("touchmove", stopFollowing);
-      el.removeEventListener("pointerdown", stopOnScrollbar);
-      el.removeEventListener("keydown", stopOnScrollKey);
+      el.removeEventListener("scroll", onScroll);
     };
   });
-
-  function keepQuestionInView(): void {
-    const el = messagesEl;
-    if (!el || !messageListEl) return;
-    const questions = el.querySelectorAll<HTMLElement>(".chatting-minus-user-msg");
-    const question = questions.item(questions.length - 1);
-    let tail = 0;
-    let target = 0;
-    if (question) {
-      // Positions in scroll coordinates; scrollHeight can't be used because
-      // it never drops below the visible height.
-      const top = el.getBoundingClientRect().top - el.scrollTop;
-      target = Math.max(0, Math.round(question.getBoundingClientRect().top - top - MESSAGES_PADDING));
-      const contentHeight = messageListEl.getBoundingClientRect().bottom - top + MESSAGES_PADDING;
-      if (target > 0) tail = Math.max(0, Math.ceil(target - (contentHeight - el.clientHeight)));
-    }
-    if (tail !== scrollTail) {
-      scrollTail = tail;
-      el.style.setProperty("--chatting-minus-scroll-tail", `${tail}px`);
-    }
-    if (question && followQuestion) el.scrollTop = target;
-  }
 
   // ─── Public API (called from chat-view.ts) ────────────────────────────
 
@@ -1010,6 +998,12 @@
       {/if}
     {/each}
     </div>
+    {#if showJump}
+      <!-- Scrolled up: back to the latest message (sticks to the view's bottom edge) -->
+      <button class="chatting-minus-jump-btn" type="button" onclick={jumpToBottom} aria-label="Scroll to the latest message" title="Scroll to the latest message">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+      </button>
+    {/if}
   </div>
 
   <!-- Selection pill -->
@@ -1393,10 +1387,33 @@
     flex: 1 1 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    /* The tail lets the latest question scroll to the top (see keepQuestionInView). */
-    padding: 12px 12px calc(12px + var(--chatting-minus-scroll-tail, 0px));
+    padding: 12px;
     -webkit-user-select: text;
     user-select: text;
+  }
+
+  /* Round "to the latest message" button, stuck to the bottom edge of the view */
+  .chatting-minus-jump-btn {
+    position: sticky;
+    bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin: 8px auto 0;
+    padding: 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 50%;
+    background: var(--background-primary);
+    color: var(--text-muted);
+    box-shadow: var(--shadow-s);
+    cursor: pointer;
+    animation: chatting-minus-pop 200ms ease-out;
+  }
+
+  .chatting-minus-jump-btn:hover {
+    color: var(--text-normal);
   }
 
   .chatting-minus-message-list {
