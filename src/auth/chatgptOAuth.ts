@@ -13,6 +13,10 @@
  *      JWKS, then claims) and the plan scope, store tokens.
  *   4. getUsableCredential() refreshes near expiry; signOut() revokes.
  *
+ * "Use another account" registers anew (`dynamic_agent_client`, same host
+ * ID); the connected account stays until the new one is validated.
+ * "Allow ChatGPT plan use" repeats the sign-in with `prompt=consent`.
+ *
  * The pending attempt is saved in SecretStorage, so the paste still works
  * after a phone killed Obsidian while the user was in the browser.
  *
@@ -53,10 +57,18 @@ const TERMINAL_REFRESH_ERRORS = ["invalid_grant", "invalid_refresh_token", "toke
   "refresh_token_expired", "refresh_token_invalidated", "refresh_token_reused"];
 
 export class ChatGPTOAuthError extends Error {
-  constructor(message: string) {
+  /** `planNotAllowed`: plan use was declined; a sign-in with `consent` can ask again. */
+  constructor(message: string, readonly planNotAllowed = false) {
     super(message);
     this.name = "ChatGPTOAuthError";
   }
+}
+
+export interface SignInOptions {
+  /** Register a new client for another ChatGPT account. */
+  newAccount?: boolean;
+  /** Ask again for plan use (`prompt=consent`), after it was declined. */
+  consent?: boolean;
 }
 
 /**
@@ -129,7 +141,7 @@ export function parseCallback(input: string, pending: PendingSignIn): { code: st
   }
   const error = params.get("error");
   if (error === "access_denied") {
-    throw new ChatGPTOAuthError("Sign-in was cancelled, or use of your ChatGPT plan was declined.");
+    throw new ChatGPTOAuthError("Sign-in was cancelled, or use of your ChatGPT plan was declined.", true);
   }
   if (error) {
     throw new ChatGPTOAuthError(`Sign-in failed: ${params.get("error_description") || error}`);
@@ -235,13 +247,15 @@ export class ChatGPTOAuthService {
 
   /**
    * The current authorization attempt, or a new one (fresh PKCE, state,
-   * nonce and port) if there is none or it is over 10 minutes old.
+   * nonce and port) if there is none, it is over 10 minutes old, or it was
+   * started with other options.
    */
-  beginSignIn(): PendingSignIn {
-    const current = this.currentAttempt();
-    if (current) return current;
+  beginSignIn(options: SignInOptions = {}): PendingSignIn {
     const registration = this.store.getRegistration();
-    const clientId = registration.clientId ?? NEW_REGISTRATION_CLIENT_ID;
+    const clientId = options.newAccount ? NEW_REGISTRATION_CLIENT_ID : registration.clientId ?? NEW_REGISTRATION_CLIENT_ID;
+    const consent = options.consent === true;
+    const current = this.currentAttempt();
+    if (current && current.clientId === clientId && (current.consent === true) === consent) return current;
     const port = PORT_MIN + Math.floor(Math.random() * (PORT_MAX - PORT_MIN + 1));
     const redirectUri = `http://127.0.0.1:${port}${CALLBACK_PATH}`;
     const state = randomToken();
@@ -262,10 +276,13 @@ export class ChatGPTOAuthService {
     // The name hint belongs only to the first registration.
     if (clientId === NEW_REGISTRATION_CLIENT_ID) params.set("agent_name_hint", AGENT_NAME);
     else if (registration.email) params.set("login_hint", registration.email);
+    // OAuth `prompt`; OpenAI's `force_reconsent` replaces it once rolled out.
+    if (consent) params.set("prompt", "consent");
     this.pending = {
       url: `${AUTHORIZE_URL}?${params.toString()}`,
       state, nonce, codeVerifier, redirectUri, clientId,
       createdAt: Date.now(),
+      ...(consent ? { consent } : {}),
     };
     this.store.setPending(this.pending);
     return this.pending;
@@ -293,8 +310,12 @@ export class ChatGPTOAuthService {
     // them the ID token can't be verified, and the attempt stays open.
     await this.loadSigningKeys(false);
     const registration = this.store.getRegistration();
-    // Keep the issued client ID even if the exchange fails: retries reuse it.
-    if (registration.clientId !== clientId) this.store.setRegistration({ ...registration, clientId });
+    const newRegistration = pending.clientId === NEW_REGISTRATION_CLIENT_ID;
+    // Switching accounts: the connected one stays until the new one is validated.
+    const previous = newRegistration ? this.store.get() : null;
+    // Otherwise keep the issued client ID at once, even if the exchange
+    // fails: retries reuse it. The new client belongs to an account not yet known.
+    if (newRegistration && !previous) this.store.setRegistration({ hostId: registration.hostId, clientId });
 
     const response = await postForm(TOKEN_URL, {
       grant_type: "authorization_code",
@@ -314,15 +335,19 @@ export class ChatGPTOAuthService {
     const tokens = readJson(response) as TokenResponse | undefined;
     await this.verifySignature(tokens?.id_token);
     const claims = validateIdToken(tokens?.id_token, clientId, pending.nonce);
-    if (registration.subject && registration.subject !== claims.sub) {
-      throw new ChatGPTOAuthError("This is a different ChatGPT account than the one registered on this device.");
+    // An issued client is bound to its account.
+    if (!newRegistration && registration.subject && registration.subject !== claims.sub) {
+      throw new ChatGPTOAuthError("This is a different ChatGPT account than the one registered on this device. To connect it, choose \"Use another account\".");
     }
     const credential = this.toCredential(tokens, claims.sub, claims.email);
+    const identity = { hostId: registration.hostId, clientId, subject: claims.sub, ...(claims.email ? { email: claims.email } : {}) };
     if (!credential.scopes.includes(PLAN_SCOPE)) {
-      throw new ChatGPTOAuthError("Use of your ChatGPT plan wasn't allowed. Continue with ChatGPT again and allow it.");
+      if (!previous) this.store.setRegistration(identity);
+      throw new ChatGPTOAuthError("Use of your ChatGPT plan wasn't allowed.", true);
     }
-    this.store.setRegistration({ ...this.store.getRegistration(), clientId, subject: claims.sub,
-      ...(claims.email ? { email: claims.email } : {}) });
+    // Replace the previous account: end its session (best effort).
+    if (previous && registration.clientId) await revoke(previous.refreshToken, registration.clientId);
+    this.store.setRegistration(identity);
     this.store.set(credential);
     return credential;
   }

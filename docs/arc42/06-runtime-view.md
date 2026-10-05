@@ -162,6 +162,23 @@ OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
 6. **Disconnect:** `signOut()` revokes the refresh token (one retry after
    a network error or 5xx), then clears the tokens. The host and client ID
    stay for the next sign-in.
+7. **Use another account** (account row, or the link in the sign-in
+   modal): `beginSignIn({ newAccount: true })` registers anew with
+   `dynamic_agent_client` and `agent_name_hint`, under the same host ID
+   (it names the device, not the account; OpenAI keeps it when switching).
+   - A connected account stays until the new one is validated; then its
+     refresh token is revoked and registration and credential are
+     replaced.
+   - Without a connected account, the issued client ID is saved at once.
+   - A returning sign-in (issued client) with another `sub` is still
+     refused: an issued client is bound to its account.
+   - Only one registration is kept; switching back registers that account
+     anew.
+8. **Plan use declined:** `error=access_denied`, or a token response
+   without `chatgpt.tokens.use.direct`, offers *Try again and allow
+   ChatGPT plan use*: a new attempt with the full scope set and
+   `prompt=consent` (OpenAI's `force_reconsent=true` replaces it once
+   rolled out). Ordinary sign-ins never force consent.
 
 ## Model list refresh (`api/model-catalog.ts`)
 

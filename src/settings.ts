@@ -2,7 +2,14 @@ import { App, Modal, Notice, PluginSettingTab, Setting, requireApiVersion, type 
 import type ChatPlugin from "./main";
 import type { Provider } from "./types";
 import { DEFAULT_PROVIDER_MODELS } from "./types";
-import { USAGE_URL, type ChatGPTOAuthService } from "./auth/chatgptOAuth";
+import {
+  ChatGPTOAuthError,
+  NEW_REGISTRATION_CLIENT_ID,
+  USAGE_URL,
+  type ChatGPTOAuthService,
+  type PendingSignIn,
+  type SignInOptions,
+} from "./auth/chatgptOAuth";
 
 import { type ModelOption, type CatalogState, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
 
@@ -250,6 +257,9 @@ export class ChatSettingTab extends PluginSettingTab {
         .addButton((button) => button.setButtonText("Manage usage").onClick(() => {
           window.open(USAGE_URL, "_blank");
         }))
+        .addButton((button) => button.setButtonText("Use another account").onClick(() => {
+          new ChatGPTSignInModal(this.app, this.plugin.chatgptOAuth, () => this.refreshSettingsTab(), { newAccount: true }).open();
+        }))
         .addButton((button) => {
           button
             .setButtonText("Disconnect")
@@ -470,6 +480,7 @@ class ChatGPTSignInModal extends Modal {
     app: App,
     private readonly oauth: ChatGPTOAuthService,
     private readonly onComplete: () => void,
+    private options: SignInOptions = {},
   ) {
     super(app);
   }
@@ -488,22 +499,39 @@ class ChatGPTSignInModal extends Modal {
   }
 
   onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
     this.containerEl.querySelector(".modal-bg")?.addEventListener("pointerdown", () => {
       this.backgroundPressed = true;
       // Clear it if the press didn't turn into a close request.
       window.setTimeout(() => { this.backgroundPressed = false; }, 500);
     }, { capture: true });
-    const pending = this.oauth.beginSignIn();
-    new Setting(contentEl).setName("Continue with ChatGPT").setHeading();
+    this.render();
+  }
+
+  /** The attempt for the current options: the same one until it is used or 10 minutes old. */
+  private attempt(): PendingSignIn {
+    return this.oauth.beginSignIn(this.options);
+  }
+
+  private render(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    const pending = this.attempt();
+    new Setting(contentEl).setName(this.options.newAccount ? "Use another ChatGPT account" : "Continue with ChatGPT").setHeading();
+    if (this.options.newAccount && this.oauth.getCredential()) {
+      contentEl.createEl("p", { text: "Sign in with the other account. The current account stays connected until then." });
+    }
+    if (this.options.consent) {
+      contentEl.createEl("p", { text: "On the sign-in page, allow use of your ChatGPT plan." });
+    }
 
     const step1 = contentEl.createEl("p", { text: "1. Sign in on the " });
-    step1.createEl("a", { text: "sign-in page", href: pending.url });
+    const link = step1.createEl("a", { text: "sign-in page", href: pending.url });
+    // An expired attempt is replaced when the page is opened.
+    link.addEventListener("click", () => { link.href = this.attempt().url; });
     step1.appendText(".");
     const open = contentEl.createEl("button", { text: "Open sign-in page", cls: "mod-cta" });
     open.addEventListener("click", () => {
-      window.open(pending.url, "_blank");
+      window.open(this.attempt().url, "_blank");
     });
 
     contentEl.createEl("p", {
@@ -516,9 +544,17 @@ class ChatGPTSignInModal extends Modal {
     });
     const status = contentEl.createEl("p", { cls: "chatting-minus-signin-error" });
     const connect = contentEl.createEl("button", { text: "Connect", cls: "mod-cta" });
+    const consent = contentEl.createEl("button", { text: "Try again and allow ChatGPT plan use" });
+    consent.hide();
+    consent.addEventListener("click", () => {
+      this.options = { ...this.options, consent: true };
+      this.render();
+      window.open(this.attempt().url, "_blank");
+    });
     connect.addEventListener("click", () => {
       connect.disabled = true;
       status.setText("");
+      consent.hide();
       this.oauth.completeSignIn(input.value)
         .then(() => {
           new Notice("ChatGPT connected. Chats now use your ChatGPT plan.");
@@ -527,9 +563,21 @@ class ChatGPTSignInModal extends Modal {
         })
         .catch((e: unknown) => {
           status.setText(e instanceof Error ? e.message : String(e));
+          if (e instanceof ChatGPTOAuthError && e.planNotAllowed) consent.show();
           connect.disabled = false;
         });
     });
+
+    // A returning sign-in reuses the registered account's client.
+    if (!this.options.newAccount && pending.clientId !== NEW_REGISTRATION_CLIENT_ID) {
+      const other = contentEl.createEl("p", { text: "A different ChatGPT account? " });
+      const switchLink = other.createEl("a", { text: "Use another account", href: "#" });
+      switchLink.addEventListener("click", (event) => {
+        event.preventDefault();
+        this.options = { ...this.options, newAccount: true };
+        this.render();
+      });
+    }
   }
 
   onClose(): void {

@@ -220,6 +220,94 @@ test('Signing keys: cached, refetched once for an unknown key ID, fail closed wh
   assert.ok(fresh.getCredential());
 });
 
+test('Re-consent: prompt=consent only on request, offered when plan use was declined', async () => {
+  const { oauth } = service();
+  const plain = oauth.beginSignIn();
+  assert.equal(new URL(plain.url).searchParams.get('prompt'), null);
+  // Declined in the browser: access_denied (state checked first).
+  await assert.rejects(oauth.completeSignIn(callbackFor(plain, { error: 'access_denied', state: plain.state })),
+    error => error.planNotAllowed === true);
+  // Signed in, but the plan scope wasn't granted.
+  await assert.rejects(signIn(oauth, pending => tokens(pending.nonce, { scope: 'openid profile email' })),
+    error => error.planNotAllowed === true && /wasn't allowed/.test(error.message));
+  // The retry asks for consent with the issued client and the full scope set.
+  const retry = oauth.beginSignIn({ consent: true });
+  const params = new URL(retry.url).searchParams;
+  assert.equal(params.get('prompt'), 'consent');
+  assert.equal(params.get('client_id'), ISSUED);
+  assert.equal(params.get('scope'), 'openid profile email offline_access resource.invoke chatgpt.tokens.use.direct');
+  assert.equal(params.get('login_hint'), 'user@example.com');
+  assert.equal(oauth.beginSignIn({ consent: true }), retry);
+  // Other errors don't offer it.
+  await assert.rejects(signIn(oauth, () => tokens('other-nonce')), error => error.planNotAllowed === false);
+});
+
+test('Use another account: new registration on the same host; the connected account stays until the new one is valid', async () => {
+  const { app, store, oauth } = service();
+  await signIn(oauth);
+  const { hostId } = store.getRegistration();
+  // A returning sign-in with another account is still refused.
+  await assert.rejects(signIn(oauth, pending => tokens(pending.nonce, { id_token: idToken(pending.nonce, { sub: 'other-sub' }) })),
+    /different ChatGPT account.*Use another account/);
+  assert.equal(oauth.getCredential().accountId, 'user-sub');
+
+  const pending = oauth.beginSignIn({ newAccount: true });
+  const params = new URL(pending.url).searchParams;
+  assert.equal(params.get('client_id'), 'dynamic_agent_client');
+  assert.equal(params.get('agent_name_hint'), 'Chatting with AI Minus');
+  assert.equal(params.get('login_hint'), null);
+  assert.equal(params.get('ext_agent_host_id'), hostId);
+  // The plain attempt isn't reused for it, and it is reused for itself.
+  assert.notEqual(pending.state, oauth.beginSignIn().state);
+  const other = oauth.beginSignIn({ newAccount: true });
+  const address = callbackFor(other, { code: 'fake-code', state: other.state, client_id: 'oaiapp_other' });
+
+  // A failed exchange keeps the connected account and its registration.
+  globalThis.__providerRequest = oauthServer(async () => ({ status: 400, json: { error: 'invalid_grant' } }));
+  await assert.rejects(oauth.completeSignIn(address), /rejected or has expired/);
+  assert.equal(oauth.getCredential().accountId, 'user-sub');
+  assert.equal(store.getRegistration().clientId, ISSUED);
+
+  const next = oauth.beginSignIn({ newAccount: true });
+  const requests = [];
+  globalThis.__providerRequest = oauthServer(async r => {
+    requests.push(r);
+    return r.url.endsWith('/oauth/token')
+      ? tokens(next.nonce, { access_token: 'fake-access-other', refresh_token: 'fake-refresh-other',
+        id_token: idToken(next.nonce, { aud: 'oaiapp_other', sub: 'other-sub', email: 'other@example.com' }) })
+      : { status: 200, text: '' };
+  });
+  await oauth.completeSignIn(callbackFor(next, { code: 'fake-code', state: next.state, client_id: 'oaiapp_other' }));
+  assert.equal(form(requests[0]).client_id, 'oaiapp_other');
+  // The previous account's session is ended with its own client.
+  assert.equal(requests[1].url, 'https://auth.openai.com/api/accounts/oauth/revoke');
+  assert.deepEqual(form(requests[1]), { token: 'fake-refresh', token_type_hint: 'refresh_token', client_id: ISSUED });
+  assert.equal(oauth.getCredential().accountId, 'other-sub');
+  assert.equal(oauth.getCredential().refreshToken, 'fake-refresh-other');
+  assert.deepEqual(store.getRegistration(), { hostId, clientId: 'oaiapp_other', subject: 'other-sub', email: 'other@example.com' });
+  assert.equal(app.secrets.get(PENDING_KEY), '');
+  // Later sign-ins reuse the new registration.
+  assert.equal(new URL(oauth.beginSignIn().url).searchParams.get('login_hint'), 'other@example.com');
+});
+
+test('Use another account after disconnecting: the issued client is saved at once, without the old account', async () => {
+  const { store, oauth } = service();
+  await signIn(oauth);
+  globalThis.__providerRequest = async () => ({ status: 200, text: '' });
+  await oauth.signOut();
+  const pending = oauth.beginSignIn({ newAccount: true });
+  globalThis.__providerRequest = oauthServer(async () => ({ status: 503, text: 'unavailable' }));
+  await assert.rejects(oauth.completeSignIn(callbackFor(pending, { code: 'fake-code', state: pending.state, client_id: 'oaiapp_other' })), /Token exchange failed/);
+  assert.deepEqual(store.getRegistration(), { hostId: store.getRegistration().hostId, clientId: 'oaiapp_other' });
+  // The retry is a returning sign-in for the new client, and any account may complete it.
+  const retry = oauth.beginSignIn();
+  assert.equal(new URL(retry.url).searchParams.get('client_id'), 'oaiapp_other');
+  globalThis.__providerRequest = oauthServer(async () => tokens(retry.nonce, { id_token: idToken(retry.nonce, { aud: 'oaiapp_other', sub: 'other-sub' }) }));
+  await oauth.completeSignIn(callbackFor(retry, { code: 'fake-code', state: retry.state }));
+  assert.equal(oauth.getCredential().accountId, 'other-sub');
+  assert.equal(store.getRegistration().subject, 'other-sub');
+});
+
 test('Refresh: issued client and resource, rotated tokens, one request at a time', async () => {
   const { store, oauth } = service();
   await signIn(oauth);

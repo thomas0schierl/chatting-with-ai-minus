@@ -13,7 +13,7 @@
 | SecretStorage `chatting-with-ai-minus-api-key-<provider>` | API key per provider | |
 | SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | ChatGPT credential (JSON): access, refresh and ID token, expiry, granted scopes, account `sub` and email | Cleared by writing `""` on disconnect or an unusable refresh token. A record without `scopes` (former Codex sign-in) is erased on its first read |
 | SecretStorage `chatting-with-ai-minus-chatgpt-sign-in` | The pending sign-in attempt (JSON): authorize URL, PKCE verifier, `state`, `nonce`, redirect URI, client ID, start time | Cleared once its code is exchanged; ignored and cleared when 10 minutes old |
-| SecretStorage `chatting-with-ai-minus-chatgpt-registration` | This device's `ext_agent_host_id` (`urn:uuid:…`), the issued client ID, the registered account's `sub` and email | Kept on disconnect. Not a secret, but per device: `data.json` syncs, and each device needs its own host ID |
+| SecretStorage `chatting-with-ai-minus-chatgpt-registration` | This device's `ext_agent_host_id` (`urn:uuid:…`), the issued client ID, the registered account's `sub` and email | Kept on disconnect; client ID, `sub` and email replaced by *Use another account*, the host ID never. Not a secret, but per device: `data.json` syncs, and each device needs its own host ID |
 | `chat-state.json` in the plugin folder | Visible history (last 100 entries) and API history (last 80 messages), including images and native replay items. Images from tools are only in the API history | Written after every turn, Stop, Clear and unload; never before it has been read at start |
 | `debug.log` in the plugin folder | Requests and errors | Only when `DEBUG = true` in `agent/loop.ts` |
 
