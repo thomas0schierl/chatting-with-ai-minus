@@ -1,84 +1,47 @@
-# Chatting with AI
+# Chatting with AI Minus: developer guide
 
-Agentic AI chat plugin for Obsidian. Simple, mobile-first, three providers (Anthropic + OpenAI + ChatGPT account sign-in).
+> **Belongs here:** commands, rules and pointers that developers and coding
+> agents need before changing code. **Elsewhere:** how the system is built
+> (→ [docs/arc42](docs/arc42/)), how to run the test scripts
+> (→ [test/README.md](test/README.md)).
 
-## Architecture
-
-```
-User Input -> Agent Loop -> API Client (requestUrl) -> Anthropic/OpenAI/Codex
-                 |                                         |
-            Tool Executor  <---  tool_use response  <------+
-                 |
-         Obsidian Vault APIs (read/edit/search/create)
-```
-
-- **API clients** use `requestUrl()` (not `fetch`) because mobile WebViews enforce CORS
-- **Anthropic** uses Messages API with adaptive thinking and prompt caching
-- **OpenAI** uses Responses API with `previous_response_id` for multi-turn
-- **ChatGPT account** uses the ChatGPT/Codex backend with Device Authorization Flow credentials in `SecretStorage`
-- **Agent loop** is provider-agnostic: send -> tools -> send -> done
-- **UI** is a single Svelte 5 component (`ChatContainer.svelte`) mounted in an `ItemView`
-
-## Project Structure
-
-```
-src/
-  main.ts                # Plugin entry: commands, views, settings, context menus
-  types.ts               # All interfaces and defaults
-  settings.ts            # PluginSettingTab with model fetching
-  api/
-    client.ts            # Dispatcher: routes to anthropic, openai, or ChatGPT OAuth adapter
-    anthropic.ts         # Messages API, adaptive thinking, cache_control
-    openai.ts            # Responses API, previous_response_id chaining
-  tools/
-    registry.ts          # 14 tool definitions (JSON Schema)
-    executor.ts          # Runs tools against Obsidian Vault APIs
-  agent/
-    loop.ts              # Core agentic loop with selection scope
-    context.ts           # Builds vault context (active file, selection)
-    system-prompt.ts     # Static system prompt (KV cache optimized)
-  ui/
-    chat-view.ts         # ItemView wrapper, mounts Svelte component
-    ChatContainer.svelte # All chat UI: messages, input, selection pill
-```
-
-## Key Patterns
-
-- **KV cache optimization**: System prompt is static (never includes dynamic context). Dynamic context (active file, selection) goes in the user message after the cached prefix.
-- **Anthropic `cache_control`**: Breakpoints on system prompt and last tool definition.
-- **Per-provider API keys**: Stored as `chatting-with-ai-api-key-anthropic` / `chatting-with-ai-api-key-openai` in `SecretStorage`.
-- **In-memory chat persistence**: `AgentLoop` and `chatHistory` live on the plugin instance, surviving view open/close cycles.
-- **Selection scope**: Injected into user message with scoping instructions. Model uses `find_replace` within selection text.
-
-## Build
+## Commands
 
 ```bash
 npm install
-npm run build          # Production
-npm run dev            # Watch mode
-npx tsc --noEmit       # Type check
+npm run dev            # build on change
+npm run build          # production build (main.js)
+npm test               # offline regression tests
+npx tsc --noEmit       # type check
 npm run svelte-check   # Svelte check
 ```
 
-## Tools
+## Rules
 
-| Tool | Obsidian API | Notes |
-|------|-------------|-------|
-| read_document | `vault.cachedRead()` | Falls back to active file if no path |
-| edit_document | `vault.process()` | Atomic read-modify-write |
-| search_vault | `getMarkdownFiles()` + `cachedRead()` | Linear scan, capped |
-| read_file | `vault.getFileByPath()` + `cachedRead()` | Any file type |
-| create_file | `vault.create()` | Auto-creates parent folders |
-| list_files | `vault.getFiles()` | Capped at 100 results |
-| rename_file | `fileManager.renameFile()` | Updates all links |
-| delete_file | `fileManager.trashFile()` | Respects user trash setting |
-| open_document | `workspace.getLeaf().openFile()` | Opens file in editor |
-| get_properties | `metadataCache.getFileCache()` | Reads YAML frontmatter |
-| set_properties | `fileManager.processFrontMatter()` | Safe YAML merge/remove |
-| get_backlinks | `metadataCache.resolvedLinks` | Finds linking notes |
-| get_current_datetime | `Date` | User's locale and timezone |
-| ask_user | UI callback | Pauses agent loop |
+- **Mobile parity:** use `requestUrl()` for HTTP, never `fetch`; no Node
+  modules, no streaming. Read `response.json` inside `try`.
+- **Secrets:** API keys and tokens go only to `SecretStorage`, never to
+  `data.json`, logs or chat history.
+- **System prompt stays static:** per-turn context goes into the user
+  message.
+- **No guessing from model names:** take capabilities from the provider's
+  model catalog.
+- **Settings repairs run once:** add a versioned migration, never a check
+  that rewrites user data on every load.
+- **KISS:** prefer the smallest change; no new providers, frameworks or
+  abstractions without an ADR.
 
-## Debug
+## Where things are
 
-Set `DEBUG = true` in `src/agent/loop.ts` to write API calls and errors to `<vault-config-dir>/plugins/chatting-with-ai/debug.log`.
+- Module map: [arc42 §5](docs/arc42/05-building-block-view.md)
+- Flows (sending a message, login, model lists): [arc42 §6](docs/arc42/06-runtime-view.md)
+- Persistence, errors, logging: [arc42 §8](docs/arc42/08-crosscutting-concepts.md)
+- Known gaps to fix: [arc42 §11](docs/arc42/11-risks-and-technical-debt.md)
+
+## Documentation
+
+- Put each fact in the document that owns it ([docs/README.md](docs/README.md)).
+- Start every new document with a sentence saying what belongs in it.
+- Record decisions that are hard to reverse as an ADR in
+  [arc42 §9](docs/arc42/09-architecture-decisions.md).
+- Fixing a technical-debt item deletes its file and its row in §11.

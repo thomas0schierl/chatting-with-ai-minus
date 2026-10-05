@@ -1,0 +1,47 @@
+# 1. Introduction and goals
+
+> **Belongs here:** what the plugin is for, its main features, its top
+> quality goals and who cares about it. **Elsewhere:** how features are
+> built (→ [5](05-building-block-view.md)), how to install and use it
+> (→ [README](../../README.md)).
+
+## Purpose
+
+Chatting with AI Minus is an Obsidian plugin for chatting with an AI that
+can read, search, create and edit notes in the vault through tools. It runs
+the same on desktop, iOS and Android.
+
+It is a fork of [Chatting with AI](https://github.com/o1xhack/obsidian-chatting)
+(o1xhack), which derives from [Obsidian Chat](https://github.com/omarshahine/obsidian-chat)
+(Omar Shahine). The fork keeps the feature set small and the code simple.
+
+## Main features
+
+- Chat in a side panel, with three providers: Anthropic (API key), OpenAI
+  (API key) and ChatGPT account sign-in (Codex backend).
+- 14 vault tools: read, search, list, create, edit, rename, trash, open,
+  frontmatter, backlinks, date and time, and asking the user a question.
+- Selection scope: send selected text to the chat, and edits stay inside it.
+- Image attachments for models that accept images.
+- Model lists loaded from each provider's API.
+- The conversation survives restarts.
+
+## Quality goals
+
+| Priority | Goal | Meaning |
+|---|---|---|
+| 1 | Mobile parity | Every feature works on iOS and Android exactly as on desktop. |
+| 2 | Simplicity | Few features, little code, no clever abstractions (KISS). |
+| 3 | Safe user data | Credentials never leave the OS keychain; notes and chat history are never lost or sent anywhere unasked. |
+| 4 | Provider resilience | New models work without a plugin update; provider changes fail with a clear message. |
+
+Details and test scenarios: [10](10-quality-requirements.md).
+
+## Stakeholders
+
+| Who | Expects |
+|---|---|
+| Users (desktop and mobile) | A dependable chat that edits their notes as asked and nothing else. |
+| Maintainers | Code and docs that are easy to change. |
+| Obsidian plugin review | Compliance with the plugin guidelines. |
+| Upstream projects | Credit under the MIT licence. |
