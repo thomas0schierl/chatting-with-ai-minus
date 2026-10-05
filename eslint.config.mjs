@@ -1,6 +1,7 @@
 // Obsidian's plugin review rules (eslint-plugin-obsidianmd, "recommended").
 // Lints the TypeScript sources and package.json. The plugin has no Svelte
-// support, so .svelte files are left to svelte-check.
+// support, so .svelte files are left to svelte-check. `npm run lint` fails on
+// any warning too (--max-warnings 0).
 import { defineConfig, globalIgnores } from "eslint/config";
 import obsidianmd from "eslint-plugin-obsidianmd";
 // The rule's options replace its default lists, so extend them.
@@ -29,17 +30,6 @@ export default defineConfig([
           ignoreRegex: ["^https?://"],
         },
       ],
-    },
-  },
-  {
-    // Temporary (GAP-012): existing findings warn so CI reports them without
-    // failing. Remove this block once src/ is clean.
-    files: ["src/**/*.ts"],
-    rules: {
-      "@typescript-eslint/no-base-to-string": "warn",
-      "@typescript-eslint/no-unsafe-assignment": "warn",
-      "@typescript-eslint/no-unnecessary-type-assertion": "warn",
-      "obsidianmd/platform": "warn",
     },
   },
 ]);
