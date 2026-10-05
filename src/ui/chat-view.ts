@@ -102,28 +102,34 @@ export class ObsidianChatView extends ItemView {
       },
     });
 
-    // Replay chat history into the UI
+    this.renderHistory();
+    this.chatContainer.focus();
+  }
+
+  /** Show the plugin's chat history in the UI, replacing what it shows. */
+  renderHistory(): void {
+    const chat = this.chatContainer;
+    if (!chat) return;
+    chat.clearMessages();
     for (const msg of this.plugin.chatHistory) {
       switch (msg.type) {
         case "user":
-          this.chatContainer.addUserMessage(msg.text ?? "", msg.images, msg.turnId, msg.selection);
+          chat.addUserMessage(msg.text ?? "", msg.images, msg.turnId, msg.selection);
           break;
         case "assistant":
-          this.chatContainer.addAssistantMessage(msg.text!);
+          chat.addAssistantMessage(msg.text!);
           break;
         case "tool-result":
           if (msg.toolName && msg.toolResult) {
-            const id = this.chatContainer.addToolCall(msg.toolName, msg.toolInput || {});
-            this.chatContainer.updateToolResult(id, msg.toolName, msg.toolResult);
+            const id = chat.addToolCall(msg.toolName, msg.toolInput || {});
+            chat.updateToolResult(id, msg.toolName, msg.toolResult);
           }
           break;
         case "error":
-          this.chatContainer.addError(msg.text!);
+          chat.addError(msg.text!);
           break;
       }
     }
-
-    this.chatContainer.focus();
   }
 
   async onClose(): Promise<void> {
@@ -174,7 +180,9 @@ export class ObsidianChatView extends ItemView {
     const history = this.plugin.chatHistory;
     const index = history.findIndex((entry) => entry.type === "user" && entry.turnId === turnId);
     if (index < 0) return;
-    const { images = [], selection = null } = history[index];
+    const { selection = null } = history[index];
+    // Images the API history no longer holds can't be sent again.
+    const images = (history[index].images ?? []).filter((image) => image.data);
     if (!text.trim() && images.length === 0) return;
     if (this.running) this.stopTurn();
     this.plugin.agent.cutBeforeTurn(turnId);

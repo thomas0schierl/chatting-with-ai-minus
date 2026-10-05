@@ -42,7 +42,7 @@ function debugLog(app: App, label: string, data: unknown): void {
 /**
  * What the chat view shows and saves for a tool result: the text and a
  * marker, never the image data, which lives only in the agent history
- * (otherwise chat-state.json would hold it twice, GAP-011).
+ * (otherwise chat-state.json would hold it twice).
  */
 function displayResult(result: ToolResult): ToolResult {
   const count = result.images?.length ?? 0;

@@ -12,6 +12,7 @@ export const bundled = await build({
     export { sendMessage } from './src/api/client';
     export { AgentLoop } from './src/agent/loop';
     export { trimHistory } from './src/agent/history';
+    export * as chatState from './src/chat-state';
     export { sendAnthropicMessage } from './src/api/anthropic';
     export { sendOpenAIMessage, clearOpenAIState } from './src/api/openai';
     export { sendChatGPTOAuthMessage, setChatGPTOAuthService } from './src/api/chatgpt-oauth';
@@ -170,3 +171,56 @@ export function callbacks(extra = {}) {
   const errors = [], texts = [], executed = [];
   return { errors, texts, executed, onThinking() {}, onToolCall(name) { executed.push(name); }, onToolResult() {}, onResponse(value) { texts.push(value); }, onAskUser: async () => 'yes', onError(error) { errors.push(error); }, ...extra };
 }
+// Stands in for ChatContainer.svelte: keeps the shown messages like it does.
+export function fakeChat() {
+  let nextId = 0;
+  const chat = {
+    shown: [],
+    assistantAdds: [],
+    askUser: null,
+    addUserMessage(value, images = [], turnId, selection) { chat.shown.push({ id: nextId++, type: 'user', text: value, images, turnId, selection }); },
+    addAssistantMessage(value, streaming = false) {
+      chat.assistantAdds.push({ text: value, streaming });
+      chat.shown.push({ id: nextId, type: 'assistant', text: value, streaming });
+      return nextId++;
+    },
+    updateAssistantMessage(id, value, final = false) {
+      const msg = chat.shown.find(m => m.id === id);
+      if (msg) { msg.text = value; if (final) msg.streaming = false; }
+    },
+    removeMessage(id) { chat.shown = chat.shown.filter(m => m.id !== id); },
+    cutMessages(turnId) {
+      const index = chat.shown.findIndex(m => m.type === 'user' && m.turnId === turnId);
+      if (index >= 0) chat.shown.splice(index);
+    },
+    addToolCall(name) { chat.shown.push({ id: nextId, type: 'tool-call', toolName: name }); return nextId++; },
+    updateToolResult(id) { const msg = chat.shown.find(m => m.id === id); if (msg) msg.type = 'tool-result'; },
+    addError(value) { chat.shown.push({ id: nextId++, type: 'error', text: value }); },
+    showThinking() {}, hideThinking() {},
+    showAskUser(question) { chat.addAssistantMessage(question); return new Promise(resolve => { chat.askUser = resolve; }); },
+    cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
+    setInputEnabled() {}, setBusy(value) { chat.busy = value; },
+    clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setSelection() {}, getSelection: () => null,
+  };
+  return chat;
+}
+
+// A plugin with a fresh (or the given saved) chat, its view, and the saved states.
+export async function chatSetup(provider, saved) {
+  const { app, files } = vaultApp();
+  const writes = [];
+  app.vault.adapter = {
+    append: async () => {},
+    read: async () => { if (!saved) throw new Error('ENOENT'); return JSON.stringify(saved); },
+    write: async (path, data) => { writes.push(JSON.parse(data)); },
+  };
+  const plugin = new api.ChatPlugin();
+  plugin.app = app;
+  plugin.agent = new api.AgentLoop(app, settings(provider));
+  await plugin.loadChatHistory();
+  const view = new api.ObsidianChatView({}, plugin);
+  const chat = fakeChat();
+  view.chatContainer = chat;
+  return { app, files, plugin, view, chat, writes };
+}
+

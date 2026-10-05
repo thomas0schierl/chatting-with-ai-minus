@@ -14,11 +14,13 @@
    ChatGPT adapter. Activate the saved model catalog of the current provider
    and account, so the chat header can show the thinking level.
 3. Create the `AgentLoop` with the shared settings object.
-4. `loadChatHistory()`: read `chat-state.json` and import the messages
-   (trimmed to 40). Turns saved without a turn ID get one in both
-   histories (`assignLegacyTurnIds()`, paired from the end; see *Editing a
-   message*). Until this has finished, `saveChatHistory()` does nothing, so
-   an early unload can't overwrite the saved chat.
+4. `loadChatHistory()`: read `chat-state.json` and bring it to the current
+   format (`migrateChatState()`; each migration runs once, the next save
+   writes the new version). Import the API messages (trimmed to 40), then
+   give the visible history's images their data from the API messages
+   (same image ID); an image no longer there keeps only its name and is
+   shown as a chip. Until this has finished, `saveChatHistory()` does
+   nothing, so an early unload can't overwrite the saved chat.
 5. Register the settings tab, view, ribbon icon, commands and menus.
 
 No network requests happen at start.
@@ -95,7 +97,7 @@ result.
    3. Cut the UI history and the shown messages at the turn's entry.
    4. Save `chat-state.json`.
 4. **Run:** the text runs as a new turn (new ID) with the old turn's
-   images and selection scope, as in *Sending a message*. The context
+   images (those still in the API history) and selection scope, as in *Sending a message*. The context
    prefix (active note) is the current one.
 
 - **Providers:** the request after a cut sends the cut history. OpenAI
@@ -104,7 +106,8 @@ result.
 - **Not undone:** notes the AI created or changed after that point stay as
   they are. The removed continuation is gone; there are no branches.
 - **Saved without IDs:** each turn added one user entry and one turn
-  start, so `assignLegacyTurnIds()` pairs them from the end. Where one
+  start, so the migration to version 2 (`assignLegacyTurnIds()`) pairs
+  them from the end. Where one
   history reaches further back, its older turns get IDs of their own.
 
 **Copy:** the action under each finished answer copies its Markdown

@@ -3,66 +3,13 @@
 // fake Svelte component.
 import assert from 'node:assert/strict';
 import { test, beforeEach } from 'node:test';
-import { api, settings, image, text, call, response, transport, vaultApp } from './harness.mjs';
+import { api, image, text, call, response, transport, chatSetup as setup } from './harness.mjs';
 
 beforeEach(() => {
   api.clearOpenAIState();
   api.resetStreamTransport();
   globalThis.__notices = [];
 });
-
-// Stands in for ChatContainer.svelte: keeps the shown messages like it does.
-function fakeChat() {
-  let nextId = 0;
-  const chat = {
-    shown: [],
-    assistantAdds: [],
-    askUser: null,
-    addUserMessage(value, images = [], turnId, selection) { chat.shown.push({ id: nextId++, type: 'user', text: value, images, turnId, selection }); },
-    addAssistantMessage(value, streaming = false) {
-      chat.assistantAdds.push({ text: value, streaming });
-      chat.shown.push({ id: nextId, type: 'assistant', text: value, streaming });
-      return nextId++;
-    },
-    updateAssistantMessage(id, value, final = false) {
-      const msg = chat.shown.find(m => m.id === id);
-      if (msg) { msg.text = value; if (final) msg.streaming = false; }
-    },
-    removeMessage(id) { chat.shown = chat.shown.filter(m => m.id !== id); },
-    cutMessages(turnId) {
-      const index = chat.shown.findIndex(m => m.type === 'user' && m.turnId === turnId);
-      if (index >= 0) chat.shown.splice(index);
-    },
-    addToolCall(name) { chat.shown.push({ id: nextId, type: 'tool-call', toolName: name }); return nextId++; },
-    updateToolResult(id) { const msg = chat.shown.find(m => m.id === id); if (msg) msg.type = 'tool-result'; },
-    addError(value) { chat.shown.push({ id: nextId++, type: 'error', text: value }); },
-    showThinking() {}, hideThinking() {},
-    showAskUser(question) { chat.addAssistantMessage(question); return new Promise(resolve => { chat.askUser = resolve; }); },
-    cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
-    setInputEnabled() {}, setBusy(value) { chat.busy = value; },
-    clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setSelection() {}, getSelection: () => null,
-  };
-  return chat;
-}
-
-// A plugin with a fresh (or the given saved) chat, its view, and the saved states.
-async function setup(provider, saved) {
-  const { app, files } = vaultApp();
-  const writes = [];
-  app.vault.adapter = {
-    append: async () => {},
-    read: async () => { if (!saved) throw new Error('ENOENT'); return JSON.stringify(saved); },
-    write: async (path, data) => { writes.push(JSON.parse(data)); },
-  };
-  const plugin = new api.ChatPlugin();
-  plugin.app = app;
-  plugin.agent = new api.AgentLoop(app, settings(provider));
-  await plugin.loadChatHistory();
-  const view = new api.ObsidianChatView({}, plugin);
-  const chat = fakeChat();
-  view.chatContainer = chat;
-  return { app, files, plugin, view, chat, writes };
-}
 
 // Anthropic request: the user turns' texts (without the context prefix) and the tool pairs.
 const userTurns = body => body.messages.filter(m => m.role === 'user' && (typeof m.content === 'string' || m.content.some(b => b.type === 'text')))

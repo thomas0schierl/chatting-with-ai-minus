@@ -150,7 +150,7 @@ export interface ToolResult {
   isError: boolean;
   /**
    * Images for the model. They are kept only in the agent history; the
-   * chat view gets the text with a marker instead (`AgentLoop`, GAP-011).
+   * chat view gets the text with a marker instead (`AgentLoop`).
    */
   images?: ImageAttachment[];
 }

@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS, DEFAULT_PROVIDER_MODELS } from "./types";
 import { ChatSettingTab, getModelHeaderLabel } from "./settings";
 import { ObsidianChatView, VIEW_TYPE_CHAT } from "./ui/chat-view";
 import { AgentLoop } from "./agent/loop";
-import { assignLegacyTurnIds } from "./agent/history";
+import { CHAT_STATE_VERSION, migrateChatState, restoreImages, withoutImageData, type ChatState } from "./chat-state";
 import { ChatGPTOAuthStore } from "./auth/chatgptOAuthStore";
 import { ChatGPTOAuthService } from "./auth/chatgptOAuth";
 import { cachedCatalog, catalogIdentity, normalizeCatalogState } from "./api/model-catalog";
@@ -295,8 +295,10 @@ export default class ChatPlugin extends Plugin {
   async saveChatHistory(): Promise<void> {
     if (!this.chatHistoryLoaded) return;
     try {
-      const state = {
-        chatHistory: this.chatHistory.slice(-100), // Cap at 100 UI messages
+      const state: ChatState = {
+        version: CHAT_STATE_VERSION,
+        // Cap at 100 UI messages; image data is kept only in the API history
+        chatHistory: withoutImageData(this.chatHistory.slice(-100)),
         agentMessages: this.agent.exportMessages(80), // Keep complete API turns
       };
       await this.app.vault.adapter.write(
@@ -311,14 +313,10 @@ export default class ChatPlugin extends Plugin {
   private async loadChatHistory(): Promise<void> {
     try {
       const raw = await this.app.vault.adapter.read(this.chatStatePath);
-      const state: unknown = JSON.parse(raw);
-      if (!isPersistedChatState(state)) return;
-      const chatHistory = Array.isArray(state.chatHistory) ? state.chatHistory : [];
-      const agentMessages = Array.isArray(state.agentMessages) ? state.agentMessages : [];
-      // Chats saved before turn IDs get them here; saved with the next turn.
-      assignLegacyTurnIds(chatHistory, agentMessages);
-      this.chatHistory = chatHistory;
-      this.agent.importMessages(agentMessages);
+      const state = migrateChatState(JSON.parse(raw));
+      if (!state) return;
+      this.agent.importMessages(state.agentMessages);
+      this.chatHistory = restoreImages(state.chatHistory, this.agent.exportMessages());
     } catch {
       // No saved state or parse error — start fresh
     } finally {
@@ -396,13 +394,6 @@ export default class ChatPlugin extends Plugin {
   private get chatStatePath(): string {
     return `${this.pluginDataDir}/chat-state.json`;
   }
-}
-
-function isPersistedChatState(value: unknown): value is {
-  chatHistory?: ChatPlugin["chatHistory"];
-  agentMessages?: Parameters<AgentLoop["importMessages"]>[0];
-} {
-  return typeof value === "object" && value !== null;
 }
 
 function normalizeSettings(value: unknown): Partial<ChatSettings> {
