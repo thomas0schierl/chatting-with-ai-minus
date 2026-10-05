@@ -36,7 +36,6 @@ gap or drop.
 
 - Anthropic web search results are read from `search_results`, which may
   not match the API's response shape.
-- ChatGPT: no refresh-and-retry after a 401 (parallel refreshes are merged).
 - Restored tool cards lose their inputs (saved as `{}`).
 - OpenAI: requests no longer ask for encrypted reasoning (`include`), so a
   full history replay relies on OpenAI having stored the reasoning items.

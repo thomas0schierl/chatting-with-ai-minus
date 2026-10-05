@@ -27,7 +27,7 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   for errors, the body; they throw an error with the provider's message.
   Errors reported inside a stream (`error`, `response.failed`) and a stream
   that ends before its final event are errors too, never partial answers. ChatGPT errors say how to
-  recover: sign in again (401), or try again later
+  recover: sign in again (401, after one token refresh and retry), or try again later
   (`subscription_sharing_usage_unavailable`). A usage limit
   (`subscription_sharing_usage_limit_exceeded`) throws
   `ChatGPTUsageLimitError`; the chat shows it as its own message with

@@ -253,7 +253,10 @@ OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
 5. **Refresh:** `getUsableCredential()` refreshes within a minute of
    expiry, with the issued client ID and resource; one refresh at a time,
    since refresh tokens rotate. An unusable refresh token clears the
-   sign-in; network and server errors keep it.
+   sign-in; network and server errors keep it. A chat request answered
+   with 401 refreshes once (`renewRejected()`: a token another request
+   already refreshed is used as is) and is sent again once; a second 401
+   shows the "sign in again" error.
 6. **Disconnect:** `signOut()` revokes the refresh token (one retry after
    a network error or 5xx), then clears the tokens. The host and client ID
    stay for the next sign-in.

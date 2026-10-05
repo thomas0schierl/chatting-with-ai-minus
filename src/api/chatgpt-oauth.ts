@@ -114,7 +114,21 @@ export async function sendChatGPTOAuthMessage(
     body.tools = apiTools;
   }
 
-  return sendOnce(body, credential.accessToken, identity, stream);
+  try {
+    return await sendOnce(body, credential.accessToken, identity, stream);
+  } catch (e) {
+    // A rejected token (401 comes before any streamed text): refresh once
+    // and retry once. A second 401 keeps its "sign in again" error.
+    if ((e as { status?: unknown }).status !== 401) throw e;
+    let renewed;
+    try {
+      renewed = await oauthService.renewRejected(credential);
+    } catch (refreshError) {
+      throw refreshError instanceof ChatGPTOAuthError ? refreshError : e;
+    }
+    if (!renewed) throw e;
+    return sendOnce(body, renewed.accessToken, identity, stream);
+  }
 }
 
 async function sendOnce(

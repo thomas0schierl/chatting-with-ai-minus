@@ -439,6 +439,57 @@ test('Errors: usage limit is its own error, 401 asks to sign in again', async ()
   await assert.rejects(api.sendChatGPTOAuthMessage(settings('chatgpt-oauth'), [{ role: 'user', content: 'Hi' }], [], 'S'), /Not accepted\. Continue with ChatGPT/);
 });
 
+// A signed-in service for inference, and a server that answers token
+// refreshes with `refresh` and Responses requests with `respond`.
+async function signedInRoute({ refresh, respond }) {
+  const { store, oauth } = service();
+  await signIn(oauth);
+  api.setChatGPTOAuthService(oauth);
+  const calls = { refresh: 0, bearers: [] };
+  globalThis.__providerRequest = async request => {
+    if (request.url === 'https://auth.openai.com/api/accounts/oauth/token') { calls.refresh++; return refresh(calls.refresh); }
+    calls.bearers.push(request.headers.Authorization);
+    return respond(calls.bearers.length);
+  };
+  return { store, oauth, calls };
+}
+const refreshed = n => ({ status: 200, json: { access_token: `fake-access-${n + 1}`, refresh_token: `fake-refresh-${n + 1}`, expires_in: 3600 } });
+const send = () => api.sendChatGPTOAuthMessage(settings('chatgpt-oauth'), [{ role: 'user', content: 'Hi' }], [], 'S');
+
+test('A 401 refreshes the token once and retries once with the new one', async () => {
+  const { oauth, calls } = await signedInRoute({ refresh: refreshed, respond: n => n === 1 ? { status: 401, json: { detail: 'Expired' } } : response('chatgpt-oauth', [text('OK')]) });
+  const answer = await send();
+  assert.equal(answer.content[0].text, 'OK');
+  assert.equal(calls.refresh, 1);
+  assert.deepEqual(calls.bearers, ['Bearer fake-access', 'Bearer fake-access-2']);
+  assert.equal(oauth.getCredential().refreshToken, 'fake-refresh-2');
+});
+
+test('A second 401 after the refresh keeps the sign-in error; no third request', async () => {
+  const { oauth, calls } = await signedInRoute({ refresh: refreshed, respond: () => ({ status: 401, json: { detail: 'Not accepted' } }) });
+  await assert.rejects(send(), /Not accepted\. Continue with ChatGPT/);
+  assert.equal(calls.refresh, 1);
+  assert.equal(calls.bearers.length, 2);
+  assert.ok(oauth.getCredential());
+});
+
+test('A refresh that fails after a 401: network error keeps the sign-in, an unusable token ends it', async () => {
+  let state = await signedInRoute({ refresh: () => { throw new Error('net::ERR_INTERNET_DISCONNECTED'); }, respond: () => ({ status: 401, json: { detail: 'Not accepted' } }) });
+  await assert.rejects(send(), /Not accepted\. Continue with ChatGPT/);
+  assert.equal(state.calls.bearers.length, 1);
+  assert.ok(state.oauth.getCredential());
+  state = await signedInRoute({ refresh: () => ({ status: 400, json: { error: 'refresh_token_reused' } }), respond: () => ({ status: 401, json: { detail: 'Not accepted' } }) });
+  await assert.rejects(send(), /sign-in has expired/);
+  assert.equal(state.oauth.getCredential(), null);
+});
+
+test('Parallel 401s share one refresh, and both retry with the new token', async () => {
+  const { calls } = await signedInRoute({ refresh: refreshed, respond: n => n <= 2 ? { status: 401, json: { detail: 'Expired' } } : response('chatgpt-oauth', [text('OK')]) });
+  await Promise.all([send(), send()]);
+  assert.equal(calls.refresh, 1);
+  assert.deepEqual(calls.bearers.slice(2), ['Bearer fake-access-2', 'Bearer fake-access-2']);
+});
+
 test('Model list: /v1/models with the bearer token, only visibility "list"', async () => {
   const requests = [];
   globalThis.__githubRequest = async () => ({ status: 200, json: { tag_name: 'rust-v0.161.0', prerelease: false, draft: false } });

@@ -421,6 +421,19 @@ export class ChatGPTOAuthService {
   }
 
   /**
+   * A new credential after the API rejected `rejected` (401): the stored
+   * one if another request refreshed it meanwhile, else a forced refresh
+   * (merged with one already running). Null when signed out. Throws if the
+   * refresh fails; only an unusable refresh token clears the sign-in.
+   */
+  async renewRejected(rejected: ChatGPTOAuthCredential): Promise<ChatGPTOAuthCredential | null> {
+    const current = this.store.get();
+    if (!current) return null;
+    if (current.accessToken !== rejected.accessToken) return current;
+    return this.refreshCredential(current);
+  }
+
+  /**
    * A currently valid credential, refreshed if needed. Null when not
    * connected. Throws if a needed refresh fails.
    */
