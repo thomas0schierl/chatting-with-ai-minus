@@ -21,8 +21,22 @@ const bundled = await build({
     build.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: `
       export class App {}
       export class Modal {}
-      export class PluginSettingTab {}
-      export class Setting {}
+      export class PluginSettingTab { hide() {} }
+      // Records rendered rows and their controls in globalThis.__settingRows.
+      export class Setting {
+        constructor() { this.controls = []; (globalThis.__settingRows ??= []).push(this); }
+        setName(name) { this.name = name; return this; }
+        setDesc(desc) { this.desc = desc; return this; }
+        control(fn) {
+          const c = { options: [], inputEl: {}, addOption(v, l) { c.options.push([v, l]); return c; }, setValue(v) { c.value = v; return c; },
+            setPlaceholder(p) { c.placeholder = p; return c; }, onChange(f) { c.change = f; return c; }, onClick(f) { c.click = f; return c; },
+            setIcon() { return c; }, setTooltip() { return c; }, setDisabled() { return c; }, setButtonText() { return c; } };
+          this.controls.push(c); fn(c); return this;
+        }
+        addDropdown(fn) { return this.control(fn); }
+        addText(fn) { return this.control(fn); }
+        addButton(fn) { return this.control(fn); }
+      }
       export const requireApiVersion = () => globalThis.__supportsNewObsidian === true;
       export class Notice {}
       export class TFile { constructor(path) { this.path = path; this.extension = 'md'; } }
@@ -742,4 +756,41 @@ test('Chat header shows the effective thinking level next to the model name', as
   assert.equal(api.getModelHeaderLabel('chatgpt-oauth','claude-x',''),'Claude X · default');
   assert.equal(api.getModelHeaderLabel('chatgpt-oauth','gpt-4o','high'),'GPT-4o');
   assert.equal(api.getModelHeaderLabel('chatgpt-oauth','custom-id','high'),'custom-id');
+});
+
+test('Settings: "Custom..." is UI state only and never saves an empty model', async () => {
+  for (const provider of ['openai','anthropic']) {
+    let saves = 0;
+    const plugin = {settings:{...settings(provider)},saveSettings:async()=>{saves++;}};
+    const original = plugin.settings.model;
+    const tab = new api.ChatSettingTab({},plugin);
+    let refreshes = 0; tab.display = ()=>{refreshes++;};
+    const render = () => { globalThis.__settingRows = []; tab.renderModelSection({}); return globalThis.__settingRows; };
+    let rows = render();
+    let dropdown = rows[0].controls[0];
+    assert.equal(dropdown.value, original);
+    assert.ok(dropdown.options.some(([value, label]) => value === '__custom__' && label === 'Custom...'));
+    assert.equal(rows.some(row => row.name === 'Custom model ID'), false);
+    await dropdown.change('__custom__');
+    assert.equal(plugin.settings.model, original);
+    assert.equal(saves, 0);
+    assert.equal(refreshes, 1);
+    rows = render();
+    dropdown = rows[0].controls[0];
+    assert.equal(dropdown.value, '__custom__');
+    const field = rows.find(row => row.name === 'Custom model ID').controls[0];
+    assert.equal(field.placeholder, provider === 'openai' ? 'gpt-6.1-sol' : 'claude-sonnet-4-6');
+    assert.equal(field.value, original);
+    await field.change('   ');
+    assert.equal(plugin.settings.model, original);
+    assert.equal(saves, 0);
+    await field.change(' future-model ');
+    assert.equal(plugin.settings.model, 'future-model');
+    assert.equal(saves, 1);
+    rows = render();
+    assert.ok(rows[0].controls[0].options.some(([value, label]) => value === 'future-model' && label === 'future-model (current)'));
+    await rows[0].controls[0].change(original);
+    assert.equal(plugin.settings.model, original);
+    assert.equal(render().some(row => row.name === 'Custom model ID'), false);
+  }
 });

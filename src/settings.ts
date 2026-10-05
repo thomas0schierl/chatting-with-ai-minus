@@ -1,10 +1,12 @@
 import { App, Modal, Notice, PluginSettingTab, Setting, requireApiVersion, type SettingDefinitionItem } from "obsidian";
 import type ChatPlugin from "./main";
 import type { Provider } from "./types";
-import { CHATGPT_OAUTH_DEFAULT_MODEL, DEFAULT_PROVIDER_MODELS } from "./types";
+import { DEFAULT_PROVIDER_MODELS } from "./types";
 import type { ChatGPTDeviceAuthorization, PollHandle } from "./auth/chatgptOAuth";
 
 import { type ModelOption, type CatalogState, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
+
+const CUSTOM_MODEL_OPTION = "__custom__";
 
 const FALLBACK_MODELS: Record<string, ModelOption[]> = {
   anthropic: [
@@ -51,6 +53,8 @@ export class ChatSettingTab extends PluginSettingTab {
   private catalogError = "";
   private apiKeyEditing = false;
   private apiKeyTimer?: number;
+  /** "Custom..." is picked in the model dropdown: show the model ID field. */
+  private editingCustomModel = false;
 
   constructor(app: App, plugin: ChatPlugin) {
     super(app, plugin);
@@ -71,6 +75,11 @@ export class ChatSettingTab extends PluginSettingTab {
       { name: "Web search", render: setting => this.renderWebSearch(setting) },
       { name: "Max tool iterations", render: setting => this.renderMaxIterations(setting) },
     ];
+  }
+
+  hide(): void {
+    super.hide();
+    this.editingCustomModel = false;
   }
 
   private refreshSettingsTab(): void {
@@ -123,6 +132,7 @@ export class ChatSettingTab extends PluginSettingTab {
             s.model = DEFAULT_PROVIDER_MODELS[s.provider];
             // Levels are named per provider, so start from the model's default.
             s.thinkingLevel = "";
+            this.editingCustomModel = false;
             this.plugin.reloadApiKeyForProvider();
             await this.plugin.saveSettings();
             window.setTimeout(() => this.refreshSettingsTab(), 10);
@@ -337,25 +347,26 @@ export class ChatSettingTab extends PluginSettingTab {
         for (const m of models) {
           dropdown.addOption(m.value, m.label);
         }
-        dropdown.addOption("__custom__", "Custom...");
+        dropdown.addOption(CUSTOM_MODEL_OPTION, "Custom...");
 
         // If current model isn't in the list, add it
         if (s.model && !models.some((m) => m.value === s.model)) {
           dropdown.addOption(s.model, `${s.model} (current)`);
         }
 
-        dropdown.setValue(s.model || models[0]?.value || "");
+        dropdown.setValue(this.editingCustomModel ? CUSTOM_MODEL_OPTION : s.model);
         dropdown.onChange(async (value) => {
-          if (value === "__custom__") {
-            s.model = "";
-            await this.plugin.saveSettings();
-            window.setTimeout(() => this.refreshSettingsTab(), 10);
-          } else {
-            s.model = value;
-            await this.plugin.saveSettings();
-            // The thinking levels on offer depend on the model.
+          if (value === CUSTOM_MODEL_OPTION) {
+            // UI state only: the model changes once an ID is typed.
+            this.editingCustomModel = true;
             this.refreshSettingsTab();
+            return;
           }
+          this.editingCustomModel = false;
+          s.model = value;
+          await this.plugin.saveSettings();
+          // The thinking levels on offer depend on the model.
+          this.refreshSettingsTab();
         });
       });
 
@@ -367,23 +378,19 @@ export class ChatSettingTab extends PluginSettingTab {
         }));
     }
 
-    // Custom model text field (shown when Custom... selected or model is empty)
-    if (!s.model) {
+    // Custom model text field; an empty ID is never saved.
+    if (this.editingCustomModel) {
       new Setting(containerEl)
         .setName("Custom model ID")
         .setDesc("Enter the full model identifier")
         .addText((text) =>
           text
-            .setPlaceholder(
-              s.provider === "anthropic"
-                ? "claude-sonnet-4-20250514"
-                : s.provider === "chatgpt-oauth"
-                  ? CHATGPT_OAUTH_DEFAULT_MODEL
-                  : "gpt-4o",
-            )
+            .setPlaceholder(DEFAULT_PROVIDER_MODELS[s.provider])
             .setValue(s.model)
             .onChange(async (value) => {
-              s.model = value.trim();
+              const id = value.trim();
+              if (!id) return;
+              s.model = id;
               await this.plugin.saveSettings();
             })
         );
