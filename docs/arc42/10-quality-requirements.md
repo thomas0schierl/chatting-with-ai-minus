@@ -31,7 +31,41 @@ check against the real services and note the result in the release notes:
 - Voice (OpenAI key): a question about a note is delegated, runs as a
   chat turn with tool cards, and the answer is spoken; End closes the
   session.
-- On a physical phone: Q-01, Q-02 and Q-09.
+- On a physical phone: Q-01, Q-02 and Q-09, with the checklist below.
 
 A model being in the list doesn't prove the account may use it; only a
 successful request does.
+
+### On a physical phone (iOS and Android)
+
+Run on an iPhone and an Android phone. Expected results follow each step.
+
+1. **Setup:** turn on *Debug log*, run *Check device capabilities*, copy
+   the result. → Microphone, WebRTC and streaming `fetch` are listed with
+   their outcome.
+2. **Each provider:** ask for a long answer, then Stop one midway. → It
+   streams (ChatGPT plan: arrives whole); Stop keeps the text shown.
+3. **Message actions:** edit the last message (the pencil is visible on
+   touch), Regenerate, Copy. → The turn runs again; Copy says "Copied".
+4. **Conversations:** new, switch, rename (the keyboard opens), delete;
+   restart Obsidian and open the chat. → The open conversation returns.
+5. **Input bar:** → The slot shows voice when empty, send with text, stop
+   while a turn runs; attach folds away while typing; focusing the input
+   doesn't zoom; scrolled up, the jump-to-latest button shows; a
+   streaming answer keeps the view at the bottom.
+6. **Voice, both routes** (official with an OpenAI key; Codex in private
+   builds): the microphone prompt, and a denial → error, then allowed in
+   the system settings; hands-free and mute; hold to talk on touch; a
+   question about a note → delegated, tool cards, spoken answer; a
+   spoken addition while it works → added to the running task; an
+   `ask_user` question answered by voice; End. Note earpiece or speaker,
+   and echo causing false interruptions.
+7. **Background:** leave the app for 10 s, 30 s and 60 s during a
+   streamed answer, during a tool call and during voice. → "Resuming…"
+   and no duplicated text; voice continues in the same call, shows
+   "Reconnecting…", or has ended (after 60 s). Kill the app mid-turn
+   (swipe it away), reopen. → **Continue** finishes the turn without
+   running its tools again (iOS and Android).
+8. **Log:** *Copy debug log*. → `LIFECYCLE` shows whether
+   `pause`/`resume` fired (or only `visibilitychange`); `API_RESUME`
+   shows each resend.

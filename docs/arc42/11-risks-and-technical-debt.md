@@ -32,7 +32,9 @@ were fixed in the fork.
 ## To investigate
 
 Found while reading the code, not yet confirmed. Confirm, then turn into a
-gap or drop.
+gap or drop. Phone behaviour is checked with the
+[phone checklist](10-quality-requirements.md#on-a-physical-phone-ios-and-android);
+only its open questions are listed here.
 
 - OpenAI: requests no longer ask for encrypted reasoning (`include`), so a
   full history replay relies on OpenAI having stored the reasoning items.
@@ -46,8 +48,7 @@ gap or drop.
   are hard to read when fitted.
 - ChatGPT: whether `function_call_output` may contain `input_image` is
   assumed from the general "images are supported" note; check live.
-- Streaming: unverified in the mobile apps (run *Check device
-  capabilities*), including whether a CORS block there fails as a
+- Streaming in the mobile apps: whether a CORS block there fails as a
   `TypeError` (only then is `fetch` skipped for 10 minutes). A stopped
   partial answer isn't sent to the model next turn.
 - ChatGPT model list: depends on the undocumented `client_version`
@@ -60,30 +61,14 @@ gap or drop.
 - Canvas placement (`edit_canvas`) avoids other cards but not edge paths
   or the label above a group. A group that grows can overlap its
   neighbours, and moving a card out of a group doesn't shrink the group.
-- Voice (ADR-11) is built but not yet tried live: check with an API key
-  (*Check device capabilities* starts and closes one session) that
-  `gpt-live-1` answers, delegations arrive, the answer is spoken and
-  the end closes cleanly (with the *Debug log* setting on, `debug.log` shows every event).
-  In the iOS and Android apps: WebRTC, the microphone prompt and a
-  denial, autoplay, earpiece vs speaker, echo causing false interruptions
-  on speaker, screen lock.
+- Official voice route (ADR-11): not yet tried live end to end with an
+  API key (§10 live checks; *Check device capabilities* starts and closes
+  one session). On phones: autoplay, earpiece or speaker, echo causing
+  false interruptions on speaker, screen lock.
 - Voice: small talk the voice model handles itself is only heard; it
   isn't written anywhere (the voice bar shows only the user's words). GPT-Live's delegation carries no
   text; the request is the transcript since the last delegation, which
   may be cut or include words that weren't meant for it.
-- Back from the background (ADR-15), on iOS and Android: leave the app
-  for 10 s and for 60 s during a streamed answer, during a turn with a
-  tool call, and during voice; check that the answer continues
-  ("Resuming…") without duplicated text, that voice comes back
-  ("Reconnecting…") or has ended after 60 s, and, after iOS ended the
-  app, that Continue appears and finishes the turn. With the *Debug log* setting on,
-  `debug.log` shows each hint (`LIFECYCLE`) and each resend
-  (`API_RESUME`): check whether `pause`/`resume` fire (or only
-  `visibilitychange`), and how long iOS lets an open request finish in
-  the background.
-- Codex voice route (private builds): checked on desktop 2026-10-05.
-  The data channel carries Codex's dialect (`delegation.created` with
-  the request text, `input_transcript.added`, `turn.done`, …) and
-  acknowledges `delegation.context.append`; two requests ran on the
-  ChatGPT plan with vault tools and were spoken. Not yet checked in the
-  mobile apps.
+- Back from the background (ADR-15): whether `pause`/`resume` fire on
+  iOS and Android (or only `visibilitychange`), and how long iOS lets an
+  open request finish in the background.
