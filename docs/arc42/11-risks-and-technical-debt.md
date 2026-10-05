@@ -21,8 +21,6 @@
 
 | ID | Gap | Kind | Impact |
 |---|---|---|---|
-| [GAP-008](11-gaps/008-single-conversation-only.md) | Only one conversation | Feature | Medium |
-| [GAP-011](11-gaps/011-images-saved-twice.md) | Saved chat history stores every image twice | Debt | Medium |
 | [GAP-012](11-gaps/012-publishing-tooling.md) | Lint findings don't fail CI, and workflow actions aren't pinned | Debt | Low |
 | [GAP-013](11-gaps/013-no-live-voice-conversation.md) | No live voice conversation | Feature | High |
 | [GAP-021](11-gaps/021-chatgpt-usage-cues.md) | The chat doesn't show it runs on the user's ChatGPT plan | Feature | Low–medium |
@@ -30,8 +28,8 @@
 Numbers are kept from the first gap analysis. 001, 004 and 005 were fixed
 upstream before the fork (stale ChatGPT model list, reasoning guessed from
 model names, failing follow-up messages). 002 (settings rewritten on every
-load) went away with the legacy migration code (ADR-09). 003, 006, 007,
-009, 010, 014–020 were fixed in the fork.
+load) went away with the legacy migration code (ADR-09). 003, 006–011 and
+014–020 were fixed in the fork.
 
 ## To investigate
 
@@ -48,7 +46,12 @@ gap or drop.
   full history replay relies on OpenAI having stored the reasoning items.
   Check live after a model change or restart.
 - A corrupt `chat-state.json` is silently treated as empty and overwritten
-  on the next save.
+  on the next save, which now loses every conversation.
+- All conversations, image data included, live in one `chat-state.json`
+  that is rewritten after every turn; check size and save time with many
+  chats with images (saving attachments as separate files would fix it).
+- Switching conversations stops a running turn; it can't finish in the
+  background. The conversation list has no search.
 - Tool images (`view_image`, `view_canvas`) stay in the API history and are
   sent again on every full replay (ChatGPT replays every turn); old ones
   are never pruned.
