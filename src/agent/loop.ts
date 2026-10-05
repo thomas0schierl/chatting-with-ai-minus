@@ -66,6 +66,8 @@ export class AgentLoop {
   private settings: ChatSettings;
   private aborted = false;
   private runVersion = 0;
+  /** Cancels the running turn's HTTP request (streamed answers, ADR-12). */
+  private request: AbortController | null = null;
 
   constructor(app: App, settings: ChatSettings) {
     this.app = app;
@@ -76,11 +78,13 @@ export class AgentLoop {
   abort(): void {
     this.aborted = true;
     this.runVersion++;
+    this.request?.abort();
   }
 
   /** Clear conversation history */
   clear(): void {
     this.runVersion++;
+    this.request?.abort();
     this.messages = [];
     this.aborted = false;
     clearOpenAIState();
@@ -173,6 +177,11 @@ export class AgentLoop {
     this.aborted = false;
     const version = ++this.runVersion;
     const isStopped = () => this.aborted || version !== this.runVersion;
+    const request = new AbortController();
+    this.request = request;
+    const onTextDelta = (text: string) => {
+      if (!isStopped()) callbacks.onTextDelta?.(text);
+    };
     // Keep one provider/model/credential configuration for this entire turn.
     const turnSettings = { ...this.settings };
 
@@ -233,7 +242,8 @@ export class AgentLoop {
           this.messages,
           TOOL_DEFINITIONS,
           systemPrompt,
-          isStopped
+          isStopped,
+          { onTextDelta, signal: request.signal }
         );
       } catch (e) {
         if (isStopped()) return;

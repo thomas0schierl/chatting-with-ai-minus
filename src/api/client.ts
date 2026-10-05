@@ -1,11 +1,12 @@
-import type { ChatSettings, UnifiedMessage, UnifiedToolDef, UnifiedResponse } from "../types";
+import type { ChatSettings, UnifiedMessage, UnifiedToolDef, UnifiedResponse, StreamOptions } from "../types";
 import { sendAnthropicMessage } from "./anthropic";
 import { sendOpenAIMessage } from "./openai";
 import { sendChatGPTOAuthMessage } from "./chatgpt-oauth";
 
 /**
  * Dispatches a message to the appropriate provider adapter.
- * Handles single retry on 429 (rate limit) with exponential backoff.
+ * Handles single retry on 429 (rate limit) with exponential backoff, but
+ * only while no answer text has been shown: a retry would show it twice.
  */
 export async function sendMessage(
   settings: ChatSettings,
@@ -13,23 +14,32 @@ export async function sendMessage(
   tools: UnifiedToolDef[],
   systemPrompt: string,
   shouldStop: () => boolean = () => false,
+  stream: StreamOptions = {},
 ): Promise<UnifiedResponse> {
+  let shown = false;
+  const options: StreamOptions = {
+    signal: stream.signal,
+    onTextDelta: (text) => {
+      shown = true;
+      stream.onTextDelta?.(text);
+    },
+  };
   const doSend = () => {
     if (shouldStop()) throw new Error("Request cancelled.");
     if (settings.provider === "anthropic") {
-      return sendAnthropicMessage(settings, messages, tools, systemPrompt);
+      return sendAnthropicMessage(settings, messages, tools, systemPrompt, options);
     }
     if (settings.provider === "chatgpt-oauth") {
-      return sendChatGPTOAuthMessage(settings, messages, tools, systemPrompt);
+      return sendChatGPTOAuthMessage(settings, messages, tools, systemPrompt, options);
     }
-    return sendOpenAIMessage(settings, messages, tools, systemPrompt);
+    return sendOpenAIMessage(settings, messages, tools, systemPrompt, options);
   };
 
   try {
     return await doSend();
   } catch (e) {
     // Single retry on rate limit
-    if (isRateLimitError(e)) {
+    if (isRateLimitError(e) && !shown) {
       const retryAfter = extractRetryAfter(e);
       const delay = retryAfter ? retryAfter * 1000 : 5000;
       await sleep(Math.min(delay, 30000));

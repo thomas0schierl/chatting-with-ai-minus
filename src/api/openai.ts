@@ -1,14 +1,15 @@
 import { catalogIdentity } from "./model-catalog";
-import { requestUrl } from "obsidian";
 import type {
   ChatSettings,
   UnifiedMessage,
   UnifiedToolDef,
   UnifiedResponse,
   ProviderReplay,
+  StreamOptions,
 } from "../types";
 
-import { buildResponsesInput, fromResponsesOutput } from "./responses-format";
+import { buildResponsesInput, collectResponsesStream, fromResponsesOutput } from "./responses-format";
+import { streamSSE } from "./stream";
 
 const DEFAULT_OPENAI_URL = "https://api.openai.com";
 
@@ -31,13 +32,14 @@ export function clearOpenAIState(): void {
  * Sends a message to OpenAI via the Responses API (/v1/responses).
  * Uses the `previous_response_id` field for multi-turn, which lets
  * OpenAI manage conversation state server-side and avoids us having to
- * reconstruct function_call items.
+ * reconstruct function_call items. The answer is streamed (ADR-12).
  */
 export async function sendOpenAIMessage(
   settings: ChatSettings,
   messages: UnifiedMessage[],
   tools: UnifiedToolDef[],
-  systemPrompt: string
+  systemPrompt: string,
+  stream: StreamOptions = {},
 ): Promise<UnifiedResponse> {
   const baseUrl = DEFAULT_OPENAI_URL;
   const model = settings.model || "gpt-6.1-sol";
@@ -55,6 +57,7 @@ export async function sendOpenAIMessage(
   const body: Record<string, unknown> = {
     model,
     input,
+    stream: true,
   };
 
   // Chain to previous response for multi-turn context
@@ -86,18 +89,17 @@ export async function sendOpenAIMessage(
   // doesn't carry forward the system prompt
   body.instructions = systemPrompt;
 
+  const collected = collectResponsesStream(stream.onTextDelta);
   let response;
   try {
-    response = await requestUrl({
-      url: `${baseUrl}/v1/responses`,
-      method: "POST",
+    response = await streamSSE(`${baseUrl}/v1/responses`, {
       headers: {
         Authorization: `Bearer ${settings.apiKey}`,
         "Content-Type": "application/json",
+        Accept: "text/event-stream",
       },
       body: JSON.stringify(body),
-      throw: false,
-    });
+    }, collected.onEvent, stream.signal);
   } catch (e: unknown) {
     const err = asRecord(e);
     const status = typeof err.status === "number" || typeof err.status === "string" ? String(err.status) : "";
@@ -110,11 +112,15 @@ export async function sendOpenAIMessage(
   }
 
   if (response.status !== 200) {
-    const errorBody = getNestedString(response.json as unknown, ["error", "message"]) ?? `HTTP ${response.status}`;
+    const errorBody = getNestedString(response.json, ["error", "message"]) ?? `HTTP ${response.status}`;
     throw new Error(`OpenAI API error (${response.status}): ${errorBody}`);
   }
 
-  const data = asRecord(response.json as unknown);
+  const { data, failure } = collected.finish();
+  if (failure) {
+    throw new Error(`OpenAI API error${failure.code ? ` (${failure.code})` : ""}: ${failure.message}`);
+  }
+  if (!data) throw new Error("OpenAI stream ended without a completed response.");
 
   const result = fromResponsesOutput(data, "openai", model, identity);
   if (typeof data.id === "string") {

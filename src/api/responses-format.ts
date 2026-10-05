@@ -111,6 +111,55 @@ export function fromResponsesOutput(
   };
 }
 
+/**
+ * Collects a streamed Responses answer (`stream: true`). Text deltas go to
+ * `onTextDelta` as they arrive. The response is rebuilt from the
+ * `response.output_item.done` items, because `response.completed` may carry
+ * an empty `output` (always on the ChatGPT route with `store: false`); the
+ * terminal event gives id, status and usage. `finish()` returns the same
+ * object the non-streamed API returns, or the failure the stream reported.
+ */
+export function collectResponsesStream(onTextDelta?: (text: string) => void): {
+  onEvent: (event: Record<string, unknown>) => void;
+  finish: () => { data?: Record<string, unknown>; failure?: { message: string; code?: string } };
+} {
+  const items = new Map<string | number, Record<string, unknown>>();
+  let completed: Record<string, unknown> | undefined;
+  let failure: { message: string; code?: string } | undefined;
+  return {
+    onEvent: (event) => {
+      const type = event.type;
+      if (type === "response.output_text.delta") {
+        if (typeof event.delta === "string" && event.delta) onTextDelta?.(event.delta);
+      } else if (type === "response.output_item.done") {
+        if (isRecord(event.item)) {
+          const index = event.output_index;
+          const key = typeof index === "number" || typeof index === "string" ? index
+            : typeof event.item.id === "string" ? event.item.id : items.size;
+          items.set(key, event.item);
+        }
+      } else if (type === "response.completed") {
+        completed = isRecord(event.response) ? event.response : {};
+      } else if (type === "response.incomplete") {
+        completed = { ...(isRecord(event.response) ? event.response : {}), status: "incomplete" };
+      } else if (type === "response.failed") {
+        const error = isRecord(event.response) && isRecord(event.response.error) ? event.response.error : {};
+        failure = {
+          message: typeof error.message === "string" ? error.message : "Response failed.",
+          code: typeof error.code === "string" ? error.code : undefined,
+        };
+      } else if (type === "error" && typeof event.message === "string") {
+        failure = { message: event.message, code: typeof event.code === "string" ? event.code : undefined };
+      }
+    },
+    finish: () => {
+      if (failure) return { failure };
+      if (!completed) return {};
+      return { data: { ...completed, output: items.size > 0 ? Array.from(items.values()) : completed.output ?? [] } };
+    },
+  };
+}
+
 function numberValue(value: unknown): number {
   return typeof value === "number" ? value : 0;
 }
