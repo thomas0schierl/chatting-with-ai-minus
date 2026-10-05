@@ -40,28 +40,45 @@ official, sanctioned route for open-source apps.
 - **Excluded:** audio and video input, file uploads, transcription,
   hosted tools such as file search and Code Interpreter.
 
-## The catch
+## The catch, and how to work around it
 
-The official sign-in needs a loopback HTTP server for the redirect. Mobile
-can't run one, which is why ADR-02 chose the device flow. No device flow is
-documented for the official route.
+The official sign-in redirects to a loopback callback on `127.0.0.1`.
+Mobile apps can't run a server there. But the server isn't needed to
+finish the sign-in:
+
+- **The redirect URL carries the result:** `code`, `state` and the issued
+  `client_id` are all in it. The token exchange is a separate request the
+  plugin makes itself.
+- **The port is the app's choice and needs no registration** ("only the
+  port may vary").
+- **On mobile:** the browser shows "can't connect" on the callback page,
+  but its address bar holds the full URL. The user copies it into the
+  plugin, and the plugin checks `state` and exchanges the code through
+  `requestUrl()`.
+- **On desktop:** a small loopback server (Node `http`, available in
+  Electron) can catch the redirect automatically.
+
+The paste step isn't described in the docs, but nothing in them forbids
+it. Each device signs in separately.
 
 ## Options
 
 1. **Keep the current route:** accept the risk (today's ADR-03).
-2. **Official route on desktop:**
-   - Sign in on desktop with a small loopback server (Node `http`,
-     desktop only).
-   - Use the same flow for inference everywhere.
-   - Mobile can't sign in with it, unless tokens can move from desktop
-     to phone, which SecretStorage doesn't sync.
-3. **Ask OpenAI or wait:** a device flow for the official route would
-   solve it for all platforms.
+2. **Official route everywhere:**
+   - Sign-in by pasting the callback URL (all platforms), with automatic
+     capture on desktop as a later convenience.
+   - Inference on `api.openai.com/v1/responses`, which also allows
+     streaming (ADR-12).
+   - Costs: a clunkier login than today's device code, and the programme
+     is a preview.
+3. **Wait** for a device flow on the official route.
 
 ## Fix
 
-- Decide between 1 and 2, and record it as an ADR replacing ADR-03.
-- Meanwhile, watch the preview docs for a device flow.
+- Recommended: option 2.
+- Confirm the paste flow once on a phone, then record it as an ADR
+  replacing ADR-02 and ADR-03.
+- Keep the current route until the new one is proven.
 - Sources:
   - [Sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in.md)
   - [Models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference.md)
