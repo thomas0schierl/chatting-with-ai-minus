@@ -204,7 +204,7 @@ it stays active and, being empty, leaves the list.
    ends the session (e.g. `expired`) or the connection fails, the chat
    shows why.
 
-With `DEBUG` on in `agent/loop.ts`, `debug.log` gets every data-channel
+With `DEBUG` on in `debug.ts`, `debug.log` gets every data-channel
 event type and its keys (`VOICE_EVENT`), what was sent (`VOICE_SEND`),
 the call ID, channel and connection states, and `VOICE_NO_EVENTS` when
 nothing arrived within 10 s of the channel opening.

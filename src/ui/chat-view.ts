@@ -5,7 +5,7 @@ import ChatContainer from "./ChatContainer.svelte";
 import type { ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry } from "../types";
 import { newTurnId } from "../agent/history";
 import { savedToolInput } from "../chat-state";
-import { debugLog } from "../agent/loop";
+import { debugLog } from "../debug";
 import { VoiceController, type VoiceTurnHooks, type VoiceViewState } from "../voice/controller";
 
 export const VIEW_TYPE_CHAT = "chatting-minus-view";

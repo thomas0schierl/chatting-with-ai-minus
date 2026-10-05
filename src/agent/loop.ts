@@ -14,26 +14,7 @@ import { executeTool } from "../tools/executor";
 import { buildContext } from "./context";
 import { buildSystemPrompt, buildContextMessage } from "./system-prompt";
 import { trimHistory, cutBeforeTurn, newTurnId, HISTORY_MESSAGES } from "./history";
-import { PLUGIN_ID } from "../plugin-id";
-
-// Debug logging: writes transcript to the vault's plugin config folder
-// (also used by the voice session for its data-channel events).
-const DEBUG = false;
-
-export function debugLog(app: App, label: string, data: unknown): void {
-  if (!DEBUG) return;
-  try {
-    const timestamp = new Date().toISOString();
-    const entry = `\n--- ${label} [${timestamp}] ---\n${JSON.stringify(data, null, 2)}\n`;
-    // Use the adapter to write into the current vault config folder.
-    void app.vault.adapter.append(
-      `${app.vault.configDir}/plugins/${PLUGIN_ID}/debug.log`,
-      entry
-    );
-  } catch {
-    // Debug logging should never break the app
-  }
-}
+import { debugLog } from "../debug";
 
 /**
  * What the chat view shows and saves for a tool result: the text and a
