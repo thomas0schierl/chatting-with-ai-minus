@@ -31,7 +31,8 @@ main.ts ──▶ settings.ts ─────────────┐
 All modules share types from `types.ts`; `plugin-id.ts` holds the plugin ID;
 `images.ts` (image limits and re-encoding) serves the image tools;
 `chat-state.ts` (conversation records, format and migrations of
-`chat-state.json`) serves `main.ts`.
+`chat-state.json`) serves `main.ts`; `styles.css` holds the global styles
+(the build adds the components' scoped ones).
 
 ## Modules
 

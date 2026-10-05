@@ -92,5 +92,9 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 
 - CSS classes use the `chatting-minus-` prefix; the view type is
   `chatting-minus-view`.
+- Styles live in `src/styles.css` (global) and in each Svelte component
+  (scoped; the class hash includes the plugin ID, so it differs from
+  Chatting with AI's). The build writes both into `styles.css`; nothing is
+  injected at runtime.
 - Only Obsidian CSS variables for colours and fonts, so themes work.
 - UI text is English, in sentence case (Obsidian guideline).

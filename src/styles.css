@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    Chatting with AI Minus — Global styles (outside Svelte component scope)
-   Component styles live in ChatContainer.svelte with scoped CSS.
+   Component styles live in ChatContainer.svelte with scoped CSS. The build
+   writes both into styles.css (this file first); never edit that one.
    All class names use the `chatting-minus-` prefix to avoid colliding with
    Chatting with AI (`ochatting-`) and Obsidian Chat (`ochat-`) when
    installed side by side.

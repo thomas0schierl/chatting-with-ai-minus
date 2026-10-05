@@ -48,7 +48,8 @@ answers and a stopped older turn, hold to talk, ending, the device
 check's GPT-Live session (closed at once), and the Codex
 sign-in. The harness builds with `__CODEX_VOICE__` true;
 `voice-build.test.mjs` runs the real build config and checks that the
-public bundle has no Codex voice code. They don't prove live-service or mobile behaviour.
+public bundle has no Codex voice code, and that both builds write all CSS
+into `styles.css`. They don't prove live-service or mobile behaviour.
 
 ## Live checks
 

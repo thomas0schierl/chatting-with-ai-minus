@@ -548,12 +548,16 @@
     }
   }
 
+  /** Fits a text box's height to its text, up to 300 px; a scrollbar only beyond that. */
+  function fitHeight(node: HTMLTextAreaElement): void {
+    node.style.setProperty("--chatting-minus-text-height", "auto");
+    node.style.setProperty("--chatting-minus-text-height", `${Math.min(node.scrollHeight, 300)}px`);
+    node.classList.toggle("is-scrollable", node.scrollHeight > 300);
+  }
+
   /** The edit box: focused with the cursor at the end, grows with its text. */
   function editBox(node: HTMLTextAreaElement) {
-    const grow = () => {
-      node.style.height = "auto";
-      node.style.height = Math.min(node.scrollHeight, 300) + "px";
-    };
+    const grow = () => fitHeight(node);
     node.addEventListener("input", grow);
     grow();
     node.focus();
@@ -566,17 +570,13 @@
   }
 
   function autoGrow(): void {
-    if (!textareaEl) return;
-    textareaEl.style.height = "auto";
-    textareaEl.style.height = Math.min(textareaEl.scrollHeight, 300) + "px";
-    // A scrollbar only once the text is taller than the box can grow
-    textareaEl.style.overflowY = textareaEl.scrollHeight > 300 ? "auto" : "hidden";
+    if (textareaEl) fitHeight(textareaEl);
   }
 
   function resetHeight(): void {
     if (!textareaEl) return;
-    textareaEl.style.height = "auto";
-    textareaEl.style.overflowY = "hidden";
+    textareaEl.style.setProperty("--chatting-minus-text-height", "auto");
+    textareaEl.classList.remove("is-scrollable");
   }
 
   function imageDataUrl(image: ImageAttachment): string {
@@ -1422,6 +1422,7 @@
   .chatting-minus-edit-input {
     width: 100%;
     resize: none;
+    height: var(--chatting-minus-text-height, auto);
     max-height: 300px;
     padding: 6px 8px;
     border: 1px solid var(--background-modifier-border);
@@ -1826,10 +1827,16 @@
     background-color: var(--background-secondary);
     color: var(--text-normal);
     line-height: 1.4;
+    height: var(--chatting-minus-text-height, auto);
     max-height: 300px;
-    /* autoGrow() turns the scrollbar on only beyond the maximum height */
+    /* fitHeight() turns the scrollbar on only beyond the maximum height */
     overflow-y: hidden;
     box-shadow: none;
+  }
+
+  /* Set by fitHeight(), outside the template. */
+  .chatting-minus-input:global(.is-scrollable) {
+    overflow-y: auto;
   }
 
   .chatting-minus-input:focus {

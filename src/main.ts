@@ -1,3 +1,5 @@
+// Bundled with the components' CSS into styles.css (esbuild.config.mjs).
+import "./styles.css";
 import {
   Plugin,
   Notice,

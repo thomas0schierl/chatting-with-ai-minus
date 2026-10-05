@@ -1,6 +1,8 @@
 # --- upstream defaults ---
 node_modules/
 main.js
+# Built from src/styles.css and the Svelte components (esbuild.config.mjs)
+/styles.css
 dist/
 *.js.map
 data.json

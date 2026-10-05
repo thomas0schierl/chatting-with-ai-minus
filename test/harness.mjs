@@ -37,6 +37,9 @@ export const bundled = await build({
   define: { __CODEX_VOICE__: 'true' },
   plugins: [{ name: 'obsidian-test-transport', setup(build) {
     build.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian', namespace: 'test' }));
+    // Styles don't matter here (the build test checks styles.css).
+    build.onResolve({ filter: /\.css$/ }, () => ({ path: 'css', namespace: 'test-css' }));
+    build.onLoad({ filter: /.*/, namespace: 'test-css' }, () => ({ contents: '', loader: 'js' }));
     // The chat view's Svelte UI isn't under test; main.ts only needs it to import.
     build.onResolve({ filter: /^svelte$|\.svelte$/ }, () => ({ path: 'svelte', namespace: 'test-svelte' }));
     build.onLoad({ filter: /.*/, namespace: 'test-svelte' }, () => ({ contents: 'export const mount = () => ({}); export const unmount = () => {}; export default {};', loader: 'js' }));
