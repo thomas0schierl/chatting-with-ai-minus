@@ -7,11 +7,21 @@
 ## Build and release
 
 1. `npm run build` bundles `src/` (TypeScript and Svelte) with esbuild into
-   `main.js`.
+   `main.js`. The Check workflow (`.github/workflows/check.yml`) runs lint,
+   tests, type and Svelte checks and the build on every pull request and
+   push to `main`.
 2. A release is a GitHub release whose tag equals the `manifest.json`
    version, with three assets: `main.js`, `manifest.json`, `styles.css`.
-   `scripts/release.sh` bumps the versions, builds, tags and creates it.
-3. Obsidian's community plugin directory installs and updates from those
+3. `scripts/release.sh` bumps the version in `manifest.json`,
+   `package.json` and `versions.json`, commits, tags and pushes.
+4. The tag starts the Release workflow (`.github/workflows/release.yml`):
+   - checks that the tag equals the `manifest.json` version and that
+     `versions.json` lists it
+   - runs lint, tests, type and Svelte checks, then builds
+   - attests the three assets (build provenance, verifiable with
+     `gh attestation verify`)
+   - creates a draft GitHub release with them; a maintainer publishes it.
+5. Obsidian's community plugin directory installs and updates from those
    releases. `versions.json` maps each plugin version to the minimum
    Obsidian version.
 

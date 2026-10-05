@@ -12,8 +12,10 @@ npm install
 npm run dev            # build on change
 npm run build          # production build (main.js)
 npm test               # offline regression tests
+npm run lint           # Obsidian review rules (ESLint, .ts files)
 npx tsc --noEmit       # type check
 npm run svelte-check   # Svelte check
+scripts/release.sh X.Y.Z  # bump, commit, tag, push; CI drafts the release
 ```
 
 ## Rules

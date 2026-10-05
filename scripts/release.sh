@@ -1,87 +1,48 @@
 #!/usr/bin/env bash
-# Release helper for Chatting with AI Minus.
+# Starts a release of Chatting with AI Minus.
 #
-# Usage:
-#   scripts/release.sh <version> [notes-file]
-#   scripts/release.sh 1.3.0
-#   scripts/release.sh 1.3.0 release-notes.md
+# Usage: scripts/release.sh <X.Y.Z>
 #
-# Steps:
-#   1. Validate version (X.Y.Z) and clean working tree
-#   2. Bump manifest.json, package.json, versions.json
-#   3. Build production bundle (main.js)
-#   4. Commit, tag, push main + tag
-#   5. Create GitHub release with main.js, manifest.json, styles.css
+# Bumps the version in manifest.json, package.json, package-lock.json and
+# versions.json, commits, tags and pushes the commit and the tag. The Release
+# workflow (.github/workflows/release.yml) then checks, builds and creates a
+# draft GitHub release; publish it on GitHub.
 
 set -euo pipefail
 
 VERSION="${1:-}"
-NOTES_FILE="${2:-}"
-
-if [[ -z "$VERSION" ]]; then
-  echo "error: version required. usage: $0 <version> [notes-file]" >&2
-  exit 1
-fi
-
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "error: version must be X.Y.Z (got '$VERSION')" >&2
+  echo "usage: $0 <X.Y.Z> (got '$VERSION')" >&2
   exit 1
 fi
 
-# Repo root
 cd "$(dirname "$0")/.."
 
 if [[ -n "$(git status --porcelain)" ]]; then
-  echo "error: working tree is dirty. commit or stash first." >&2
+  echo "error: working tree is not clean; commit or stash first." >&2
   git status --short >&2
   exit 1
 fi
 
-if git rev-parse "$VERSION" >/dev/null 2>&1; then
+if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
   echo "error: tag $VERSION already exists." >&2
   exit 1
 fi
 
-echo "==> Bumping to $VERSION"
+npm version "$VERSION" --no-git-tag-version >/dev/null
+node -e '
+  const fs = require("fs");
+  const version = process.argv[1];
+  const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+  manifest.version = version;
+  fs.writeFileSync("manifest.json", JSON.stringify(manifest, null, 2) + "\n");
+  const versions = JSON.parse(fs.readFileSync("versions.json", "utf8"));
+  versions[version] = manifest.minAppVersion;
+  fs.writeFileSync("versions.json", JSON.stringify(versions, null, 2) + "\n");
+' "$VERSION"
 
-MIN_APP_VERSION="$(node -p "require('./manifest.json').minAppVersion")"
-
-node -e "
-  const fs = require('fs');
-  const m = JSON.parse(fs.readFileSync('manifest.json','utf8'));
-  m.version = '$VERSION';
-  fs.writeFileSync('manifest.json', JSON.stringify(m) + '\n');
-  const p = JSON.parse(fs.readFileSync('package.json','utf8'));
-  p.version = '$VERSION';
-  fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
-  const v = JSON.parse(fs.readFileSync('versions.json','utf8'));
-  v['$VERSION'] = '$MIN_APP_VERSION';
-  fs.writeFileSync('versions.json', JSON.stringify(v, null, 2) + '\n');
-"
-
-echo "==> Building"
-npm run build >/dev/null
-
-for f in main.js manifest.json styles.css; do
-  [[ -f "$f" ]] || { echo "error: missing release asset $f" >&2; exit 1; }
-done
-
-echo "==> Committing & tagging"
-git add manifest.json package.json versions.json
-git commit -m "Release $VERSION"
+git commit -m "Release $VERSION" -- manifest.json package.json package-lock.json versions.json
 git tag -a "$VERSION" -m "Release $VERSION"
+git push --atomic origin HEAD "refs/tags/$VERSION"
 
-echo "==> Pushing"
-git push origin main
-git push origin "$VERSION"
-
-echo "==> Creating GitHub release"
-if [[ -n "$NOTES_FILE" && -f "$NOTES_FILE" ]]; then
-  gh release create "$VERSION" main.js manifest.json styles.css \
-    --title "$VERSION" --notes-file "$NOTES_FILE"
-else
-  gh release create "$VERSION" main.js manifest.json styles.css \
-    --title "$VERSION" --generate-notes
-fi
-
-echo "==> Done: $(gh release view "$VERSION" --json url --jq .url)"
+echo "Pushed $VERSION. The Release workflow creates a draft release; publish it on GitHub."

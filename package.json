@@ -9,6 +9,7 @@
     "test": "node scripts/test.mjs",
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
+    "lint": "eslint .",
     "svelte-check": "svelte-check --tsconfig tsconfig.json",
     "release": "./scripts/release.sh"
   },
@@ -16,6 +17,8 @@
     "@types/node": "^22.0.0",
     "esbuild": "^0.24.0",
     "esbuild-svelte": "^0.9.4",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "^0.4.2",
     "obsidian": "1.13.1",
     "svelte": "^5.53.12",
     "svelte-check": "^4.4.5",
