@@ -55,7 +55,11 @@ export const bundled = await build({
       export const Platform = { isDesktopApp: true, isMobile: false, isIosApp: false, isAndroidApp: false };
       export class TFile { constructor(path) { this.path = path; this.extension = 'md'; } }
       export const normalizePath = path => path;
-      export const requestUrl = request => globalThis.__providerRequest(request);
+      // GitHub (Codex version lookup) is answered here so provider mocks only
+      // see provider requests; a test may set __githubRequest.
+      export const requestUrl = request => request.url.startsWith('https://api.github.com/')
+        ? (globalThis.__githubRequest ?? (async () => ({ status: 503, json: {} })))(request)
+        : globalThis.__providerRequest(request);
       export const arrayBufferToBase64 = buffer => Buffer.from(buffer).toString('base64');
     `, loader: 'js' }));
   } }],

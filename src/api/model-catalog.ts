@@ -21,9 +21,15 @@ export interface CatalogEntry {
 }
 export interface CatalogState {
   entries: CatalogEntry[];
+  /** Latest stable Codex CLI version, sent as `client_version` (see codexClientVersion). */
+  clientVersion?: { value: string; checkedAt: number };
 }
 export const CATALOG_TTL = 24 * 60 * 60 * 1000;
 const RETRY_DELAY = 5 * 60 * 1000;
+/** Used when GitHub can't be reached; only has to be recent. */
+const FALLBACK_CLIENT_VERSION = "0.160.0";
+let versionRequest: Promise<string> | undefined;
+let versionAttempt = 0;
 const activeModels = new Map<Provider, ModelOption[]>();
 const pending = new Map<string, Promise<ModelOption[]>>();
 const failedAt = new Map<string, number>();
@@ -48,7 +54,40 @@ export function normalizeCatalogState(value: unknown): CatalogState {
       state.entries.push({ identity: entry.identity, provider: entry.provider as Provider, fetchedAt: entry.fetchedAt, models });
     }
   }
+  const version = value.clientVersion;
+  if (record(version) && typeof version.value === "string" && /^\d+\.\d+\.\d+$/.test(version.value) &&
+      typeof version.checkedAt === "number") {
+    state.clientVersion = { value: version.value, checkedAt: version.checkedAt };
+  }
   return state;
+}
+
+/**
+ * The ChatGPT model list hides models newer than the `client_version` it is
+ * given, like the Codex CLI's catalog it is built on. Without the parameter
+ * it assumes an old client (seen 2026-10-05: GPT-6-Sol, GPT-6-Luna and
+ * GPT-6.1-Sol were missing). This isn't in OpenAI's docs, so we send the
+ * latest stable Codex CLI release, cached for a day.
+ */
+async function codexClientVersion(state: CatalogState, force: boolean): Promise<string> {
+  const known = state.clientVersion;
+  if (!force && known && Date.now() - known.checkedAt < CATALOG_TTL) return known.value;
+  if (versionRequest) return versionRequest;
+  const fallback = known?.value ?? FALLBACK_CLIENT_VERSION;
+  if (!force && Date.now() - versionAttempt < RETRY_DELAY) return fallback;
+  versionAttempt = Date.now();
+  versionRequest = (async () => {
+    try {
+      const release = await jsonRequest("https://api.github.com/repos/openai/codex/releases/latest", { Accept: "application/vnd.github+json" });
+      const version = typeof release.tag_name === "string" ? release.tag_name.match(/^rust-v(\d+\.\d+\.\d+)$/)?.[1] : undefined;
+      if (!version || release.prerelease === true || release.draft === true) return fallback;
+      state.clientVersion = { value: version, checkedAt: Date.now() };
+      return version;
+    } catch {
+      return fallback;
+    }
+  })().finally(() => { versionRequest = undefined; });
+  return versionRequest;
 }
 export function getCatalogModels(provider: Provider): ModelOption[] | undefined { return activeModels.get(provider); }
 export function clearCatalogModels(provider: Provider): void { activeModels.delete(provider); }
@@ -138,7 +177,9 @@ export async function refreshCatalog(state: CatalogState, provider: Provider, id
       }
       // Same URL as the API-key provider, but this token gets `{models: [...]}`.
       // Reasoning fields aren't in the docs; they are read when present.
-      const json = await jsonRequest("https://api.openai.com/v1/models", { Authorization: `Bearer ${credential.accessToken}` });
+      const version = await codexClientVersion(state, force);
+      const json = await jsonRequest(`https://api.openai.com/v1/models?client_version=${encodeURIComponent(version)}`,
+        { Authorization: `Bearer ${credential.accessToken}` });
       if (!Array.isArray(json.models)) throw new Error("Invalid ChatGPT model catalog");
       models = json.models.filter(record).filter(m => m.visibility === "list" && typeof m.slug === "string")
         .map(m => ({ value: m.slug as string, label: typeof m.display_name === "string" ? m.display_name : m.slug as string,

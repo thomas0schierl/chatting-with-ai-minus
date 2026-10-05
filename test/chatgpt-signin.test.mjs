@@ -223,13 +223,19 @@ test('Errors: usage limit links to ChatGPT usage, 401 asks to sign in again', as
 
 test('Model list: /v1/models with the bearer token, only visibility "list"', async () => {
   const requests = [];
+  globalThis.__githubRequest = async () => ({ status: 200, json: { tag_name: 'rust-v0.161.0', prerelease: false, draft: false } });
   globalThis.__providerRequest = async request => {
     requests.push(request);
     return { status: 200, json: { models: [{ slug: 'gpt-6.1-sol', display_name: 'GPT-6.1 Sol', visibility: 'list' }, { slug: 'internal', visibility: 'hide' }] } };
   };
   const identity = await api.catalogIdentity('chatgpt-oauth', 'fake-account');
-  const models = await api.refreshCatalog({ entries: [] }, 'chatgpt-oauth', identity, '', { getUsableCredential: async () => ({ accessToken: 'fake-token', accountId: 'fake-account' }) }, true);
-  assert.equal(requests[0].url, 'https://api.openai.com/v1/models');
+  const state = { entries: [] };
+  const models = await api.refreshCatalog(state, 'chatgpt-oauth', identity, '', { getUsableCredential: async () => ({ accessToken: 'fake-token', accountId: 'fake-account' }) }, true);
+  // The latest stable Codex release is sent as client_version (undocumented
+  // gating) and cached in the catalog state.
+  assert.equal(requests[0].url, 'https://api.openai.com/v1/models?client_version=0.161.0');
+  assert.equal(state.clientVersion.value, '0.161.0');
+  delete globalThis.__githubRequest;
   assert.deepEqual(requests[0].headers, { Authorization: 'Bearer fake-token' });
   assert.deepEqual(models, [{ value: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', reasoningEfforts: undefined, defaultReasoningEffort: undefined, supportsReasoningSummary: undefined, supportsParallelTools: undefined }]);
 });
