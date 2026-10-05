@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, Platform } from "obsidian";
 import { mount, unmount } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
@@ -6,7 +6,8 @@ import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, ChatE
 import { newTurnId } from "../agent/history";
 import { savedToolInput } from "../chat-state";
 import { debugLog } from "../debug";
-import { VoiceController, type VoiceTurnHooks, type VoiceViewState } from "../voice/controller";
+import { VoiceController, VOICE_TIMING, type VoiceTurnHooks, type VoiceViewState } from "../voice/controller";
+import { appLifecycle } from "../platform/lifecycle";
 
 export const VIEW_TYPE_CHAT = "chatting-minus-view";
 
@@ -62,6 +63,8 @@ export class ObsidianChatView extends ItemView {
   private streaming: { id: number; text: string } | null = null;
   /** The live voice conversation, while one runs (ADR-11). */
   private voice: VoiceController | null = null;
+  /** Stops following the background for voice; set once voice was first started. */
+  private unwatchBackground?: () => void;
   private markReady!: () => void;
   /** Resolves once onOpen() has mounted the chat UI, or failed to. */
   readonly ready: Promise<void> = new Promise((resolve) => { this.markReady = resolve; });
@@ -186,6 +189,7 @@ export class ObsidianChatView extends ItemView {
 
   async onClose(): Promise<void> {
     this.endVoice();
+    this.unwatchBackground?.();
     this.plugin.agent.abort();
     if (this.chatContainer) {
       await unmount(this.chatContainer);
@@ -229,7 +233,7 @@ export class ObsidianChatView extends ItemView {
   }
 
   /** Start a voice conversation in the current conversation. */
-  startVoice(): void {
+  startVoice(options: { reconnecting?: boolean; micOn?: boolean } = {}): void {
     if (this.voice) return;
     const route = this.plugin.voiceRoute();
     if (!route) {
@@ -251,9 +255,52 @@ export class ObsidianChatView extends ItemView {
         this.chatContainer?.setVoice(state);
       },
       log: (label, data) => debugLog(this.app, label, data),
-    }, route, this.plugin.settings.voiceMicMode === "hold");
+    }, route, this.plugin.settings.voiceMicMode === "hold", options);
     this.voice = controller;
+    this.unwatchBackground ??= this.watchVoiceBackground();
     void controller.start();
+  }
+
+  /**
+   * Mobile (ADR-15): in the background the microphone records only
+   * silence and the call may drop. Leaving turns the microphone off and
+   * ends the call after `endAfter` (nobody hears it, and it is billed by
+   * the minute). Back sooner, a working call gets its microphone back;
+   * one that dropped, or after more than `reconnectAfter`, is replaced.
+   * Desktop: a minimised window keeps the call. Returns the unsubscribe.
+   */
+  private watchVoiceBackground(): () => void {
+    let endTimer = 0;
+    const offHidden = appLifecycle.onHidden(() => {
+      if (!Platform.isMobileApp || !this.voice) return;
+      this.voice.enterBackground();
+      endTimer = window.setTimeout(() => this.endVoice(), VOICE_TIMING.endAfter);
+    });
+    const offVisible = appLifecycle.onVisible((hiddenMs) => {
+      window.clearTimeout(endTimer);
+      const voice = this.voice;
+      if (!Platform.isMobileApp || !voice) return;
+      if (hiddenMs >= VOICE_TIMING.endAfter) this.endVoice();
+      else if (!voice.leaveBackground(hiddenMs)) this.reconnectVoice();
+    });
+    return () => {
+      offHidden();
+      offVisible();
+      window.clearTimeout(endTimer);
+    };
+  }
+
+  /**
+   * Replace the voice conversation: the old call ends quietly, a new one
+   * starts ("Reconnecting…"), seeded with the chat as it is now, so an
+   * answer finished meanwhile is included. If it fails, the error shows.
+   */
+  private reconnectVoice(): void {
+    const old = this.voice;
+    if (!old) return;
+    this.voice = null;
+    void old.end();
+    this.startVoice({ reconnecting: true, micOn: old.isMicOn() });
   }
 
   /** End the voice conversation, if one runs. */

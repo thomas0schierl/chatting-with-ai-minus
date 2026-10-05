@@ -79,6 +79,7 @@
 
   const VOICE_STATUS: Record<VoiceViewState["status"], string> = {
     connecting: "Connecting…",
+    reconnecting: "Reconnecting…",
     listening: "Listening",
     thinking: "Working on it…",
     speaking: "Speaking",
@@ -1066,7 +1067,7 @@
             class:is-active={voice.micOn}
             type="button"
             aria-pressed={voice.micOn}
-            disabled={voice.status === "connecting"}
+            disabled={voice.status === "connecting" || voice.status === "reconnecting"}
             onpointerdown={talkStart}
             onpointerup={() => onVoice("talk-end")}
             onpointercancel={() => onVoice("talk-end")}
@@ -1079,7 +1080,7 @@
             class="chatting-minus-voice-btn"
             type="button"
             aria-pressed={!voice.micOn}
-            disabled={voice.status === "connecting"}
+            disabled={voice.status === "connecting" || voice.status === "reconnecting"}
             onclick={() => onVoice("mute")}
           >{voice.micOn ? "Mute" : "Unmute"}</button>
         {/if}
@@ -1947,7 +1948,8 @@
   }
 
   .chatting-minus-voice-dot[data-status="thinking"],
-  .chatting-minus-voice-dot[data-status="connecting"] {
+  .chatting-minus-voice-dot[data-status="connecting"],
+  .chatting-minus-voice-dot[data-status="reconnecting"] {
     background: var(--color-yellow, var(--text-muted));
     animation: chatting-minus-voice-pulse 1.4s ease-in-out infinite;
   }

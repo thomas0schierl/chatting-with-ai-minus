@@ -132,6 +132,11 @@ export class VoiceSession {
     if (open) this.channel!.send(JSON.stringify(event));
   }
 
+  /** The peer connection is up and the data channel open. */
+  isConnected(): boolean {
+    return this.pc?.connectionState === "connected" && this.channel?.readyState === "open";
+  }
+
   /** Microphone on or off (mute, hold to talk): the track sends silence when off. */
   setMicEnabled(enabled: boolean): void {
     for (const track of this.mic?.getAudioTracks() ?? []) track.enabled = enabled;

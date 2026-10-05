@@ -17,7 +17,7 @@ import {
 } from "./protocol";
 import { VoiceCancelled, VoiceSession, type VoiceRoute } from "./session";
 
-export type VoiceStatus = "connecting" | "listening" | "thinking" | "speaking";
+export type VoiceStatus = "connecting" | "reconnecting" | "listening" | "thinking" | "speaking";
 
 /** What the voice bar shows. */
 export interface VoiceViewState {
@@ -63,6 +63,10 @@ export const VOICE_TIMING = {
   maxWait: 2500,
   /** "Speaking" ends when no words of the voice arrived for this long. */
   speaking: 1500,
+  /** Mobile (ADR-15): back after longer than this in the background, the call is replaced… */
+  reconnectAfter: 20_000,
+  /** …and after this long in the background it ends. */
+  endAfter: 60_000,
 };
 
 export class VoiceController {
@@ -79,10 +83,20 @@ export class VoiceController {
   private delegation = 0;
   private voiceTurnRunning = false;
   private speakingTimer?: number;
+  /** Obsidian is in the background (mobile, ADR-15): microphone off, a lost call not reported. */
+  private background = false;
 
-  constructor(private readonly host: VoiceHost, route: VoiceRoute, holdToTalk: boolean) {
+  /**
+   * `reconnecting`: this replaces a call lost in the background, shown as
+   * "Reconnecting…"; `micOn`: hands-free, the old call's microphone state.
+   */
+  constructor(private readonly host: VoiceHost, route: VoiceRoute, holdToTalk: boolean,
+    { reconnecting = false, micOn = true }: { reconnecting?: boolean; micOn?: boolean } = {}) {
     this.dialect = route.dialect;
-    this.state = { status: "connecting", you: "", assistant: "", micOn: !holdToTalk, holdToTalk, audioBlocked: false };
+    this.state = {
+      status: reconnecting ? "reconnecting" : "connecting",
+      you: "", assistant: "", micOn: !holdToTalk && micOn, holdToTalk, audioBlocked: false,
+    };
     this.session = new VoiceSession(route, {
       onMessage: (message) => this.receive(message),
       onEnded: (error) => this.onEnded(error),
@@ -97,7 +111,7 @@ export class VoiceController {
     try {
       await this.session.start(VOICE_INSTRUCTIONS, seedItems(this.host.history()));
       if (this.ended) return;
-      this.session.setMicEnabled(this.state.micOn);
+      this.session.setMicEnabled(this.state.micOn && !this.background);
       this.update({ status: "listening" });
     } catch (error) {
       if (error instanceof VoiceCancelled || this.ended) return;
@@ -129,6 +143,34 @@ export class VoiceController {
   resumeAudio(): void {
     this.update({ audioBlocked: false });
     this.session.resumeAudio().catch(() => this.update({ audioBlocked: true }));
+  }
+
+  /** The microphone is on in the voice bar (hands-free and not muted, or held). */
+  isMicOn(): boolean {
+    return this.state.micOn;
+  }
+
+  /**
+   * Mobile: Obsidian went to the background, where the microphone records
+   * only silence. It is turned off, and a call that drops now isn't
+   * reported: the view decides on the return (ADR-15).
+   */
+  enterBackground(): void {
+    this.background = true;
+    this.session.setMicEnabled(false);
+  }
+
+  /**
+   * Back after `hiddenMs` in the background: true when the call still
+   * works (the microphone as it was; off for hold to talk, whose press
+   * ended), false when it must be replaced (lost, or away longer than
+   * `reconnectAfter`).
+   */
+  leaveBackground(hiddenMs: number): boolean {
+    this.background = false;
+    if (this.ended || hiddenMs > VOICE_TIMING.reconnectAfter || !this.session.isConnected()) return false;
+    this.setMic(this.state.micOn && !this.state.holdToTalk);
+    return true;
   }
 
   private setMic(on: boolean): void {
@@ -167,7 +209,8 @@ export class VoiceController {
         break;
       case "closed":
         // The session ends after this event; say why unless we asked for it.
-        if (event.reason && event.reason !== "close_requested") this.host.showError(`The voice conversation ended (${event.reason.replace(/_/g, " ")}).`);
+        // In the background the call is replaced on the return instead.
+        if (event.reason && event.reason !== "close_requested" && !this.background) this.host.showError(`The voice conversation ended (${event.reason.replace(/_/g, " ")}).`);
         break;
     }
   }
@@ -263,6 +306,8 @@ export class VoiceController {
     window.clearTimeout(this.speakingTimer);
     const wasEnded = this.ended;
     this.ended = true;
+    // Lost in the background: the bar stays, the view reconnects on the return.
+    if (this.background && !wasEnded) return;
     this.host.render(null);
     if (error && !wasEnded) this.host.showError(error);
   }

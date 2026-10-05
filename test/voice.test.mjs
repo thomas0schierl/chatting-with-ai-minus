@@ -3,10 +3,11 @@
 // ending, and the Codex sign-in. WebRTC, the microphone and the audio
 // element are faked here.
 import assert from 'node:assert/strict';
-import { test, beforeEach } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import { api, text, call, response, chatSetup } from './harness.mjs';
 
 const { voiceProtocol: P, voiceSession: S, voiceController: C, codexVoice: X } = api;
+const { appLifecycle } = api.lifecycle;
 
 // ─── Fake WebRTC, microphone and audio ──────────────────────────────────────
 
@@ -58,7 +59,8 @@ async function until(condition, ms = 3000) {
 beforeEach(() => {
   rtc.pcs = [];
   Object.assign(S.SESSION_TIMING, { iceWait: 10, startWait: 1000, closeWait: 300, quietLog: 5 });
-  Object.assign(C.VOICE_TIMING, { quiet: 20, maxWait: 200, speaking: 20 });
+  Object.assign(C.VOICE_TIMING, { quiet: 20, maxWait: 200, speaking: 20, reconnectAfter: 40, endAfter: 150 });
+  appLifecycle.markVisible();
   api.resetStreamTransport();
   globalThis.__notices = [];
 });
@@ -471,6 +473,111 @@ test('The microphone button shows only when a voice route is set up', async () =
   secrets[CODEX_KEY] = JSON.stringify({ accessToken: 'a', refreshToken: 'r', accountId: 'acct', expiresAt: Date.now() + 3600_000 });
   view.updateVoiceAvailable();
   assert.equal(chat.voiceAvailable, true);
+});
+
+// ─── Background (ADR-15) ────────────────────────────────────────────────────
+
+afterEach(() => { api.Platform.isMobileApp = false; });
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const errorsShown = (chat) => chat.shown.filter((m) => m.type === 'error').map((m) => m.text);
+
+/** Voice listening on a phone, the peer connection up. */
+async function phoneVoice(options) {
+  api.Platform.isMobileApp = true;
+  const setup = await voiceSetup(options);
+  const log = serve();
+  await startListening(setup.view, setup.chat);
+  pc().connectionState = 'connected';
+  return { ...setup, log, first: pc() };
+}
+
+test('Mobile: leaving turns the microphone off; back soon, the same call goes on with the microphone as it was', async () => {
+  const { view, chat, first } = await phoneVoice();
+  appLifecycle.markHidden();
+  assert.equal(rtc.mic.track.enabled, false);
+  assert.equal(chat.voice.micOn, true);
+  appLifecycle.markVisible();
+  assert.equal(rtc.pcs.length, 1);
+  assert.equal(first.closed, false);
+  assert.equal(rtc.mic.track.enabled, true);
+  view.endVoice();
+
+  // Hold to talk: a press when the app went away has ended.
+  const held = await phoneVoice({ micMode: 'hold' });
+  held.view.handleVoice('talk-start');
+  assert.equal(rtc.mic.track.enabled, true);
+  appLifecycle.markHidden();
+  assert.equal(rtc.mic.track.enabled, false);
+  appLifecycle.markVisible();
+  assert.equal(rtc.mic.track.enabled, false);
+  assert.equal(held.chat.voice.micOn, false);
+  held.view.endVoice();
+});
+
+test('Mobile: back after more than 20 s (shortened here), the call is replaced, "Reconnecting…", with the chat as it is now and the mute kept', async () => {
+  const { view, chat, plugin, log, first } = await phoneVoice();
+  view.handleVoice('mute');
+  appLifecycle.markHidden();
+  plugin.chatHistory.push({ type: 'assistant', text: 'Finished while away' });
+  await sleep(60);
+  appLifecycle.markVisible();
+  await until(() => rtc.pcs.length === 2 && pc().channel?.readyState === 'open');
+  assert.equal(chat.voice.status, 'reconnecting');
+  assert.deepEqual(first.channel.sent.at(-1), { type: 'session.close' });
+  await until(() => first.closed);
+  channel().receive({ type: 'session.started', session: { id: 'live_2' } });
+  await until(() => chat.voice?.status === 'listening');
+  const seeded = JSON.parse(log.live[1].body).session.input.map((item) => item.content[0].text);
+  assert.ok(seeded.includes('Finished while away'));
+  assert.equal(chat.voice.micOn, false);
+  assert.equal(rtc.mic.track.enabled, false);
+  assert.deepEqual(errorsShown(chat), []);
+  view.endVoice();
+});
+
+test('Mobile: a call lost in the background shows no error and is replaced on the return', async () => {
+  const { view, chat, first } = await phoneVoice();
+  appLifecycle.markHidden();
+  first.connectionState = 'failed';
+  first.onconnectionstatechange();
+  await sleep(5);
+  assert.deepEqual(errorsShown(chat), []);
+  assert.notEqual(chat.voice, null);
+  appLifecycle.markVisible();
+  await until(() => rtc.pcs.length === 2 && pc().channel?.readyState === 'open');
+  assert.equal(chat.voice.status, 'reconnecting');
+  channel().receive({ type: 'session.started', session: { id: 'live_2' } });
+  await until(() => chat.voice?.status === 'listening');
+  assert.deepEqual(errorsShown(chat), []);
+  view.endVoice();
+});
+
+test('Mobile: after 60 s (shortened here) in the background the call ends quietly, also while JavaScript still runs', async () => {
+  const { chat, first } = await phoneVoice();
+  appLifecycle.markHidden();
+  await until(() => chat.voice === null, 1000);
+  assert.deepEqual(first.channel.sent.at(-1), { type: 'session.close' });
+  await until(() => first.closed);
+  appLifecycle.markVisible();
+  await sleep(20);
+  assert.equal(rtc.pcs.length, 1);
+  assert.equal(chat.voice, null);
+  assert.deepEqual(errorsShown(chat), []);
+});
+
+test('Desktop: a minimised window keeps the call and its microphone', async () => {
+  const { view, chat } = await voiceSetup();
+  serve();
+  await startListening(view, chat);
+  pc().connectionState = 'connected';
+  appLifecycle.markHidden();
+  assert.equal(rtc.mic.track.enabled, true);
+  await sleep(200);
+  appLifecycle.markVisible();
+  assert.equal(rtc.pcs.length, 1);
+  assert.equal(pc().closed, false);
+  assert.equal(chat.voice.status, 'listening');
+  view.endVoice();
 });
 
 // ─── Codex sign-in ──────────────────────────────────────────────────────────
