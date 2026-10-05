@@ -45,6 +45,10 @@ export interface VoiceTurnHooks {
 export interface VoiceHost {
   /** Run `text` as a chat turn, like a typed message; resolves when it has ended. */
   runTurn(text: string, hooks: VoiceTurnHooks): Promise<void>;
+  /** Add a request to the running turn (steering); false when none is running. */
+  steerTurn(text: string): boolean;
+  /** Steered requests the finished turn didn't get to. */
+  takeSteered(): string[];
   /** Stop the running turn, like Stop. */
   stopTurn(): void;
   turnRunning(): boolean;
@@ -79,9 +83,11 @@ export class VoiceController {
   private pendingInput = "";
   private lastInputAt = 0;
   private lastSpeaker: "user" | "assistant" | null = null;
-  /** Increases with each delegation; an older turn's answer isn't spoken. */
+  /** Increases with each delegation; an older one still gathering its words gives up. */
   private delegation = 0;
   private voiceTurnRunning = false;
+  /** The newest delegation in the running voice turn: progress and the answer go to it. */
+  private answerTo = "";
   private speakingTimer?: number;
   /** Obsidian is in the background (mobile, ADR-15): microphone off, a lost call not reported. */
   private background = false;
@@ -237,14 +243,12 @@ export class VoiceController {
   /** A delegation: run the request as a chat turn and send the answer back to speak. */
   private async delegate(id: string, text: string): Promise<void> {
     const delegation = ++this.delegation;
-    const current = () => delegation === this.delegation && !this.ended;
-    if (this.host.turnRunning()) this.host.stopTurn();
     let request = text.trim();
     if (!request) {
       // GPT-Live's delegation carries no text and can come before the
       // user's last words are transcribed.
       await this.inputSettled(Date.now());
-      if (!current()) return;
+      if (delegation !== this.delegation || this.ended) return;
       request = this.pendingInput.trim();
     }
     this.pendingInput = "";
@@ -252,14 +256,27 @@ export class VoiceController {
       this.sendAll(speakEvents(this.dialect, id, "I didn't catch the request. Ask the user to say it again."));
       return;
     }
+    // While the voice's turn runs, a new request steers it, as in the chat
+    // apps: the agent takes it in after its current step, nothing is
+    // stopped, and the answer goes to this newest delegation.
+    if (this.voiceTurnRunning && this.host.steerTurn(request)) {
+      this.answerTo = id;
+      this.sendAll(progressEvents(this.dialect, id, "Added to the task that is running."));
+      return;
+    }
+    // A typed turn is stopped, as Stop does.
+    if (this.host.turnRunning()) this.host.stopTurn();
+    await this.runVoiceTurn(id, request);
+  }
 
+  /** Run `request` as a chat turn and send the answer back to speak; then what was added too late. */
+  private async runVoiceTurn(id: string, request: string): Promise<void> {
+    this.answerTo = id;
     let answer = "";
     let failed = "";
     const progress = (value: string) => {
-      if (current()) this.sendAll(progressEvents(this.dialect, id, value));
+      if (!this.ended) this.sendAll(progressEvents(this.dialect, this.answerTo, value));
     };
-    // A turn typed while we waited for the transcript is stopped too.
-    if (this.host.turnRunning()) this.host.stopTurn();
     this.voiceTurnRunning = true;
     this.update({ status: "thinking" });
     try {
@@ -271,16 +288,22 @@ export class VoiceController {
         },
         onText: (value) => { answer = value; },
         onAskUser: (question) => {
-          if (current()) this.sendAll(speakEvents(this.dialect, id, `The assistant asks: ${question}`));
+          if (!this.ended) this.sendAll(speakEvents(this.dialect, this.answerTo, `The assistant asks: ${question}`));
         },
         onError: (message) => { failed = message; },
       });
     } finally {
-      if (delegation === this.delegation) this.voiceTurnRunning = false;
+      this.voiceTurnRunning = false;
     }
-    if (!current()) return;
-    if (answer) this.sendAll(speakEvents(this.dialect, id, spokenAnswer(answer)));
-    else if (failed) this.sendAll(speakEvents(this.dialect, id, "That didn't work; the error is shown in the chat."));
+    // Added after the turn's last step: it needs a turn of its own.
+    const later = this.host.takeSteered();
+    if (this.ended) return;
+    if (answer) this.sendAll(speakEvents(this.dialect, this.answerTo, spokenAnswer(answer)));
+    else if (failed) this.sendAll(speakEvents(this.dialect, this.answerTo, "That didn't work; the error is shown in the chat."));
+    if (later.length) {
+      await this.runVoiceTurn(this.answerTo, later.join("\n"));
+      return;
+    }
     if (this.state.status === "thinking") this.update({ status: "listening" });
   }
 

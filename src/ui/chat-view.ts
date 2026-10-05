@@ -35,6 +35,7 @@ interface ChatContainerApi extends Record<string, unknown> {
   setInputEnabled(enabled: boolean): void;
   setBusy(busy: boolean): void;
   cancelAskUser(): void;
+  answerAskUser(text: string): boolean;
   clearMessages(): void;
   focus(): void;
   setModel(name: string, provider: string): void;
@@ -242,6 +243,9 @@ export class ObsidianChatView extends ItemView {
     }
     const controller: VoiceController = new VoiceController({
       runTurn: (text, hooks) => this.handleUserMessage(text, null, [], newTurnId(), hooks),
+      // A spoken request while the agent waits for an answer is that answer.
+      steerTurn: (text) => this.running && (this.chatContainer?.answerAskUser(text) || this.plugin.agent.steer(text)),
+      takeSteered: () => this.plugin.agent.takeSteered(),
       stopTurn: () => this.handleStop(),
       turnRunning: () => this.running,
       history: () => this.plugin.chatHistory,
@@ -534,6 +538,11 @@ export class ObsidianChatView extends ItemView {
           this.endStream(true);
           this.append(history, { type: "error", text: error, ...(kind ? { errorKind: kind } : {}) });
           voice?.onError(error);
+        },
+        // Added to the running turn (voice steering): shown where the agent took it in.
+        onSteered: (text) => {
+          this.endStream(false);
+          this.append(history, { type: "user", text });
         },
       });
     } catch (e) {

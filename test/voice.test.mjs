@@ -362,30 +362,83 @@ test('Codex dialect: the delegation text runs as the turn; progress and the answ
   view.endVoice();
 });
 
-test('A new delegation stops the running turn; only the new answer is spoken', async () => {
+test('A new request while the voice turn runs steers it: nothing is stopped, the agent gets it after its current step', async () => {
   const { view, plugin, chat } = await voiceSetup();
   let releaseFirst;
   const log = serve({
     chat: (body, index) => index === 0
-      ? new Promise((resolve) => { releaseFirst = () => resolve(response('anthropic', [text('Old answer')])); })
-      : response('anthropic', [text('New answer')]),
+      ? new Promise((resolve) => { releaseFirst = () => resolve(response('anthropic', [call('r1', 'read_file', { path: 'Untitled.md' })], 'tool_use')); })
+      : response('anthropic', [text('Added both sections.')]),
   });
   await startListening(view, chat);
   const ch = channel();
-  ch.receive({ type: 'session.input_transcript.delta', delta: 'First question' });
+  ch.receive({ type: 'session.input_transcript.delta', delta: 'Add a Notes section' });
   ch.receive({ type: 'session.delegation.created', delegation: { id: 'del_1', target: 'client' } });
   await until(() => log.chat.length === 1);
 
-  ch.receive({ type: 'session.input_transcript.delta', delta: 'Second question' });
+  ch.receive({ type: 'session.input_transcript.delta', delta: 'Also add notes-notes' });
   ch.receive({ type: 'session.delegation.created', delegation: { id: 'del_2', target: 'client' } });
-  await until(() => ch.sent.some((e) => e.type === 'session.commentary.append'));
+  await until(() => ch.sent.some((e) => e.type === 'session.thinking.append' && e.delegation_id === 'del_2'));
   releaseFirst();
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await until(() => ch.sent.some((e) => e.type === 'session.commentary.append'));
 
-  assert.deepEqual(ch.sent.filter((e) => e.type === 'session.commentary.append').map((e) => [e.delegation_id, e.content]), [['del_2', 'New answer']]);
-  assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'user').map((e) => e.text), ['First question', 'Second question']);
-  assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'assistant').map((e) => e.text), ['New answer']);
-  assert.match(userText(log.chat[1]), /Second question$/);
+  // One turn: the second request went out with the step after the tool.
+  assert.equal(log.chat.length, 2);
+  assert.match(JSON.stringify(log.chat[1]), /\[The user added while you were working:\] Also add notes-notes/);
+  assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'user').map((e) => [e.text, !!e.turnId]),
+    [['Add a Notes section', true], ['Also add notes-notes', false]]);
+  assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'assistant').map((e) => e.text), ['Added both sections.']);
+  assert.deepEqual(ch.sent.filter((e) => e.type === 'session.commentary.append').map((e) => [e.delegation_id, e.content]),
+    [['del_2', 'Added both sections.']]);
+  view.endVoice();
+});
+
+test('While the agent waits for an answer to its question, the spoken request is that answer', async () => {
+  const { view, plugin, chat } = await voiceSetup();
+  const log = serve({
+    chat: (body, index) => index === 0
+      ? response('anthropic', [call('q1', 'ask_user', { question: 'Which name?' })], 'tool_use')
+      : response('anthropic', [text('Added notes-notes.')]),
+  });
+  await startListening(view, chat);
+  const ch = channel();
+  ch.receive({ type: 'session.input_transcript.delta', delta: 'Add a section' });
+  ch.receive({ type: 'session.delegation.created', delegation: { id: 'del_1', target: 'client' } });
+  await until(() => chat.askUser);
+  ch.receive({ type: 'session.input_transcript.delta', delta: 'notes-notes' });
+  ch.receive({ type: 'session.delegation.created', delegation: { id: 'del_2', target: 'client' } });
+  await until(() => ch.sent.some((e) => e.type === 'session.commentary.append' && e.content === 'Added notes-notes.'));
+
+  assert.equal(log.chat.length, 2);
+  assert.match(JSON.stringify(log.chat[1]), /notes-notes/);
+  assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'user').map((e) => [e.text, !!e.turnId]),
+    [['Add a section', true], ['notes-notes', false]]);
+  view.endVoice();
+});
+
+test('A request that arrives after the turn\'s last step runs as the next turn', async () => {
+  const { view, plugin, chat } = await voiceSetup();
+  let releaseFirst;
+  const log = serve({
+    chat: (body, index) => index === 0
+      ? new Promise((resolve) => { releaseFirst = () => resolve(response('anthropic', [text('First done.')])); })
+      : response('anthropic', [text('Second done.')]),
+  });
+  await startListening(view, chat);
+  const ch = channel();
+  ch.receive({ type: 'session.input_transcript.delta', delta: 'First' });
+  ch.receive({ type: 'session.delegation.created', delegation: { id: 'del_1', target: 'client' } });
+  await until(() => log.chat.length === 1);
+  ch.receive({ type: 'session.input_transcript.delta', delta: 'Second' });
+  ch.receive({ type: 'session.delegation.created', delegation: { id: 'del_2', target: 'client' } });
+  await until(() => ch.sent.some((e) => e.type === 'session.thinking.append' && e.delegation_id === 'del_2'));
+  releaseFirst();
+  await until(() => ch.sent.filter((e) => e.type === 'session.commentary.append').length === 2);
+
+  assert.equal(log.chat.length, 2);
+  assert.match(userText(log.chat[1]), /Second$/);
+  assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'user').map((e) => [e.text, !!e.turnId]), [['First', true], ['Second', true]]);
+  assert.deepEqual(ch.sent.filter((e) => e.type === 'session.commentary.append').map((e) => e.content), ['First done.', 'Second done.']);
   view.endVoice();
 });
 

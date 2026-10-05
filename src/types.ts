@@ -205,6 +205,8 @@ export interface AgentCallbacks {
   onResponse: (text: string) => void;
   onAskUser: (question: string) => Promise<string>;
   onError: (error: string, kind?: ChatErrorKind) => void;
+  /** A request the user added to the running turn (`AgentLoop.steer`) went out with its next step. */
+  onSteered?: (text: string) => void;
   /**
    * A request that failed or stalled in the background is sent again now
    * that Obsidian is back (ADR-15); text streamed by the failed attempt

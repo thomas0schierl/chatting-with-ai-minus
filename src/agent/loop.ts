@@ -91,6 +91,10 @@ export class AgentLoop {
    * without stopping the turn (ADR-15).
    */
   private request: AbortController | null = null;
+  /** The run whose loop is working now (0: none); `steer()` adds to it. */
+  private loopVersion = 0;
+  /** Requests the user added while the loop works; sent with its next request (`steer`). */
+  private steered: string[] = [];
 
   constructor(app: App, settings: ChatSettings) {
     this.app = app;
@@ -100,7 +104,26 @@ export class AgentLoop {
   /** Abort a running loop (e.g. user navigates away) */
   abort(): void {
     this.runVersion++;
+    this.steered = [];
     this.request?.abort();
+  }
+
+  /**
+   * Add a request to the running turn, as the chat apps let you steer a
+   * running task: it goes with the loop's next request, after the current
+   * step. False when no loop is working (start a turn instead). What
+   * arrives after the last step is returned by `takeSteered()`.
+   */
+  steer(text: string): boolean {
+    if (!this.loopVersion || this.loopVersion !== this.runVersion) return false;
+    this.steered.push(text);
+    debugLog(this.app, "STEER", { text });
+    return true;
+  }
+
+  /** Steered requests the finished turn didn't get to; they need a turn of their own. */
+  takeSteered(): string[] {
+    return this.steered.splice(0);
   }
 
   /** Stop a running turn and clear the history. */
@@ -279,6 +302,15 @@ export class AgentLoop {
 
   /** The agentic loop on the current history, for run `version`. */
   private async loop(version: number, callbacks: AgentCallbacks, turnSettings: ChatSettings): Promise<void> {
+    this.loopVersion = version;
+    try {
+      await this.steps(version, callbacks, turnSettings);
+    } finally {
+      if (this.loopVersion === version) this.loopVersion = 0;
+    }
+  }
+
+  private async steps(version: number, callbacks: AgentCallbacks, turnSettings: ChatSettings): Promise<void> {
     const isStopped = () => version !== this.runVersion;
     const onTextDelta = (text: string) => {
       if (!isStopped()) callbacks.onTextDelta?.(text);
@@ -397,6 +429,11 @@ export class AgentLoop {
       }
 
       if (isStopped()) return;
+      // What the user added meanwhile goes with the next request, after the results.
+      for (const text of this.steered.splice(0)) {
+        resultBlocks.push({ type: "text", text: `[The user added while you were working:] ${text}` });
+        callbacks.onSteered?.(text);
+      }
     }
 
     // If we get here, we hit the iteration limit

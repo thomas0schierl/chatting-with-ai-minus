@@ -216,6 +216,7 @@ export function fakeChat() {
     showThinking(label = '') { chat.thinkingLabels.push(label); }, hideThinking() {},
     showAskUser() { return new Promise(resolve => { chat.askUser = resolve; }); },
     cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
+    answerAskUser(text) { const resolve = chat.askUser; if (!resolve) return false; chat.askUser = null; resolve(text); return true; },
     setInputEnabled() {}, setBusy(value) { chat.busy = value; },
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle(value) { chat.title = value; }, setSelection() {}, getSelection: () => null,
     voice: null, voiceAvailable: false, continueShown: false,

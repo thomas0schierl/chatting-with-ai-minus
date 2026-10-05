@@ -189,8 +189,8 @@ it stays active and, being empty, leaves the list.
    disables it.
 4. **Delegation:** the request text is the delegation's text (Codex) or
    the user's words since the last delegation (GPT-Live sends none; we
-   wait until no words arrived for 700 ms, at most 2.5 s). A running turn
-   is stopped first. The request runs through `handleUserMessage()` like
+   wait until no words arrived for 700 ms, at most 2.5 s). A running typed
+   turn is stopped first. The request runs through `handleUserMessage()` like
    a typed message, with a turn ID, tool cards and history, and with
    `voice: true` (a context line asks for a short, speakable answer).
    Text before a tool call and each tool call go back as progress
@@ -199,8 +199,17 @@ it stays active and, being empty, leaves the list.
    (`session.commentary.append`, ≤1500 characters each; Codex `speakable`,
    ≤500 bytes each). Answers over 3000 characters are cut and end with
    "The full answer is in the chat." An `ask_user` question is spoken; the
-   user answers by voice (a new delegation) or by typing.
-5. **End:** **End**, a conversation switch, a new chat, Clear, closing the
+   user answers by voice (a new delegation answers it) or by typing.
+5. **Steering:** a new delegation while the voice turn runs doesn't stop
+   it. `AgentLoop.steer()` queues the request; after the current step's
+   tool results the loop adds it to that user message ("[The user added
+   while you were working:] …") and the chat shows it as a user message
+   without a turn ID. Progress and the answer go to the newest
+   delegation. A request queued after the turn's last step runs as the
+   next turn. The voice instructions say a running task stays steerable
+   (as in Codex's prompt): the voice model hands over additions and
+   corrections at once instead of waiting.
+6. **End:** **End**, a conversation switch, a new chat, Clear, closing the
    view or unloading sends `session.close`, waits up to 5 s for
    `session.closed`, then closes the connection and stops the microphone.
    A running turn finishes in the chat but isn't spoken. If the server
