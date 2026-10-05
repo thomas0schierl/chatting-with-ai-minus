@@ -9,7 +9,9 @@
 1. `npm run build` bundles `src/` (TypeScript and Svelte) with esbuild into
    `main.js`. The Check workflow (`.github/workflows/check.yml`) runs lint,
    tests, type and Svelte checks and the build on every pull request and
-   push to `main`.
+   push to `main`. Lint fails on any warning. Workflows pin each action to
+   a commit SHA; Dependabot (`.github/dependabot.yml`) opens weekly update
+   PRs for the actions and npm packages.
 2. A release is a GitHub release whose tag equals the `manifest.json`
    version, with three assets: `main.js`, `manifest.json`, `styles.css`.
 3. `scripts/release.sh` bumps the version in `manifest.json`,

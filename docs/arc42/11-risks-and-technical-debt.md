@@ -21,13 +21,12 @@
 
 | ID | Gap | Kind | Impact |
 |---|---|---|---|
-| [GAP-012](11-gaps/012-publishing-tooling.md) | Lint findings don't fail CI, and workflow actions aren't pinned | Debt | Low |
 | [GAP-013](11-gaps/013-no-live-voice-conversation.md) | No live voice conversation | Feature | High |
 
 Numbers are kept from the first gap analysis. 001, 004 and 005 were fixed
 upstream before the fork (stale ChatGPT model list, reasoning guessed from
 model names, failing follow-up messages). 002 (settings rewritten on every
-load) went away with the legacy migration code (ADR-09). 003, 006–011 and
+load) went away with the legacy migration code (ADR-09). 003, 006–012 and
 014–021 were fixed in the fork.
 
 ## To investigate
