@@ -71,9 +71,7 @@ export async function sendChatGPTOAuthMessage(
   }
 
   const identity = await catalogIdentity("chatgpt-oauth", credential.accountId || credential.accessToken);
-  if (settings.modelCatalog) {
-    cachedCatalog(settings.modelCatalog, "chatgpt-oauth", identity);
-  }
+  cachedCatalog(settings.modelCatalog, "chatgpt-oauth", identity);
   const model = settings.model || CHATGPT_OAUTH_DEFAULT_MODEL;
 
   const body: Record<string, unknown> = {

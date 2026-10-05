@@ -35,7 +35,7 @@ import { openAILiveRoute } from "./voice/openai-live";
 import { CodexVoiceAuth, codexVoiceRoute } from "./voice/codex";
 
 export default class ChatPlugin extends Plugin {
-  settings: ChatSettings = DEFAULT_SETTINGS;
+  settings: ChatSettings = { ...DEFAULT_SETTINGS, modelCatalog: { entries: [] } };
   /** Shared agent loop that persists across view open/close cycles */
   agent!: AgentLoop;
   /** ChatGPT OAuth service (used by the chatgpt-oauth provider). */
@@ -221,7 +221,7 @@ export default class ChatPlugin extends Plugin {
     if (__CODEX_VOICE__ && s.voiceRoute === "codex") {
       const auth = this.codexVoice;
       if (!auth?.getCredential()) return null;
-      return codexVoiceRoute(auth, s.codexVoice, () => codexClientVersion(s.modelCatalog ??= { entries: [] }, false));
+      return codexVoiceRoute(auth, s.codexVoice, () => codexClientVersion(s.modelCatalog, false));
     }
     const key = this.loadApiKey("openai");
     return key ? openAILiveRoute(key, s.voice) : null;
@@ -548,8 +548,7 @@ export default class ChatPlugin extends Plugin {
   // ─── Settings persistence ────────────────────────────────────────────
 
   async loadSettings(): Promise<void> {
-    const saved = normalizeSettings(await this.loadData());
-    this.settings = { ...DEFAULT_SETTINGS, ...saved };
+    this.settings = { ...DEFAULT_SETTINGS, ...normalizeSettings(await this.loadData()) };
 
     // Fall back to default model if saved model is empty
     if (!this.settings.model) {
@@ -585,7 +584,7 @@ export default class ChatPlugin extends Plugin {
     const { provider, apiKey, modelCatalog } = this.settings;
     const credential = provider === "chatgpt-oauth" ? this.chatgptOAuth.getCredential() : null;
     const secretIdentity = provider === "chatgpt-oauth" ? credential?.accountId || credential?.accessToken : apiKey;
-    if (!secretIdentity || !modelCatalog) return;
+    if (!secretIdentity) return;
     cachedCatalog(modelCatalog, provider, await catalogIdentity(provider, secretIdentity));
   }
 
@@ -619,17 +618,24 @@ export default class ChatPlugin extends Plugin {
   }
 }
 
-function normalizeSettings(value: unknown): Partial<ChatSettings> {
-  if (!isRecord(value)) return {};
-  const settings: Partial<ChatSettings> = {};
+/**
+ * The saved settings, field by field; anything unexpected is dropped. The
+ * API key never comes from here (SecretStorage). The iteration limit is
+ * kept within the settings field's range, 1 to 100.
+ */
+function normalizeSettings(value: unknown): Partial<ChatSettings> & Pick<ChatSettings, "modelCatalog"> {
+  if (!isRecord(value)) return { modelCatalog: normalizeCatalogState(undefined) };
+  const settings: Partial<ChatSettings> & Pick<ChatSettings, "modelCatalog"> = {
+    modelCatalog: normalizeCatalogState(value.modelCatalog),
+  };
   if (isProvider(value.provider)) settings.provider = value.provider;
-  if (typeof value.apiKey === "string") settings.apiKey = value.apiKey;
   if (typeof value.model === "string") settings.model = value.model;
   if (typeof value.thinkingLevel === "string") settings.thinkingLevel = value.thinkingLevel;
-  if (typeof value.maxIterations === "number") settings.maxIterations = value.maxIterations;
+  if (typeof value.maxIterations === "number" && Number.isFinite(value.maxIterations)) {
+    settings.maxIterations = Math.min(100, Math.max(1, Math.round(value.maxIterations)));
+  }
   if (typeof value.enableWebSearch === "boolean") settings.enableWebSearch = value.enableWebSearch;
   if (typeof value.chatgptPlanWelcomeShown === "boolean") settings.chatgptPlanWelcomeShown = value.chatgptPlanWelcomeShown;
-  settings.modelCatalog = normalizeCatalogState(value.modelCatalog);
   if (value.voiceRoute === "openai" || value.voiceRoute === "codex") settings.voiceRoute = value.voiceRoute;
   if (typeof value.voice === "string" && value.voice) settings.voice = value.voice;
   if (typeof value.codexVoice === "string" && value.codexVoice) settings.codexVoice = value.codexVoice;

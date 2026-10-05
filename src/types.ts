@@ -16,7 +16,8 @@ export interface ChatSettings {
   enableWebSearch: boolean;
   /** The one-time "You're using your ChatGPT plan" welcome was shown. */
   chatgptPlanWelcomeShown: boolean;
-  modelCatalog?: import("./api/model-catalog").CatalogState;
+  /** Model lists per provider and account; set when the settings load. */
+  modelCatalog: import("./api/model-catalog").CatalogState;
   /**
    * Live voice (ADR-11): `openai` uses the OpenAI API key; `codex` the
    * separate Codex sign-in, only in private builds (ADR-14).
@@ -39,7 +40,8 @@ export const DEFAULT_PROVIDER_MODELS: Record<Provider, string> = {
   "chatgpt-oauth": "gpt-5.5",
 };
 
-export const DEFAULT_SETTINGS: ChatSettings = {
+/** Defaults; the model catalog is set (empty or saved) when the settings load. */
+export const DEFAULT_SETTINGS: Omit<ChatSettings, "modelCatalog"> = {
   provider: "anthropic",
   apiKey: "",
   model: "claude-sonnet-4-6",

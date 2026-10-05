@@ -14,7 +14,7 @@ import {
 import { LIVE_VOICES, hasLiveAccess } from "./voice/openai-live";
 import { CODEX_VOICES, codexAccountSetting, codexRouteSetting } from "./voice/codex";
 
-import { type ModelOption, type CatalogState, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
+import { type ModelOption, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
 
 const CUSTOM_MODEL_OPTION = "__custom__";
 
@@ -347,10 +347,9 @@ export class ChatSettingTab extends PluginSettingTab {
               clearCatalogModels("chatgpt-oauth");
               this.catalogModels = undefined;
               this.catalogIdentity = "";
-              if (this.plugin.settings.modelCatalog) {
-                this.plugin.settings.modelCatalog.entries = this.plugin.settings.modelCatalog.entries.filter(e => e.provider !== "chatgpt-oauth");
-                await this.plugin.saveSettings();
-              }
+              const catalog = this.plugin.settings.modelCatalog;
+              catalog.entries = catalog.entries.filter(e => e.provider !== "chatgpt-oauth");
+              await this.plugin.saveSettings();
               new Notice(revoked
                 ? "ChatGPT disconnected."
                 : "Disconnected on this device. OpenAI didn't confirm the sign-out; you can remove the app in ChatGPT settings.");
@@ -514,7 +513,7 @@ export class ChatSettingTab extends PluginSettingTab {
     try {
       const identity = await catalogIdentity(provider, secretIdentity);
       if (!current()) return;
-      const state: CatalogState = s.modelCatalog ??= { entries: [] };
+      const state = s.modelCatalog;
       const cached = cachedCatalog(state, provider, identity);
       if (this.catalogIdentity !== identity) {
         this.catalogIdentity = identity;

@@ -31,9 +31,7 @@ export async function sendAnthropicMessage(
 ): Promise<UnifiedResponse> {
   const model = settings.model || "claude-sonnet-4-6";
   const identity = await catalogIdentity("anthropic", settings.apiKey);
-  if (settings.modelCatalog) {
-    cachedCatalog(settings.modelCatalog, "anthropic", identity);
-  }
+  cachedCatalog(settings.modelCatalog, "anthropic", identity);
   const body: Record<string, unknown> = {
     model,
     max_tokens: 16384,

@@ -1,8 +1,25 @@
 // Vault tools through the real executor: the date for daily notes. Also
-// how a selection scope reaches the model.
+// how a selection scope reaches the model, and how saved settings load.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { api, settings, text, response, transport, vaultApp, callbacks } from './harness.mjs';
+
+test('Loaded settings: the iteration limit is kept within 1 to 100, the catalog is always there, no API key from data.json', async () => {
+  for (const [saved, expected] of [[0, 1], [-5, 1], [7.4, 7], [250, 100], [Infinity, 20], ['30', 20]]) {
+    const plugin = new api.ChatPlugin();
+    plugin.loadData = async () => ({ maxIterations: saved, apiKey: 'leaked-key' });
+    plugin.loadApiKey = () => '';
+    await plugin.loadSettings();
+    assert.equal(plugin.settings.maxIterations, expected, String(saved));
+    assert.equal(plugin.settings.apiKey, '');
+    assert.deepEqual(plugin.settings.modelCatalog, { entries: [] });
+  }
+  const fresh = new api.ChatPlugin();
+  fresh.loadData = async () => null;
+  fresh.loadApiKey = () => '';
+  await fresh.loadSettings();
+  assert.deepEqual(fresh.settings.modelCatalog, { entries: [] });
+});
 
 test('A multi-line selection is quoted line by line', async () => {
   const requests = transport(() => response('anthropic', [text('OK')]));
