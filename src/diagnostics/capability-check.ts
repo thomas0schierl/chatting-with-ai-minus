@@ -1,11 +1,13 @@
 /**
  * "Check device capabilities": answers, on the device it runs on, the open
- * questions behind ADR-11 (live voice over WebRTC) and ADR-12 (streaming
- * with fetch). Results are shown in a modal and can be copied; API keys are
- * never included.
+ * questions behind ADR-11 (live voice with GPT-Live over WebRTC) and ADR-12
+ * (streaming with fetch). Results are shown in a modal and can be copied;
+ * API keys are never included.
  */
 import { App, Modal, Notice, Platform, apiVersion, requestUrl } from "obsidian";
 import { browserFetch } from "../api/stream";
+import { DEFAULT_LIVE_VOICE, LIVE_MODEL, hasLiveAccess, openAILiveRoute } from "../voice/openai-live";
+import { VoiceSession } from "../voice/session";
 
 type Status = "ok" | "fail" | "skip";
 
@@ -22,7 +24,6 @@ export interface CapabilityKeys {
 
 const OPENAI = "https://api.openai.com/v1";
 const ANTHROPIC = "https://api.anthropic.com/v1";
-const CONNECT_TIMEOUT_MS = 15_000;
 
 export async function runCapabilityCheck(app: App, keys: CapabilityKeys): Promise<void> {
   const modal = new CapabilityModal(app);
@@ -42,7 +43,7 @@ export async function runCapabilityCheck(app: App, keys: CapabilityKeys): Promis
   await run("WebRTC (local offer)", checkLocalWebRTC);
   await run("Streaming fetch: OpenAI", () => checkOpenAIStreaming(keys.openai));
   await run("Streaming fetch: Anthropic", () => checkAnthropicStreaming(keys.anthropic));
-  await run("Live voice: OpenAI Realtime over WebRTC", () => checkRealtime(keys.openai));
+  await run("Live voice: OpenAI GPT-Live over WebRTC", () => checkLiveVoice(keys.openai));
   modal.done();
 }
 
@@ -145,55 +146,33 @@ async function streamProbe(url: string, headers: Record<string, string>, body: u
     `${model}: ${chunks} chunks, first after ${firstChunkMs} ms, done after ${totalMs} ms; ${aborted}`];
 }
 
-async function checkRealtime(apiKey: string): Promise<[Status, string]> {
+/**
+ * The voice route the plugin uses (ADR-11): `gpt-live-1` in the key's model
+ * list, then one GPT-Live session through the voice code, ended as soon as
+ * it has started (billed per minute, so a few seconds).
+ */
+export async function checkLiveVoice(apiKey: string): Promise<[Status, string]> {
   if (!apiKey) return ["skip", "needs an OpenAI API key"];
-  const model = await newestModel(apiKey, (id) => id.startsWith("gpt-realtime"));
-  if (!model) return ["fail", "no gpt-realtime model in /v1/models"];
-
-  const secret = await requestUrl({
-    url: `${OPENAI}/realtime/client_secrets`,
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
-    contentType: "application/json",
-    body: JSON.stringify({ session: { type: "realtime", model } }),
-    throw: false,
+  if (!(await hasLiveAccess(apiKey))) return ["fail", `${LIVE_MODEL} isn't in /v1/models for this key`];
+  const events: string[] = [];
+  const session = new VoiceSession(openAILiveRoute(apiKey, DEFAULT_LIVE_VOICE), {
+    onMessage: (event) => {
+      if (typeof event.type === "string" && !events.includes(event.type)) events.push(event.type);
+    },
+    onEnded: () => undefined,
+    onAudioBlocked: () => undefined,
+    log: () => undefined,
   });
-  if (secret.status !== 200) return ["fail", `client secret: HTTP ${secret.status} ${secret.text.slice(0, 200)}`];
-  const ephemeral = (secret.json as { value?: string }).value;
-  if (!ephemeral) return ["fail", "client secret response has no value"];
-
-  const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const pc = new RTCPeerConnection();
+  const started = Date.now();
+  let callId: string | undefined;
   try {
-    mic.getAudioTracks().forEach((t) => pc.addTrack(t, mic));
-    const events: string[] = [];
-    const channel = pc.createDataChannel("oai-events");
-    channel.addEventListener("message", (e) => {
-      const type = (JSON.parse(String(e.data)) as { type?: string }).type;
-      if (type && !events.includes(type)) events.push(type);
-    });
-    await pc.setLocalDescription(await pc.createOffer());
-
-    const answer = await requestUrl({
-      url: `${OPENAI}/realtime/calls`,
-      method: "POST",
-      headers: { Authorization: `Bearer ${ephemeral}` },
-      contentType: "application/sdp",
-      body: pc.localDescription?.sdp ?? "",
-      throw: false,
-    });
-    if (answer.status < 200 || answer.status >= 300) return ["fail", `SDP exchange: HTTP ${answer.status} ${answer.text.slice(0, 200)}`];
-    const location = answer.headers["location"] ?? answer.headers["Location"] ?? "not exposed";
-    await pc.setRemoteDescription({ type: "answer", sdp: answer.text });
-
-    const state = await waitFor(() => (channel.readyState === "open" && events.length > 0 ? "connected" : null), CONNECT_TIMEOUT_MS);
-    return [state ? "ok" : "fail",
-      `${model}; SDP answer ${answer.text.length} bytes; Location header: ${location}; ` +
-      `connection ${pc.connectionState}; data channel ${channel.readyState}; events: ${events.join(", ") || "none"}`];
+    ({ callId } = await session.start("This is a connection check. Say nothing.", []));
   } finally {
-    pc.close();
-    mic.getTracks().forEach((t) => t.stop());
+    // Close the session at once, also when it failed to start.
+    await session.end();
   }
+  return ["ok", `${LIVE_MODEL}: session ${callId ?? "without ID"} started after ${Date.now() - started} ms, then closed; ` +
+    `events: ${events.join(", ") || "none"}`];
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -206,18 +185,6 @@ async function newestModel(apiKey: string, match: (id: string) => boolean): Prom
   return data.filter((m) => match(m.id)).sort((a, b) => b.created - a.created)[0]?.id;
 }
 
-function waitFor<T>(probe: () => T | null, timeoutMs: number): Promise<T | null> {
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const tick = () => {
-      const value = probe();
-      if (value !== null) return resolve(value);
-      if (Date.now() - started > timeoutMs) return resolve(null);
-      window.setTimeout(tick, 200);
-    };
-    tick();
-  });
-}
 
 function message(e: unknown): string {
   return e instanceof Error ? `${e.name}: ${e.message}` : String(e);

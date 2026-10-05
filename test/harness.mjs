@@ -30,6 +30,7 @@ export const bundled = await build({
     export * as voiceController from './src/voice/controller';
     export * as openAILive from './src/voice/openai-live';
     export * as codexVoice from './src/voice/codex';
+    export { checkLiveVoice } from './src/diagnostics/capability-check';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, write: false, platform: 'node', format: 'esm',
   // Tests cover the private build, Codex voice route included (ADR-14).

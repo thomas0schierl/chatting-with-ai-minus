@@ -44,7 +44,8 @@ usage limit, its own message, the one-time welcome
 (`chatgpt-usage.test.mjs`), and live voice with fake WebRTC, microphone
 and audio (`voice.test.mjs`): session creation on both routes, both event
 dialects, delegation through the chat view with progress, chunked
-answers and a stopped older turn, hold to talk, ending, and the Codex
+answers and a stopped older turn, hold to talk, ending, the device
+check's GPT-Live session (closed at once), and the Codex
 sign-in. The harness builds with `__CODEX_VOICE__` true;
 `voice-build.test.mjs` runs the real build config and checks that the
 public bundle has no Codex voice code. They don't prove live-service or mobile behaviour.

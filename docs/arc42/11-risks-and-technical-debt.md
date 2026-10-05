@@ -61,7 +61,8 @@ gap or drop.
   or the label above a group. A group that grows can overlap its
   neighbours, and moving a card out of a group doesn't shrink the group.
 - Voice (ADR-11) is built but not yet tried live: check with an API key
-  that `gpt-live-1` answers, delegations arrive, the answer is spoken and
+  (*Check device capabilities* starts and closes one session) that
+  `gpt-live-1` answers, delegations arrive, the answer is spoken and
   the end closes cleanly (`debug.log` with `DEBUG` on shows every event).
   In the iOS and Android apps: WebRTC, the microphone prompt and a
   denial, autoplay, earpiece vs speaker, echo causing false interruptions

@@ -137,6 +137,34 @@ test('Official route: POST /v1/live/sessions with model, voice, client delegatio
   view.endVoice();
 });
 
+test('Device check: GPT-Live is listed, one session starts and is closed at once', async () => {
+  const requests = [];
+  let models = ['gpt-5.5'];
+  globalThis.__providerRequest = async (request) => {
+    requests.push(request.url);
+    if (request.url === 'https://api.openai.com/v1/models') return { status: 200, json: { data: models.map((id) => ({ id })) } };
+    if (request.url === 'https://api.openai.com/v1/live/sessions') return liveAnswer();
+    throw new Error(`Unexpected ${request.url}`);
+  };
+  assert.deepEqual(await api.checkLiveVoice(''), ['skip', 'needs an OpenAI API key']);
+  const [status, detail] = await api.checkLiveVoice('sk-voice');
+  assert.equal(status, 'fail');
+  assert.match(detail, /gpt-live-1 isn't in \/v1\/models/);
+  assert.deepEqual(requests, ['https://api.openai.com/v1/models']);
+
+  models = ['gpt-5.5', 'gpt-live-1'];
+  const checking = api.checkLiveVoice('sk-voice');
+  await until(() => pc()?.channel?.readyState === 'open');
+  channel().receive({ type: 'session.started', session: { id: 'live_1' } });
+  await until(() => channel().sent.some((event) => event.type === 'session.close'));
+  channel().receive({ type: 'session.closed' });
+  const result = await checking;
+  assert.equal(result[0], 'ok');
+  assert.match(result[1], /gpt-live-1: session live_1 started .* then closed; events: session\.started, session\.closed/);
+  assert.equal(pc().closed, true);
+  assert.equal(rtc.mic.track.stopped, true);
+});
+
 test('Official route: an HTTP error ends voice with the API message in the chat', async () => {
   const { view, chat, plugin } = await voiceSetup();
   serve({ live: () => ({ status: 403, json: { error: { message: 'No access to gpt-live-1' } } }) });
