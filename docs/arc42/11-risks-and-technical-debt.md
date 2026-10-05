@@ -15,7 +15,7 @@
 | OpenAI changes or ends the "Sign in with ChatGPT" preview | ChatGPT sign-in breaks until updated | API-key providers stay available; errors point to them. |
 | OpenAI objects to signing in by pasting the callback address (not described in its docs) | ChatGPT sign-in on mobile stops working | Desktop could catch the callback with a loopback server; watch for a device flow. |
 | Provider APIs change request or response formats | Errors until fixed | Offline regression tests; live checks before releases ([10](10-quality-requirements.md)). |
-| Upstream fixes don't reach the fork automatically | Bugs fixed upstream stay here | Review upstream changes now and then; port what fits. |
+| Upstream fixes don't reach the fork automatically | Bugs fixed upstream stay here | Review upstream changes now and then (o1xhack/obsidian-chatting and its origin omarshahine/obsidian-chat); port what fits. |
 
 ## Gaps
 
@@ -23,7 +23,7 @@
 |---|---|---|---|
 | [GAP-008](11-gaps/008-single-conversation-only.md) | Only one conversation | Feature | Medium |
 | [GAP-011](11-gaps/011-images-saved-twice.md) | Saved chat history stores every image twice | Debt | Medium |
-| [GAP-012](11-gaps/012-publishing-tooling.md) | Obsidian lint findings don't fail CI yet | Debt | Low |
+| [GAP-012](11-gaps/012-publishing-tooling.md) | Lint findings don't fail CI, and workflow actions aren't pinned | Debt | Low |
 | [GAP-013](11-gaps/013-no-live-voice-conversation.md) | No live voice conversation | Feature | High |
 | [GAP-021](11-gaps/021-chatgpt-usage-cues.md) | The chat doesn't show it runs on the user's ChatGPT plan | Feature | Low–medium |
 
