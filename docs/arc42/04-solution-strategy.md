@@ -14,4 +14,6 @@
 | Agentic vault work | The model acts only through declared tools that call Obsidian's vault APIs; the loop runs tools and resends until the model stops. |
 | Safe user data | Credentials only in `SecretStorage`; settings in `data.json`; chat history in a separate local file. |
 | Provider resilience | Model lists and their capabilities come from each provider's API and are cached for 24 hours; only fallback defaults are built in. |
+| Voice like the chat apps | The voice model only talks and delegates requests to the same agent loop, so voice and typed turns share tools and history (ADR-11). A private, unofficial Codex route exists in private builds only (ADR-14). |
+| Phones that suspend apps | Nothing runs in the background; on the return the plugin recovers: resends a failed request, offers Continue for a turn cut off, reconnects voice (ADR-15). |
 | Low cost per turn | The system prompt never changes, so providers can cache it; per-turn context (active note, selection) goes into the user message. |

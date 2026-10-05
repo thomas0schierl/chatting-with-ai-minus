@@ -9,7 +9,7 @@
 
 | Store | Content | Limits |
 |---|---|---|
-| `data.json` (`saveData`) | Provider, model, thinking level, iteration limit, web search, whether the ChatGPT plan welcome was shown, voice route, voice per route, microphone mode, model catalogs (hashed account key, models with their capabilities, fetch time) | API key always saved as `""`; at most 3 catalog entries |
+| `data.json` (`saveData`) | Provider, model, thinking level, iteration limit, web search, whether the ChatGPT plan welcome was shown, voice route, voice per route, microphone mode, debug log on/off, model catalogs (hashed account key, models with their capabilities, fetch time) | API key always saved as `""`; at most 3 catalog entries |
 | SecretStorage `chatting-with-ai-minus-api-key-<provider>` | API key per provider | The OpenAI key is also the voice key |
 | SecretStorage `chatting-with-ai-minus-codex-voice` | Private builds only (ADR-14): the Codex voice credential (JSON): access, refresh and ID token, expiry, ChatGPT account ID, email | Cleared by writing `""` on sign-out |
 | SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | ChatGPT credential (JSON): access, refresh and ID token, expiry, granted scopes, account `sub` and email | Cleared by writing `""` on disconnect or an unusable refresh token. A refresh writes or clears only while the stored credential is still the one it started from (likewise for the Codex voice credential). A record without `scopes` (former Codex sign-in) is erased on its first read |
@@ -37,8 +37,8 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   **Manage usage** (`chatgpt.com/settings/usage`), also after a reload.
 - **The agent loop** turns every adapter error into an error bubble that is
   kept in the history, except a request that failed or stalled while the
-  app was in the background: it is sent again once the app is back, at
-  most twice per turn (ADR-15).
+  app was in the background: it is sent again once the app is back
+  (limits in [6](06-runtime-view.md#back-from-the-background-adr-15)).
 - **Tools never throw** to the loop. Failures and invalid arguments return
   an error result to the model.
 - **Rate limits and overload** (status 429 or 529, or the code
@@ -60,9 +60,10 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 - If `fetch` fails before any response (blocked by CORS, network), the same
   request goes through `requestUrl()` and the answer appears when complete;
   if `fetch` failed like a CORS block (`TypeError`) and `requestUrl()`
-  reached the server, `fetch` is skipped for that URL for 10 minutes. Whether the iOS and
-  Android apps deliver a streamed `fetch` body is still to be checked on a
-  device (*Check device capabilities*).
+  reached the server, `fetch` is skipped for that URL for 10 minutes.
+  ChatGPT answers arrive whole on mobile (ADR-12). Streaming in the iOS
+  and Android apps is still to be checked
+  ([phone checklist](10-quality-requirements.md#on-a-physical-phone-ios-and-android)).
 - On iOS `response.json` throws for non-JSON bodies, so always read it
   inside `try` (`readJson()` in `json.ts`).
 - Hashing uses pure JavaScript (`@noble/hashes`), since `SubtleCrypto`
@@ -74,11 +75,10 @@ unexpected is dropped. All writes are best-effort and never block the chat.
 - 16 px input font (prevents zoom on iOS) and safe-area padding.
 - Voice uses WebRTC and the microphone; both are checked when voice
   starts, and a missing one is shown as an error. Not yet verified in the
-  iOS and Android apps.
+  iOS and Android apps (same checklist).
 - **Background** (ADR-15): Obsidian has no lifecycle event, so
-  `platform/lifecycle.ts` takes hints (document `visibilitychange`,
-  Capacitor's `pause`/`resume`, window `focus` and `pageshow`) and records
-  when the app went away; code decides on the return
+  `platform/lifecycle.ts` takes the platform's hints and records when the
+  app went away; code decides on the return
   (`hiddenSince(t)`, `whenVisible()`, listeners), never in the background,
   where it may not run at all. Undocumented Capacitor plugin APIs
   (`window.Capacitor.Plugins`) aren't used. The flows are in
@@ -117,4 +117,8 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   Chatting with AI's). The build writes both into `styles.css`; nothing is
   injected at runtime.
 - Only Obsidian CSS variables for colours and fonts, so themes work.
+- The chat view sets its `.view-content` to padding 0 and overflow
+  hidden, and pads its own parts (header, messages, input), so the input
+  sits at the panel's bottom edge.
+- Animations and transitions are off under `prefers-reduced-motion`.
 - UI text is English, in sentence case (Obsidian guideline).

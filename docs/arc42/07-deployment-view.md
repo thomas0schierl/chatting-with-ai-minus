@@ -18,7 +18,8 @@
 2. A release is a GitHub release whose tag equals the `manifest.json`
    version, with three assets: `main.js`, `manifest.json`, `styles.css`.
 3. `scripts/release.sh` bumps the version in `manifest.json`,
-   `package.json` and `versions.json`, commits, tags and pushes.
+   `package.json`, `package-lock.json` and `versions.json`, commits, tags
+   and pushes.
 4. The tag starts the Release workflow (`.github/workflows/release.yml`):
    - checks that the tag equals the `manifest.json` version and that
      `versions.json` lists it
@@ -36,7 +37,7 @@
 |---|---|---|
 | Plugin code | `<vault>/.obsidian/plugins/chatting-with-ai-minus/` (`main.js`, `manifest.json`, `styles.css`) | Depends on the user's sync setup |
 | Settings and model lists | `data.json` in the plugin folder | Depends on the user's sync setup |
-| Chat history | `chat-state.json` in the plugin folder | Not by Obsidian Sync by default |
+| Chat history | `chat-state.json` in the plugin folder | Not by the plugin; treated as per device |
 | Debug log (when enabled) | `debug.log` in the plugin folder | No |
 | API keys, ChatGPT tokens | OS keychain via Obsidian `SecretStorage` | No |
 

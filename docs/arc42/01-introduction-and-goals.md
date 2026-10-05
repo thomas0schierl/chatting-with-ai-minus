@@ -24,6 +24,8 @@ It is a fork of [Chatting with AI](https://github.com/o1xhack/obsidian-chatting)
 
 - Chat in a side panel, with three providers: Anthropic (API key), OpenAI
   (API key) and ChatGPT account sign-in (uses the ChatGPT plan).
+- Streamed answers with Stop; edit a message, regenerate or copy an
+  answer.
 - 18 vault tools: read, search, list, create, edit, rename, trash, open,
   frontmatter, backlinks, canvas reading and editing, looking at images and
   canvases, date and time, and asking the user a question.
@@ -33,8 +35,10 @@ It is a fork of [Chatting with AI](https://github.com/o1xhack/obsidian-chatting)
 - Named conversations: start a new chat, switch, rename and delete them
   from a history list; they survive restarts.
 - Live voice: talk and listen in the current chat; requests run through
-  the same agent and appear in the chat (OpenAI GPT-Live, needs an OpenAI
-  API key).
+  the same agent and appear in the chat, and speaking while it works
+  steers the running task (OpenAI GPT-Live, needs an OpenAI API key).
+- Recovery after the background on phones: an interrupted answer is
+  resumed on the return, a turn cut off can be continued.
 
 ## Quality goals
 

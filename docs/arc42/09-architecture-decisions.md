@@ -111,7 +111,7 @@
 
 - **Status:** accepted; settled 2026-10-05 (was open between the Realtime
   API and GPT-Live until then). Built (GAP-013 closed); not yet verified
-  live or on phones (§11).
+  live or on phones (§10 live checks, §11).
 - **Context:** users want a voice mode like in the ChatGPT, Claude and
   Codex apps: talk, hear the answer, interrupt. That needs a continuous
   two-way audio stream, which `requestUrl()` can't carry. WebRTC isn't
@@ -138,6 +138,10 @@
   - **Voices:** no API lists them, so each route has one constant list
     taken from the docs (`gpt-live-1`'s 32 voices). This is an exception
     to ADR-08.
+  - **Steering:** a request while the voice turn runs is added to that
+    turn after its current step instead of stopping it, as in the chat
+    apps; one that comes after the turn's last step runs as the next
+    turn. While `ask_user` waits, the request is the answer.
   - **No server push-to-talk:** GPT-Live always detects turns itself.
     *Hold to talk* is done locally: the microphone track is enabled only
     while the button is held.
@@ -146,8 +150,8 @@
     history and turn IDs. Only the voice runs on OpenAI.
   - Billed per minute ($0.05/min, silence included) on the user's OpenAI
     account; the settings say so.
-  - Small talk the voice model handles itself appears only in the live
-    caption, not in the history.
+  - Small talk the voice model handles itself is only heard: the live
+    caption shows only the user's words, and the history doesn't keep it.
   - Voice runs only while the chat panel is open, and ends with a
     conversation switch, a new chat, Clear or closing the view.
   - Microphone, WebRTC and audio in the iOS and Android apps are not
@@ -276,15 +280,16 @@
     desktop-only (browsers can't set its headers).
 - **Consequences:**
   - The public plugin and its docs (README) don't mention the route; it
-    is documented here and in §11.
+    is documented here and in §3, §5 and §6.
   - It can break without notice. Checked on desktop 2026-10-05: the
     data channel carries the events in Codex's dialect, so no WebSocket
-    is needed (§11).
+    is needed; two requests ran on the ChatGPT plan with vault tools and
+    were spoken. Phones: §10.
 
 ## ADR-15: Recover instead of running in the background on mobile
 
 - **Status:** accepted 2026-10-05. Built; not yet verified on phones
-  (§11).
+  (§10 phone checklist).
 - **Context:** users switch apps or lock the phone while an answer or a
   voice conversation runs.
   - **iOS** suspends a backgrounded app after a few seconds unless it
@@ -313,31 +318,31 @@
     with the app.
 - **Decision:** don't try to keep working in the background; recover when
   the app is back.
-  - `platform/lifecycle.ts` takes the hints (document
-    `visibilitychange`, `pause`, `resume`, window `focus`, `pageshow`),
+  - `platform/lifecycle.ts` takes the platform's hints (listed in §6),
     records when the app went away, and decisions are made on the return.
   - A request that failed while the app was in the background is sent
-    again on the return, in the same turn from the same history, at most
-    twice per turn. A `fetch` failing in the background neither falls
+    again on the return, in the same turn from the same history, a
+    limited number of times. A `fetch` failing in the background neither falls
     back to `requestUrl()` nor marks the URL fetch-blocked (ADR-12). On
-    mobile, a request with no data for 10 s after the return is aborted
-    (one abort controller per request; `requestUrl()` raced against the
-    abort) and resent.
+    mobile, a request that stays silent for a while after the return is
+    aborted (one abort controller per request; `requestUrl()` raced
+    against the abort) and resent.
   - Leaving the app saves the chats. A running turn marks its
     conversation (`pendingTurn`); found after a restart with an answer
     still owed, the chat offers **Continue**, never automatically: the
     user may have moved on, and the turn may change notes.
-  - Voice on mobile: the microphone is off in the background; back
-    within 20 s with the call connected, it continues; otherwise it is
-    replaced by a new call seeded from the chat; after 60 s in the
-    background it ends. Desktop is unchanged.
+  - Voice on mobile: the microphone is off in the background; back soon
+    with the call connected, it continues; otherwise it is replaced by a
+    new call seeded from the chat; after a minute in the background it
+    ends. Desktop is unchanged.
+  - The limits and times are in §6.
 - **Consequences:**
   - Nothing happens while the phone is away; answers arrive after the
     return, and completed steps of a turn (tool calls included) aren't
     repeated.
   - A resent request costs its tokens again, also when the provider had
     finished it but the answer never arrived; a slow request may be
-    given up after 10 s of silence and resent.
+    given up after a short silence and resent.
   - The hints can come late or not at all; a failure while the app counts
     as visible is an error as before. Continue covers what the hints miss
     on iOS.

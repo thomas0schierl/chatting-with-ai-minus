@@ -165,9 +165,12 @@ it stays active and, being empty, leaves the list.
 
 ## Voice conversation (`voice/`, ADR-11)
 
-1. **Start:** the voice button (shown when `main.voiceRoute()` finds
-   a route: an OpenAI API key, or in private builds the Codex sign-in)
-   calls `ChatView.startVoice()`, which creates a `VoiceController`.
+1. **Start:** the voice button sits in the input's one action slot. It
+   shows when `main.voiceRoute()` finds a route (an OpenAI API key, or in
+   private builds the Codex sign-in) and the input is empty, nothing is
+   attached, no turn runs and no `ask_user` question is open. It calls
+   `ChatView.startVoice()`, which creates a `VoiceController`; the voice
+   bar replaces the input row.
 2. **Connect** (`VoiceSession.start()`): microphone with echo
    cancellation, noise suppression and gain control; peer connection with
    the track and the `oai-events` data channel; the offer, after ICE
@@ -183,7 +186,9 @@ it stays active and, being empty, leaves the list.
    `session.started` (15 s at most), the Codex route only for the open
    data channel. Remote audio plays in an `<audio>` element; if autoplay
    is blocked, the bar shows **Tap to play audio**.
-3. **Talking:** transcript events fill the caption lines; the first
+3. **Talking:** the user's transcript events fill the one live caption
+   (the user's current words, cleared once the voice answers; otherwise
+   the bar shows the state); the voice's own words aren't shown. The first
    dialect-specific event decides which dialect we send. *Hold to talk*
    enables the microphone track only while the button is held; *Mute*
    disables it.
@@ -199,7 +204,8 @@ it stays active and, being empty, leaves the list.
    (`session.commentary.append`, ≤1500 characters each; Codex `speakable`,
    ≤500 bytes each). Answers over 3000 characters are cut and end with
    "The full answer is in the chat." An `ask_user` question is spoken; the
-   user answers by voice (a new delegation answers it) or by typing.
+   user answers by voice (a new delegation answers it) or, after ending
+   the call, by typing.
 5. **Steering:** a new delegation while the voice turn runs doesn't stop
    it. `AgentLoop.steer()` queues the request; after the current step's
    tool results the loop adds it to that user message ("[The user added

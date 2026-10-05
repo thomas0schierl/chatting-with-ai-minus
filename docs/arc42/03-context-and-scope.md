@@ -11,8 +11,9 @@
   User ───▶ │   Obsidian   │──▶ vault notes (read / write via Obsidian APIs)
             │  + plugin    │──▶ OS keychain (SecretStorage)
             └──────┬───────┘
-                   │ HTTPS: chat streamed via fetch (fallback
-                   │ requestUrl()), everything else requestUrl()
+                   │ HTTPS: chat streamed (desktop Node https,
+                   │ mobile fetch; fallback requestUrl()),
+                   │ everything else requestUrl()
    ┌───────────────┼───────────────────────┐
    ▼               ▼                       ▼
 Anthropic API   OpenAI API              OpenAI auth
