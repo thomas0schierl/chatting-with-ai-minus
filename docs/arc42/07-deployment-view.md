@@ -21,7 +21,8 @@
    `package.json`, `package-lock.json` and `versions.json`, commits, tags
    and pushes to the branch the current one tracks (the repository is
    [thomas0schierl/chatting-with-ai-minus](https://github.com/thomas0schierl/chatting-with-ai-minus),
-   private for now; next to the upstream clone its remote is `minus`).
+   private for now, remote `origin`; the upstream is no remote, so
+   nothing can be pushed there by mistake).
 4. The tag starts the Release workflow (`.github/workflows/release.yml`):
    - checks that the tag equals the `manifest.json` version and that
      `versions.json` lists it
