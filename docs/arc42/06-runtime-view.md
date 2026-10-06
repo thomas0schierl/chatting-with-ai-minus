@@ -97,7 +97,8 @@ result.
    always shown on touch screens) turns it into an edit box with its
    images and selection scope, and the note "Changes the AI already made
    to notes stay." Enter or *Save* saves, Esc or *Cancel* cancels,
-   Shift+Enter adds a line.
+   Shift+Enter adds a line (with *Enter sends message* off: Enter adds a
+   line, Ctrl/Cmd+Enter saves, as in the input).
 2. **Regenerate:** the action under the last answer (not while a turn
    runs) takes the last user turn's text unchanged.
 3. **Cut** (`ObsidianChatView.editMessage()`):

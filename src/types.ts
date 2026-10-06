@@ -14,6 +14,8 @@ export interface ChatSettings {
   thinkingLevel: string;
   maxIterations: number;
   enableWebSearch: boolean;
+  /** Enter sends (Shift+Enter: new line); off: Enter is a new line, Ctrl/Cmd+Enter sends. */
+  enterSends: boolean;
   /** The one-time "You're using your ChatGPT plan" welcome was shown. */
   chatgptPlanWelcomeShown: boolean;
   /** Write `debug.log` in the plugin folder (troubleshooting; logs messages, never keys). */
@@ -55,6 +57,7 @@ export const DEFAULT_SETTINGS: Omit<ChatSettings, "modelCatalog"> = {
   thinkingLevel: "",
   maxIterations: 20,
   enableWebSearch: true,
+  enterSends: true,
   chatgptPlanWelcomeShown: false,
   debugLog: false,
   voiceRoute: "openai",

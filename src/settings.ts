@@ -102,6 +102,7 @@ export class ChatSettingTab extends PluginSettingTab {
       } },
       { name: "Thinking level", visible: () => !!this.thinkingOptions(), render: setting => this.renderThinkingLevel(setting) },
       { name: "Web search", render: setting => this.renderWebSearch(setting) },
+      { name: "Enter sends message", aliases: ["Keyboard", "New line"], render: setting => this.renderEnterSends(setting) },
       { name: "Max tool iterations", render: setting => this.renderMaxIterations(setting) },
       { type: "group", heading: "Voice", items: [
         // The Codex route exists only in private builds (ADR-14).
@@ -164,6 +165,19 @@ export class ChatSettingTab extends PluginSettingTab {
       );
 
   }
+  private renderEnterSends(setting: Setting): void {
+    const s = this.plugin.settings;
+    setting
+      .setName("Enter sends message")
+      .setDesc("On: Enter sends, Shift+Enter starts a new line. Off: Enter starts a new line; send with the send button or Ctrl+Enter (Cmd+Enter on a Mac).")
+      .addToggle((toggle) =>
+        toggle.setValue(s.enterSends).onChange(async (value) => {
+          s.enterSends = value;
+          await this.plugin.saveSettings();
+        })
+      );
+  }
+
   private renderWebSearch(setting: Setting): void {
     const s = this.plugin.settings;
     setting

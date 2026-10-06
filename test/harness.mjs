@@ -222,7 +222,7 @@ export function fakeChat() {
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle(value) { chat.title = value; }, setSelection() {}, getSelection: () => null,
     voice: null, voiceAvailable: false, continueShown: false,
     setContinue(value) { chat.continueShown = value; },
-    setVoice(state) { chat.voice = state; }, setVoiceAvailable(value) { chat.voiceAvailable = value; },
+    setVoice(state) { chat.voice = state; }, setVoiceAvailable(value) { chat.voiceAvailable = value; }, setEnterSends(value) { chat.enterSends = value; },
   };
   return chat;
 }

@@ -27,6 +27,7 @@ needed. They don't prove live-service or mobile behaviour.
 | `client-version.test.mjs` | The Codex CLI version sent as `client_version`: cached, stable releases only, fallback. |
 | `conversations.test.mjs` | New chat, switch, rename, delete, restore, titles, caps, saves one at a time, an unreadable saved file kept aside, history isolation and OpenAI chaining. |
 | `debug-log.test.mjs` | The *Debug log* setting: nothing written while off; Copy and Clear. |
+| `enter-sends.test.mjs` | The *Enter sends message* setting: default, kept in `data.json`, passed to the chat. |
 | `edit-document.test.mjs` | `edit_document` without content, and where it inserts. |
 | `images-once.test.mjs` | Each image saved once; the migration of older saved chats. |
 | `math-markdown.test.mjs` | Math delimiters converted, code untouched. |

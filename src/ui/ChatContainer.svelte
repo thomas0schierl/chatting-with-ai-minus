@@ -120,6 +120,19 @@
     canVoice = available;
   }
 
+  /** On: Enter sends, Shift+Enter is a new line. Off: Enter is a new line, Ctrl/Cmd+Enter sends. */
+  let enterSends = $state(true);
+
+  export function setEnterSends(on: boolean): void {
+    enterSends = on;
+  }
+
+  /** The key that sends (or saves an edit) under the setting; never while an IME composes. */
+  function isSendKey(e: KeyboardEvent): boolean {
+    if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return false;
+    return enterSends ? !e.shiftKey : e.ctrlKey || e.metaKey;
+  }
+
   let displayModel = $state("");
   let displayProvider = $state("");
   let displayTitle = $state("");
@@ -517,8 +530,7 @@
   }
 
   function handleKeydown(e: KeyboardEvent): void {
-    if (e.isComposing || e.keyCode === 229) return;
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (isSendKey(e)) {
       e.preventDefault();
       handleSend();
     }
@@ -538,7 +550,7 @@
 
   function handleEditKeydown(e: KeyboardEvent, msg: ChatMessage): void {
     if (e.isComposing || e.keyCode === 229) return;
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (isSendKey(e)) {
       e.preventDefault();
       saveEdit(msg);
     } else if (e.key === "Escape") {
@@ -1150,6 +1162,7 @@
       {placeholder}
       disabled={!inputEnabled}
       rows="1"
+      enterkeyhint={enterSends ? "send" : "enter"}
       onkeydown={handleKeydown}
       onpaste={handlePaste}
       oninput={autoGrow}

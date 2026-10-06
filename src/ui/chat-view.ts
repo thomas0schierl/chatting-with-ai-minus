@@ -44,6 +44,7 @@ interface ChatContainerApi extends Record<string, unknown> {
   getSelection(): SelectionScope | null;
   setVoice(state: VoiceViewState | null): void;
   setVoiceAvailable(available: boolean): void;
+  setEnterSends(on: boolean): void;
   /** Offer Continue for a turn that was cut off (ADR-15). */
   setContinue(show: boolean): void;
 }
@@ -161,6 +162,7 @@ export class ObsidianChatView extends ItemView {
     chat.setModel(this.plugin.modelHeaderLabel(), this.plugin.settings.provider);
     chat.setTitle(this.plugin.activeConversation.title);
     this.updateVoiceAvailable();
+    this.updateEnterSends();
     this.renderHistory();
     chat.focus();
   }
@@ -258,6 +260,11 @@ export class ObsidianChatView extends ItemView {
   // ─── Voice ──────────────────────────────────────────────────────────
   // A voice conversation belongs to the shown conversation: switching,
   // a new chat, clearing or closing the view ends it.
+
+  /** Enter sends, or starts a new line (the "Enter sends message" setting). */
+  updateEnterSends(): void {
+    this.chatContainer?.setEnterSends(this.plugin.settings.enterSends);
+  }
 
   /** Show or hide the microphone button (a voice route is set up or not). */
   updateVoiceAvailable(): void {

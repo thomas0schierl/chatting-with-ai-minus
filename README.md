@@ -25,6 +25,9 @@ instead of as they're written.
   regenerate the last answer, copy an answer as Markdown.
 - **Web search and thinking level:** turn web search on in the settings,
   and pick how much the model thinks, where the model offers levels.
+- **Enter sends message:** on by default (Shift+Enter starts a new line).
+  Turn it off in the settings to make Enter start a new line; then send
+  with the send button or Ctrl+Enter (Cmd+Enter on a Mac).
 - **Conversations:** start a new chat at any time; switch, rename and
   delete earlier chats from the history list. The chat that was open comes
   back after a restart.
