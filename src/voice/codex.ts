@@ -225,14 +225,22 @@ export class CodexVoiceAuth {
 
 /** A route that creates calls on Codex's internal voice route. */
 export function codexVoiceRoute(auth: CodexVoiceAuth, voice: string, clientVersion: () => Promise<string>): VoiceRoute {
+  // The sign-in (refreshed if it expires soon) and the Codex version don't
+  // depend on the offer: fetched while the microphone and offer are prepared.
+  let ready: Promise<[CodexVoiceCredential | null, string]> | null = null;
+  const prepared = () => ready ??= Promise.all([auth.usableCredential(), clientVersion()]);
   return {
     name: "codex",
     dialect: "v3",
     waitForStarted: false,
+    prepare() {
+      prepared().catch(() => undefined); // a failure surfaces in connect()
+    },
     async connect({ sdp, instructions, items }) {
-      const credential = await auth.usableCredential();
+      const pending = prepared();
+      ready = null; // a later call checks again
+      const [credential, version] = await pending;
       if (!credential) throw new Error("Sign in as Codex in the voice settings first.");
-      const version = await clientVersion();
       // Not crypto.randomUUID(): mobile WebViews may lack it.
       const sessionId = uuidV4();
       const response = await requestUrl({

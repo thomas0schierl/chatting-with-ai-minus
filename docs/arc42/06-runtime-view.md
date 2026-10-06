@@ -177,8 +177,13 @@ it stays active and, being empty, leaves the list.
    bar replaces the input row.
 2. **Connect** (`VoiceSession.start()`): microphone with echo
    cancellation, noise suppression and gain control; peer connection with
-   the track and the `oai-events` data channel; the offer, after ICE
-   gathering (at most 3 s). The route sends it with our instructions and
+   the track and the `oai-events` data channel; the offer, once ICE
+   gathering is complete or 0.5 s after the first candidate (at most 2 s;
+   without STUN servers the usable host candidates come at once, phones
+   report "complete" late). The route's `prepare()` runs from the start
+   (Codex: the sign-in check and the version lookup), so it overlaps with
+   the microphone and the offer. The debug log gets each step's duration
+   (`VOICE_TIMING`). The route sends the offer with our instructions and
    the last 8 chat messages as text:
    - official: `POST https://api.openai.com/v1/live/sessions` (model
      `gpt-live-1`, voice, `delegation: {type: "client"}`, `input`); the

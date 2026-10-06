@@ -25,6 +25,8 @@ export interface VoiceRoute {
    * for Codex's route, whose events may not come over the data channel.
    */
   waitForStarted: boolean;
+  /** Start what the call needs and doesn't depend on the offer (e.g. a token refresh), while the offer is prepared. */
+  prepare?(): void;
   connect(request: VoiceConnectRequest): Promise<{ sdp: string; callId?: string }>;
 }
 
@@ -39,8 +41,10 @@ export interface VoiceSessionHandlers {
 
 /** Timeouts in ms; tests shorten them. */
 export const SESSION_TIMING = {
-  /** Use the ICE candidates gathered so far after this long. */
-  iceWait: 3000,
+  /** Use the ICE candidates gathered so far after this long… */
+  iceWait: 2000,
+  /** …or this long after the first one. */
+  iceSettle: 500,
   /** Give up when the session hasn't started by then. */
   startWait: 15000,
   /** After `session.close`, wait this long for `session.closed`. */
@@ -75,6 +79,14 @@ export class VoiceSession {
 
   /** Connect; resolves when the session has started. Throws on failure. */
   async start(instructions: string, items: VoiceItem[]): Promise<{ callId?: string }> {
+    // How long each step took (debug log): where a slow start comes from.
+    const timing: Record<string, number> = {};
+    let stepStart = Date.now();
+    const step = (name: string) => {
+      timing[name] = Date.now() - stepStart;
+      stepStart = Date.now();
+    };
+    this.route.prepare?.();
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error("This device offers no microphone access.");
       if (typeof RTCPeerConnection === "undefined") throw new Error("This device doesn't support live audio (WebRTC).");
@@ -83,6 +95,7 @@ export class VoiceSession {
       }).catch((error: unknown) => {
         throw new Error(isDenied(error) ? "Microphone access was denied." : `Couldn't use the microphone: ${message(error)}`);
       });
+      step("microphoneMs");
       this.checkEnded();
 
       const pc = this.pc = new RTCPeerConnection();
@@ -109,14 +122,18 @@ export class VoiceSession {
       };
 
       await pc.setLocalDescription(await pc.createOffer());
-      await iceGathered(pc, SESSION_TIMING.iceWait);
+      await iceGathered(pc, SESSION_TIMING.iceWait, SESSION_TIMING.iceSettle);
+      step("offerMs");
       this.checkEnded();
 
       const answer = await this.route.connect({ sdp: pc.localDescription?.sdp ?? "", instructions, items });
+      step("callMs");
       this.handlers.log("VOICE_CALL", { route: this.route.name, callId: answer.callId ?? null });
       this.checkEnded();
       await pc.setRemoteDescription({ type: "answer", sdp: answer.sdp });
       await this.waitForStart();
+      step("startMs");
+      this.handlers.log("VOICE_TIMING", { route: this.route.name, ...timing });
       return { callId: answer.callId };
     } catch (error) {
       this.endNotified = true;
@@ -237,15 +254,27 @@ export class VoiceSession {
   }
 }
 
-/** Resolves when ICE gathering is complete, or after `timeoutMs` with what was gathered. */
-function iceGathered(pc: RTCPeerConnection, timeoutMs: number): Promise<void> {
+/**
+ * Resolves when ICE gathering is complete, or a short while after the first
+ * candidate (`settleMs`), or after `timeoutMs`, with what was gathered.
+ * Without STUN or TURN servers the usable (host) candidates come at once;
+ * phones may report "complete" only after probing every network interface.
+ */
+function iceGathered(pc: RTCPeerConnection, timeoutMs: number, settleMs: number): Promise<void> {
   if (pc.iceGatheringState === "complete") return Promise.resolve();
   return new Promise((resolve) => {
-    const timer = window.setTimeout(resolve, timeoutMs);
-    pc.onicegatheringstatechange = () => {
-      if (pc.iceGatheringState !== "complete") return;
+    let settle = 0;
+    const done = () => {
       window.clearTimeout(timer);
+      window.clearTimeout(settle);
       resolve();
+    };
+    const timer = window.setTimeout(done, timeoutMs);
+    pc.onicecandidate = (event) => {
+      if (event.candidate && !settle) settle = window.setTimeout(done, settleMs);
+    };
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === "complete") done();
     };
   });
 }

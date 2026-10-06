@@ -58,7 +58,7 @@ async function until(condition, ms = 3000) {
 
 beforeEach(() => {
   rtc.pcs = [];
-  Object.assign(S.SESSION_TIMING, { iceWait: 10, startWait: 1000, closeWait: 300, quietLog: 5 });
+  Object.assign(S.SESSION_TIMING, { iceWait: 10, iceSettle: 5, startWait: 1000, closeWait: 300, quietLog: 5 });
   Object.assign(C.VOICE_TIMING, { quiet: 20, maxWait: 200, speaking: 20, reconnectAfter: 40, endAfter: 150 });
   appLifecycle.markVisible();
   api.resetStreamTransport();
@@ -177,6 +177,23 @@ test('Official route: an HTTP error ends voice with the API message in the chat'
   assert.equal(chat.voice, null);
   assert.equal(pc().closed, true);
   assert.equal(rtc.mic.track.stopped, true);
+});
+
+test('Codex route: prepare() starts the sign-in check and version lookup at once; connect() uses them, a later call checks again', async () => {
+  let credentialChecks = 0;
+  let versionLookups = 0;
+  const auth = { usableCredential: async () => { credentialChecks++; return { accessToken: 'a', accountId: 'acct_1', refreshToken: 'r', expiresAt: 0 }; } };
+  globalThis.__providerRequest = async () => ({ status: 201, text: 'answer-sdp', headers: { location: '/v1/live/rtc_1' } });
+  const route = X.codexVoiceRoute(auth, 'ember', async () => { versionLookups++; return '1.2.3'; });
+
+  route.prepare();
+  assert.equal(credentialChecks, 1);
+  assert.equal(versionLookups, 1);
+  await route.connect({ sdp: 'offer', instructions: 'x', items: [] });
+  assert.equal(credentialChecks, 1);
+  assert.equal(versionLookups, 1);
+  await route.connect({ sdp: 'offer', instructions: 'x', items: [] });
+  assert.equal(credentialChecks, 2);
 });
 
 test('Codex route: POST to the realtime calls route with Codex headers; the call ID comes from Location', async () => {
