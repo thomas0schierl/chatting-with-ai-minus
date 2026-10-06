@@ -9,3 +9,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # TypeScript majors wait until typescript-eslint and svelte-check
+      # support them (2026-10: typescript-eslint <6.1, svelte-check ^5 || ^6).
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
