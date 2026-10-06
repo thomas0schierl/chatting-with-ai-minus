@@ -21,6 +21,7 @@ export const bundled = await build({
     export { streamSSE, createSSEParser, resetStreamTransport } from './src/api/stream';
     export * as lifecycle from './src/platform/lifecycle';
     export * as debug from './src/debug';
+    export { screenAwake } from './src/platform/screen-awake';
     export { default as ChatPlugin } from './src/main';
     export { ObsidianChatView } from './src/ui/chat-view';
     export { executeTool } from './src/tools/executor';

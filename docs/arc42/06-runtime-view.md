@@ -77,7 +77,10 @@ request has its own abort controller): a streamed `fetch` stops reading
 at once. A request on the `requestUrl()` fallback can't be cancelled; the
 abort settles it at once and its result is ignored. Text already shown
 stays and is saved in the UI history (not in the API history), as on an
-error. A pending `ask_user` question is dropped. A stopped turn that ends
+error. When none of the answer was on screen yet (no streaming, e.g. the
+ChatGPT plan on phones), a quiet "Stopped." note is added instead (an
+error entry with `errorKind: "stopped"`). A pending `ask_user` question
+is dropped. A stopped turn that ends
 after a newer one has started leaves the newer one's state alone.
 
 **`ask_user`:** shows the question; the user's next input becomes the tool

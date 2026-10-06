@@ -37,6 +37,7 @@ import { openAILiveRoute } from "./voice/openai-live";
 import { isRecord } from "./json";
 import { CodexVoiceAuth, codexVoiceRoute } from "./voice/codex";
 import { appLifecycle } from "./platform/lifecycle";
+import { screenAwake } from "./platform/screen-awake";
 import { debugLog, readDebugLog, setDebugLogging } from "./debug";
 
 export default class ChatPlugin extends Plugin {
@@ -230,6 +231,7 @@ export default class ChatPlugin extends Plugin {
 
   onunload(): void {
     this.getChatView()?.endVoice();
+    screenAwake.reset();
     void this.saveChatHistory();
   }
 

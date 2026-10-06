@@ -998,6 +998,10 @@
           </details>
         </div>
 
+      {:else if msg.type === "error" && msg.errorKind === "stopped"}
+        <!-- Stop before any of the answer arrived: a quiet note, not an error -->
+        <div class="chatting-minus-stopped-note">{msg.text}</div>
+
       {:else if msg.type === "error" && msg.errorKind === "usage-limit"}
         <div class="chatting-minus-msg chatting-minus-usage-limit" role="alert">
           <div class="chatting-minus-usage-limit-brand">ChatGPT</div>
@@ -1643,6 +1647,14 @@
   }
 
   /* Usage limit: the ChatGPT identity stays visible; Manage usage is the main action */
+  .chatting-minus-stopped-note {
+    align-self: flex-start;
+    font-size: var(--font-ui-smaller);
+    font-style: italic;
+    color: var(--text-faint);
+    padding: 0 4px;
+  }
+
   .chatting-minus-usage-limit {
     align-self: flex-start;
     display: flex;

@@ -176,7 +176,7 @@ export interface ChatHistoryEntry {
 }
 
 /** Errors the chat shows with their own message and actions. */
-export type ChatErrorKind = "usage-limit";
+export type ChatErrorKind = "usage-limit" | "stopped";
 
 /** A row of the chat view's history list. */
 export interface ConversationSummary {

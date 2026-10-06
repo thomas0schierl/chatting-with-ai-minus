@@ -128,6 +128,10 @@ Voice on phones is not verified yet.
   denied it, allow Obsidian's microphone in the system settings. Keep the
   chat panel open during a call. Billing runs until you end the call, or
   until it ends after 60 s in the background.
+- **Screen stays on:** while an answer is generated and during a voice
+  call, the screen doesn't go to sleep (where the phone allows it).
+- **No word-by-word answers with the ChatGPT plan:** they appear when
+  complete; Stop before that leaves a "Stopped." note.
 - **Leaving the app:** nothing progresses while Obsidian is in the
   background. When you come back, an interrupted answer is requested
   again ("Resuming…"), which costs its tokens again. If the phone closed

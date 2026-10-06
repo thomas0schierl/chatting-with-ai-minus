@@ -8,6 +8,7 @@ import { savedToolInput } from "../chat-state";
 import { debugLog } from "../debug";
 import { VoiceController, VOICE_TIMING, type VoiceTurnHooks, type VoiceViewState } from "../voice/controller";
 import { appLifecycle } from "../platform/lifecycle";
+import { screenAwake } from "../platform/screen-awake";
 
 export const VIEW_TYPE_CHAT = "chatting-minus-view";
 
@@ -59,6 +60,8 @@ export class ObsidianChatView extends ItemView {
   private plugin: ChatPlugin;
   private chatContainer: ChatContainerApi | undefined;
   private running = false;
+  /** Some of the running turn's answer is on screen (streamed or whole). */
+  private answerShown = false;
   /** Counts turns started here; only the latest one may end the running state. */
   private turnCount = 0;
   /** The assistant message being streamed, until the loop delivers it whole. */
@@ -279,6 +282,8 @@ export class ObsidianChatView extends ItemView {
       new Notice("Set up voice in Chatting with AI Minus settings.");
       return;
     }
+    // The screen stays on during the call (released when it ends).
+    const releaseScreen = screenAwake.hold();
     const controller: VoiceController = new VoiceController({
       runTurn: (text, hooks) => this.handleUserMessage(text, null, [], newTurnId(), hooks),
       // A spoken request while the agent waits for an answer is that answer.
@@ -293,7 +298,10 @@ export class ObsidianChatView extends ItemView {
       },
       render: (state) => {
         if (this.voice !== controller) return;
-        if (!state) this.voice = null;
+        if (!state) {
+          this.voice = null;
+          releaseScreen();
+        }
         this.chatContainer?.setVoice(state);
       },
       log: (label, data) => debugLog(this.app, label, data),
@@ -499,7 +507,10 @@ export class ObsidianChatView extends ItemView {
     const conversation = this.plugin.activeConversation;
 
     this.running = true;
+    this.answerShown = false;
     const turn = ++this.turnCount;
+    // The screen stays on while the answer is generated.
+    const releaseScreen = screenAwake.hold();
     // Saved with the chat when the app goes to the background; still there
     // at the next start, the turn was cut off.
     conversation.pendingTurn = { turnId, startedAt: Date.now() };
@@ -522,6 +533,7 @@ export class ObsidianChatView extends ItemView {
           chat.showThinking("Resuming…");
         },
         onTextDelta: (delta) => {
+          this.answerShown = true;
           chat.hideThinking();
           if (this.streaming) {
             this.streaming.text += delta;
@@ -546,6 +558,7 @@ export class ObsidianChatView extends ItemView {
           history.push({ type: "tool-result", toolName: name, toolInput: savedToolInput(call?.input ?? {}), toolResult: result });
         },
         onResponse: (text) => {
+          this.answerShown = true;
           chat.hideThinking();
           // The whole text replaces the streamed one: same message as unstreamed.
           if (this.streaming) {
@@ -587,6 +600,7 @@ export class ObsidianChatView extends ItemView {
       const msg = e instanceof Error ? e.message : String(e);
       this.append(history, { type: "error", text: `Unexpected error: ${msg}` });
     } finally {
+      releaseScreen();
       if (conversation.pendingTurn?.turnId === turnId) delete conversation.pendingTurn;
       // A stopped turn can end after a newer one has started (edit, or Stop
       // and send again); only the latest turn ends the running state.
@@ -628,7 +642,11 @@ export class ObsidianChatView extends ItemView {
   }
 
   private handleStop(): void {
+    // Without streaming (the ChatGPT plan on phones) nothing of the answer
+    // is on screen yet: say that the turn was stopped.
+    const silent = this.running && !this.answerShown;
     this.stopTurn();
+    if (silent) this.append(this.plugin.chatHistory, { type: "error", text: "Stopped.", errorKind: "stopped" });
     const chat = this.chatContainer;
     if (chat) {
       chat.setInputEnabled(true);
