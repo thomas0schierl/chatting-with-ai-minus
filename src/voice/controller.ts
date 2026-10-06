@@ -4,7 +4,7 @@
  * turn through the chat view (any provider), and the answer goes back for
  * the voice to speak.
  */
-import type { ChatHistoryEntry } from "../types";
+import type { ChatHistoryEntry, VoiceTurn } from "../types";
 import {
   VOICE_INSTRUCTIONS,
   eventDialect,
@@ -43,10 +43,13 @@ export interface VoiceTurnHooks {
 
 /** What the controller needs from the chat view. */
 export interface VoiceHost {
-  /** Run `text` as a chat turn, like a typed message; resolves when it has ended. */
-  runTurn(text: string, hooks: VoiceTurnHooks): Promise<void>;
+  /**
+   * Run `text` as a chat turn, like a typed message; resolves when it has
+   * ended. `context`: what was said in the voice conversation before it.
+   */
+  runTurn(text: string, hooks: VoiceTurnHooks, context?: VoiceTurn[]): Promise<void>;
   /** Add a request to the running turn (steering); false when none is running. */
-  steerTurn(text: string): boolean;
+  steerTurn(text: string, context?: VoiceTurn[]): boolean;
   /** Steered requests the finished turn didn't get to. */
   takeSteered(): string[];
   /** Stop the running turn, like Stop. */
@@ -81,6 +84,16 @@ export class VoiceController {
   private ended = false;
   /** The user's words since the last delegation took them. */
   private pendingInput = "";
+  /**
+   * What was said since the last delegation, user and voice: the voice
+   * hands over only the sentence that asked for work, so the agent gets
+   * this as context (it may have asked a question first).
+   */
+  private spoken: VoiceTurn[] = [];
+  /** The turn being spoken now, from transcript pieces. */
+  private openTurn: VoiceTurn | null = null;
+  /** The request the last delegation took: its late "turn done" isn't kept again. */
+  private lastRequest = "";
   private lastInputAt = 0;
   private lastSpeaker: "user" | "assistant" | null = null;
   /** Increases with each delegation; an older one still gathering its words gives up. */
@@ -198,9 +211,11 @@ export class VoiceController {
       case "input":
         this.pendingInput += event.text;
         this.lastInputAt = Date.now();
+        this.addSpoken("user", event.text);
         this.caption("user", event.text);
         break;
       case "output":
+        this.addSpoken("assistant", event.text);
         this.caption("assistant", event.text);
         break;
       case "turn-done":
@@ -208,6 +223,7 @@ export class VoiceController {
         if (event.role === "user") {
           if (this.lastSpeaker !== "assistant") this.update({ you: event.text });
         } else this.update({ assistant: event.text });
+        this.finishTurn(event.role, event.text);
         break;
       case "delegation":
         void this.delegate(event.id, event.text);
@@ -240,18 +256,71 @@ export class VoiceController {
     }, VOICE_TIMING.speaking);
   }
 
+  /** Add transcript words to the turn being spoken; another speaker starts a new turn. */
+  private addSpoken(role: VoiceTurn["role"], text: string): void {
+    if (this.openTurn?.role === role) this.openTurn.text += text;
+    else {
+      this.closeTurn();
+      this.openTurn = { role, text };
+    }
+  }
+
+  /** A turn is complete (Codex sends its whole text): keep it. */
+  private finishTurn(role: VoiceTurn["role"], text: string): void {
+    if (role === "user" && this.lastRequest && sameWords(text, this.lastRequest)) {
+      // The request a delegation already took, reported late.
+      if (this.openTurn?.role === "user") this.openTurn = null;
+      this.lastRequest = "";
+      return;
+    }
+    if (this.openTurn?.role !== role) this.closeTurn();
+    this.openTurn = { role, text };
+    this.closeTurn();
+  }
+
+  private closeTurn(): void {
+    const turn = this.openTurn;
+    this.openTurn = null;
+    if (turn?.text.trim()) this.spoken.push({ role: turn.role, text: turn.text.trim() });
+  }
+
+  /**
+   * The request and what was said before it; the transcript starts over.
+   * The request's own sentence is the user's last turn: Codex hands it
+   * over as the delegation's text, GPT-Live hands over none.
+   */
+  private takeRequest(text: string): { request: string; context: VoiceTurn[] } {
+    this.closeTurn();
+    const turns = this.spoken.splice(0);
+    let request = text.trim();
+    let last = -1;
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].role === "user") {
+        last = i;
+        break;
+      }
+    }
+    if (last >= 0 && (!request || sameWords(turns[last].text, request))) {
+      request ||= turns[last].text;
+      turns.splice(last, 1);
+    }
+    request ||= this.pendingInput.trim();
+    this.pendingInput = "";
+    this.lastRequest = request;
+    return { request, context: turns };
+  }
+
   /** A delegation: run the request as a chat turn and send the answer back to speak. */
   private async delegate(id: string, text: string): Promise<void> {
     const delegation = ++this.delegation;
-    let request = text.trim();
-    if (!request) {
+    if (!text.trim()) {
       // GPT-Live's delegation carries no text and can come before the
       // user's last words are transcribed.
       await this.inputSettled(Date.now());
       if (delegation !== this.delegation || this.ended) return;
-      request = this.pendingInput.trim();
     }
-    this.pendingInput = "";
+    // As Codex does: the request plus what was said since the last one.
+    const { request, context } = this.takeRequest(text);
     if (!request) {
       this.sendAll(speakEvents(this.dialect, id, "I didn't catch the request. Ask the user to say it again."));
       return;
@@ -259,18 +328,18 @@ export class VoiceController {
     // While the voice's turn runs, a new request steers it, as in the chat
     // apps: the agent takes it in after its current step, nothing is
     // stopped, and the answer goes to this newest delegation.
-    if (this.voiceTurnRunning && this.host.steerTurn(request)) {
+    if (this.voiceTurnRunning && this.host.steerTurn(request, context)) {
       this.answerTo = id;
       this.sendAll(progressEvents(this.dialect, id, "Added to the task that is running."));
       return;
     }
     // A typed turn is stopped, as Stop does.
     if (this.host.turnRunning()) this.host.stopTurn();
-    await this.runVoiceTurn(id, request);
+    await this.runVoiceTurn(id, request, context);
   }
 
   /** Run `request` as a chat turn and send the answer back to speak; then what was added too late. */
-  private async runVoiceTurn(id: string, request: string): Promise<void> {
+  private async runVoiceTurn(id: string, request: string, context: VoiceTurn[] = []): Promise<void> {
     this.answerTo = id;
     let answer = "";
     let failed = "";
@@ -291,7 +360,7 @@ export class VoiceController {
           if (!this.ended) this.sendAll(speakEvents(this.dialect, this.answerTo, `The assistant asks: ${question}`));
         },
         onError: (message) => { failed = message; },
-      });
+      }, context);
     } finally {
       this.voiceTurnRunning = false;
     }
@@ -346,4 +415,12 @@ export class VoiceController {
   private render(): void {
     if (!this.ended) this.host.render({ ...this.state });
   }
+}
+
+/** The same words, ignoring case and punctuation; or one inside the other (a transcript cut short). */
+function sameWords(a: string, b: string): boolean {
+  const words = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const x = words(a);
+  const y = words(b);
+  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
 }

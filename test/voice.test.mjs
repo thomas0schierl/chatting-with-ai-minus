@@ -379,6 +379,69 @@ test('Codex dialect: the delegation text runs as the turn; progress and the answ
   view.endVoice();
 });
 
+test('As in Codex: what was said since the last request goes with the next one (the voice asked first, the user answered)', async () => {
+  const { view, plugin, chat } = await voiceSetup({ codex: true });
+  const log = serve({
+    live: () => ({ status: 201, text: 'answer-sdp', headers: { Location: '/v1/live/rtc_1' } }),
+    chat: () => response('anthropic', [text('Added the heading test.')]),
+  });
+  await startListening(view, chat, { started: false });
+  const ch = channel();
+  ch.receive({ type: 'input_transcript.added', item: { text: 'Ask me what the heading should be called, ' } });
+  ch.receive({ type: 'input_transcript.added', item: { text: 'then add it.' } });
+  ch.receive({ type: 'turn.done', turn: { role: 'user', transcript: 'Ask me what the heading should be called, then add it.' } });
+  ch.receive({ type: 'output_transcript.added', item: { text: 'What should the heading be called?' } });
+  ch.receive({ type: 'turn.done', turn: { role: 'assistant', transcript: 'What should the heading be called?' } });
+  ch.receive({ type: 'input_transcript.added', item: { text: 'Test.' } });
+  ch.receive({ type: 'delegation.created', item: { id: 'it_1', type: 'delegation', target: 'client', content: [{ type: 'input_text', text: 'test' }] } });
+  await until(() => ch.sent.some((e) => e.channel === 'speakable'));
+  // The user turn reported late is the request already taken: not context next time.
+  ch.receive({ type: 'turn.done', turn: { role: 'user', transcript: 'Test.' } });
+
+  const sent = userText(log.chat[0]);
+  assert.match(sent, /Said in the voice conversation before this request \(context\): User: "Ask me what the heading should be called, then add it\." Voice: "What should the heading be called\?"\./);
+  assert.match(sent, /\ntest$|\] test$/);
+  assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'user').map((e) => [e.text, !!e.turnId]),
+    [['Ask me what the heading should be called, then add it.', false], ['test', true]]);
+
+  // The next request carries only what was said after this one.
+  ch.receive({ type: 'output_transcript.added', item: { text: 'Done.' } });
+  ch.receive({ type: 'turn.done', turn: { role: 'assistant', transcript: 'Done.' } });
+  ch.receive({ type: 'input_transcript.added', item: { text: 'Now remove it.' } });
+  ch.receive({ type: 'delegation.created', item: { id: 'it_2', type: 'delegation', target: 'client', content: [{ type: 'input_text', text: 'Remove the heading test' }] } });
+  await until(() => log.chat.length === 2);
+  const next = userText(log.chat[1]);
+  assert.match(next, /\(context\): Voice: "Done\." User: "Now remove it\."\./);
+  assert.doesNotMatch(next, /Ask me|Test\./);
+  // "Now remove it." is the request as the voice put it: the chat shows the request only.
+  assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'user').map((e) => e.text).slice(2), ['Remove the heading test']);
+  view.endVoice();
+});
+
+test('A new request while the voice turn runs steers it with what was said before it', async () => {
+  const { view, chat } = await voiceSetup({ codex: true });
+  let releaseFirst;
+  const log = serve({
+    live: () => ({ status: 201, text: 'answer-sdp', headers: { Location: '/v1/live/rtc_1' } }),
+    chat: (body, index) => index === 0
+      ? new Promise((resolve) => { releaseFirst = () => resolve(response('anthropic', [call('r1', 'read_file', { path: 'Untitled.md' })], 'tool_use')); })
+      : response('anthropic', [text('Done.')]),
+  });
+  await startListening(view, chat, { started: false });
+  const ch = channel();
+  ch.receive({ type: 'input_transcript.added', item: { text: 'Add a section' } });
+  ch.receive({ type: 'delegation.created', item: { id: 'it_1', type: 'delegation', target: 'client', content: [{ type: 'input_text', text: 'Add a section' }] } });
+  await until(() => log.chat.length === 1);
+  ch.receive({ type: 'input_transcript.added', item: { text: 'Call the other one notes-notes' } });
+  ch.receive({ type: 'delegation.created', item: { id: 'it_2', type: 'delegation', target: 'client', content: [{ type: 'input_text', text: 'Also add a section notes-notes' }] } });
+  await until(() => chat.queued?.length === 1);
+  assert.deepEqual(chat.queued, ['Also add a section notes-notes']);
+  releaseFirst();
+  await until(() => log.chat.length === 2);
+  assert.match(JSON.stringify(log.chat[1]), /\[The user added while you were working: Said in the voice conversation before this request \(context\): User: \\"Call the other one notes-notes\\"\.\] Also add a section notes-notes/);
+  view.endVoice();
+});
+
 test('A new request while the voice turn runs steers it: nothing is stopped, the agent gets it after its current step', async () => {
   const { view, plugin, chat } = await voiceSetup();
   let releaseFirst;

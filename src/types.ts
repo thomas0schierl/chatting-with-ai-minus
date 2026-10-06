@@ -146,6 +146,14 @@ export interface ConversationContext {
   fileCount: number;
   /** The turn comes from a voice conversation; its answer will be spoken. */
   voice?: boolean;
+  /** What was said in the voice conversation since the last request (context for this one). */
+  voiceTranscript?: VoiceTurn[];
+}
+
+/** One turn of a voice conversation: what the user or the voice said. */
+export interface VoiceTurn {
+  role: "user" | "assistant";
+  text: string;
 }
 
 // ─── Selection Scope ────────────────────────────────────────────────────────

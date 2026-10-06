@@ -220,6 +220,12 @@ queue.
    turn is stopped first. The request runs through `handleUserMessage()` like
    a typed message, with a turn ID, tool cards and history, and with
    `voice: true` (a context line asks for a short, speakable answer).
+   As Codex sends a `transcript_delta` with each handoff, the turns said
+   since the last delegation (the user's and the voice's, from the
+   transcript events) go with the request as a context line, so a request
+   can build on what the voice asked first. The chat shows the user's
+   turns before the request; the request's own sentence is dropped when
+   it repeats the delegation text.
    Text before a tool call and each tool call go back as progress
    (`session.thinking.append`, or Codex `delegation.context.append` on
    the `commentary` channel); the final answer as text to speak
@@ -231,7 +237,8 @@ queue.
 5. **Steering:** a new delegation while the voice turn runs doesn't stop
    it. `AgentLoop.steer()` queues the request; after the current step's
    tool results the loop adds it to that user message ("[The user added
-   while you were working:] …") and the chat shows it as a user message
+   while you were working:] …", with the voice context line) and the
+   chat shows it as a user message
    without a turn ID. Progress and the answer go to the newest
    delegation. A request queued after the turn's last step runs as the
    next turn. The voice instructions say a running task stays steerable

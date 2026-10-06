@@ -8,6 +8,7 @@ import type {
   SelectionScope,
   ImageAttachment,
   ToolResult,
+  VoiceTurn,
 } from "../types";
 import { errorKind, resetProviderState, sendMessage } from "../api/client";
 import { lastChunkAt } from "../api/stream";
@@ -94,7 +95,7 @@ export class AgentLoop {
   /** The run whose loop is working now (0: none); `steer()` adds to it. */
   private loopVersion = 0;
   /** Requests the user added while the loop works; sent with its next request (`steer`). */
-  private steered: string[] = [];
+  private steered: { text: string; context?: string }[] = [];
 
   constructor(app: App, settings: ChatSettings) {
     this.app = app;
@@ -112,18 +113,20 @@ export class AgentLoop {
    * Add a request to the running turn, as the chat apps let you steer a
    * running task: it goes with the loop's next request, after the current
    * step. False when no loop is working (start a turn instead). What
-   * arrives after the last step is returned by `takeSteered()`.
+   * arrives after the last step is returned by `takeSteered()`. `context`
+   * goes to the model with it, not into the chat (e.g. what was said in
+   * voice before the request).
    */
-  steer(text: string): boolean {
+  steer(text: string, context?: string): boolean {
     if (!this.loopVersion || this.loopVersion !== this.runVersion) return false;
-    this.steered.push(text);
-    debugLog(this.app, "STEER", { text });
+    this.steered.push({ text, ...(context ? { context } : {}) });
+    debugLog(this.app, "STEER", { text, context });
     return true;
   }
 
   /** Steered requests the finished turn didn't get to; they need a turn of their own. */
   takeSteered(): string[] {
-    return this.steered.splice(0);
+    return this.steered.splice(0).map((item) => item.text);
   }
 
   /** Stop a running turn and clear the history. */
@@ -239,14 +242,14 @@ export class AgentLoop {
     selection?: SelectionScope | null,
     images: ImageAttachment[] = [],
     turnId: string = newTurnId(),
-    { voice = false }: { voice?: boolean } = {}
+    { voice = false, voiceTranscript = [] }: { voice?: boolean; voiceTranscript?: VoiceTurn[] } = {}
   ): Promise<void> {
     const version = ++this.runVersion;
     // Keep one provider/model/credential configuration for this entire turn.
     const turnSettings = { ...this.settings };
 
     // Build context once per user turn and prepend to the user message
-    const context = buildContext(this.app, voice);
+    const context = buildContext(this.app, voice, voiceTranscript);
     const contextPrefix = buildContextMessage(context);
 
     // If there's a selection, inject it as scoped context
@@ -430,8 +433,8 @@ export class AgentLoop {
 
       if (isStopped()) return;
       // What the user added meanwhile goes with the next request, after the results.
-      for (const text of this.steered.splice(0)) {
-        resultBlocks.push({ type: "text", text: `[The user added while you were working:] ${text}` });
+      for (const { text, context } of this.steered.splice(0)) {
+        resultBlocks.push({ type: "text", text: `[The user added while you were working:${context ? ` ${context}` : ""}] ${text}` });
         callbacks.onSteered?.(text);
       }
     }

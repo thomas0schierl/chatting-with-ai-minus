@@ -2,7 +2,8 @@ import { ItemView, WorkspaceLeaf, Notice, Platform } from "obsidian";
 import { mount, unmount } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
-import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry } from "../types";
+import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry, VoiceTurn } from "../types";
+import { voiceTranscriptText } from "../agent/system-prompt";
 import { newTurnId } from "../agent/history";
 import { savedToolInput } from "../chat-state";
 import { debugLog } from "../debug";
@@ -290,9 +291,9 @@ export class ObsidianChatView extends ItemView {
     // The screen stays on during the call (released when it ends).
     const releaseScreen = screenAwake.hold();
     const controller: VoiceController = new VoiceController({
-      runTurn: (text, hooks) => this.handleUserMessage(text, null, [], newTurnId(), hooks),
+      runTurn: (text, hooks, context) => this.handleUserMessage(text, null, [], newTurnId(), hooks, context),
       // A spoken request while the agent waits for an answer is that answer.
-      steerTurn: (text) => this.running && (this.chatContainer?.answerAskUser(text) || this.plugin.agent.steer(text)),
+      steerTurn: (text, context) => this.running && (this.chatContainer?.answerAskUser(text) || this.steerByVoice(text, context)),
       takeSteered: () => this.takeLeftovers(),
       stopTurn: () => this.handleStop(),
       turnRunning: () => this.running,
@@ -464,13 +465,19 @@ export class ObsidianChatView extends ItemView {
     );
   }
 
-  /** Run one turn; `voice`: it comes from the voice conversation, which gets its progress and answer. */
+  /**
+   * Run one turn; `voice`: it comes from the voice conversation, which gets
+   * its progress and answer. `voiceContext`: what was said there since the
+   * last request; the agent gets it all, the chat shows the user's words
+   * before the request.
+   */
   private async handleUserMessage(
     text: string,
     selection: SelectionScope | null,
     images: ImageAttachment[] = [],
     turnId: string = newTurnId(),
-    voice?: VoiceTurnHooks
+    voice?: VoiceTurnHooks,
+    voiceContext: VoiceTurn[] = []
   ): Promise<void> {
     // While a turn runs, a typed message is added to it (steering, as in voice).
     if (this.running) {
@@ -479,11 +486,16 @@ export class ObsidianChatView extends ItemView {
     }
     const chat = this.chatContainer;
     if (!chat) return;
+    // A user turn at the end is the request itself, as the voice put it.
+    const said = voiceContext.at(-1)?.role === "user" ? voiceContext.slice(0, -1) : voiceContext;
+    for (const turn of said) {
+      if (turn.role === "user") this.append(this.plugin.chatHistory, { type: "user", text: turn.text });
+    }
     this.append(this.plugin.chatHistory, { type: "user", text, images, turnId, ...(selection ? { selection } : {}) });
     this.plugin.touchConversation();
     chat.setTitle(this.plugin.activeConversation.title);
     await this.runTurn(turnId, (callbacks) =>
-      this.plugin.agent.run(text, callbacks, selection, images, turnId, { voice: !!voice }), voice);
+      this.plugin.agent.run(text, callbacks, selection, images, turnId, { voice: !!voice, voiceTranscript: voiceContext }), voice);
   }
 
   /**
@@ -653,6 +665,14 @@ export class ObsidianChatView extends ItemView {
     this.queued.push(text);
     this.chatContainer?.setQueued([...this.queued]);
     if (!this.plugin.agent.steer(text)) this.unsteered.push(text);
+  }
+
+  /** A spoken request while the voice's turn runs: added to it with what was said before it. */
+  private steerByVoice(text: string, context: VoiceTurn[] = []): boolean {
+    if (!this.plugin.agent.steer(text, context.length ? voiceTranscriptText(context) : undefined)) return false;
+    this.queued.push(text);
+    this.chatContainer?.setQueued([...this.queued]);
+    return true;
   }
 
   /** Added messages the turn didn't take in; they leave the queue (they run next). */
