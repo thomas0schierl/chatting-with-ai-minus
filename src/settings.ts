@@ -1,6 +1,6 @@
 import { App, Modal, Notice, PluginSettingTab, Setting, type SettingDefinitionItem } from "obsidian";
 import type ChatPlugin from "./main";
-import type { Provider, VoiceMicMode } from "./types";
+import type { ChatSettings, Provider, VoiceMicMode } from "./types";
 import { DEFAULT_PROVIDER_MODELS } from "./types";
 import { clearDebugLog } from "./debug";
 import {
@@ -53,6 +53,23 @@ export function getModelHeaderLabel(provider: Provider, modelId: string, level: 
   return thinking ? `${name} · ${thinking}` : name;
 }
 
+/**
+ * The Test buttons: one word back, as fast as the model allows. The lightest
+ * thinking level the catalog lists (providers list them lightest first) and
+ * no web search; the chat settings stay as they are.
+ */
+export async function connectionTest(settings: ChatSettings): Promise<string> {
+  const { sendMessage } = await import("./api/client");
+  const efforts = catalogModel(settings.provider, settings.model)?.reasoningEfforts;
+  const response = await sendMessage(
+    { ...settings, enableWebSearch: false, thinkingLevel: efforts?.[0] ?? settings.thinkingLevel },
+    [{ role: "user", content: "Say hello in one word." }],
+    [],
+    "You are a test. Respond with one word.",
+  );
+  return response.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+}
+
 // ─── Settings Tab ───────────────────────────────────────────────────────────
 
 export class ChatSettingTab extends PluginSettingTab {
@@ -69,6 +86,8 @@ export class ChatSettingTab extends PluginSettingTab {
   constructor(app: App, plugin: ChatPlugin) {
     super(app, plugin);
     this.plugin = plugin;
+    // Scopes the wrapping rows in styles.css (several buttons on a phone).
+    this.containerEl.addClass("chatting-minus-settings");
   }
 
   // Obsidian renders the tab from these definitions and indexes them for search.
@@ -320,17 +339,7 @@ export class ChatSettingTab extends PluginSettingTab {
           button.setButtonText("Testing...");
           button.setDisabled(true);
           try {
-            const { sendMessage } = await import("./api/client");
-            const response = await sendMessage(
-              s,
-              [{ role: "user", content: "Say hello in one word." }],
-              [],
-              "You are a test. Respond with one word."
-            );
-            const text = response.content
-              .filter((b) => b.type === "text")
-              .map((b) => b.text)
-              .join("");
+            const text = await connectionTest(s);
             new Notice(`Connected! Response: "${text}"`);
             apiKeySetting.setDesc("Connection successful");
           } catch (e) {
@@ -384,17 +393,7 @@ export class ChatSettingTab extends PluginSettingTab {
             button.setButtonText("Testing...");
             button.setDisabled(true);
             try {
-              const { sendMessage } = await import("./api/client");
-              const response = await sendMessage(
-                this.plugin.settings,
-                [{ role: "user", content: "Say hello in one word." }],
-                [],
-                "You are a test. Respond with one word."
-              );
-              const text = response.content
-                .filter((b) => b.type === "text")
-                .map((b) => b.text)
-                .join("");
+              const text = await connectionTest(this.plugin.settings);
               new Notice(`Connected! Response: "${text || "(no text)"}"`);
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);

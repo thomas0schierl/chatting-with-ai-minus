@@ -697,6 +697,40 @@ test('Codex sign-in: device code, polling while pending, code exchange; tokens o
   assert.equal(auth.getCredential(), null);
 });
 
+test('Codex sign-in survives the trip to the browser: no polling in the background, network errors are retried', async () => {
+  const { app } = secretApp();
+  const auth = new X.CodexVoiceAuth(app);
+  const polls = [];
+  let failures = 2;
+  globalThis.__providerRequest = async (request) => {
+    if (request.url.endsWith('/deviceauth/token')) {
+      polls.push(appLifecycle.isHidden());
+      // Like a phone resolving no host for a moment.
+      if (failures-- > 0) throw new Error('Request failed. UnknownHostException: Unable to resolve host "auth.openai.com"');
+      return { status: 200, json: { authorization_code: 'code_1', code_verifier: 'verifier_1' } };
+    }
+    if (request.url === 'https://auth.openai.com/oauth/token') return { status: 200, json: { access_token: jwt({ exp: 2_000_000_000 }), refresh_token: 'refresh_1', id_token: jwt(authClaims), expires_in: 3600 } };
+    throw new Error(`Unexpected ${request.url}`);
+  };
+  const code = { deviceAuthId: 'dev_1', userCode: 'ABCD-1234', verificationUrl: 'x', intervalMs: 0 };
+
+  appLifecycle.markHidden();
+  const signingIn = auth.completeDeviceSignIn(code);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(polls.length, 0);
+  appLifecycle.markVisible();
+  const credential = await signingIn;
+  assert.deepEqual(polls, [false, false, false]);
+  assert.equal(credential.accountId, 'acct_1');
+});
+
+test('Codex sign-in: no connection while getting the code says so', async () => {
+  const { app } = secretApp();
+  const auth = new X.CodexVoiceAuth(app);
+  globalThis.__providerRequest = async () => { throw new Error('UnknownHostException'); };
+  await assert.rejects(auth.startDeviceSignIn(), /No connection to auth\.openai\.com.*Check the internet connection/);
+});
+
 test('Codex sign-in refreshes within 5 minutes of expiry with a JSON body and keeps the account', async () => {
   const { app, secrets } = secretApp();
   secrets[CODEX_KEY] = JSON.stringify({ accessToken: 'old', refreshToken: 'refresh_1', idToken: jwt(authClaims), accountId: 'acct_1', email: 'me@example.com', expiresAt: Date.now() + 60_000 });

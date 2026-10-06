@@ -19,6 +19,7 @@ import { decodeJwt } from "../auth/chatgptOAuth";
 import { uuidV4 } from "../auth/chatgptOAuthStore";
 import { asRecord, isRecord, readJson } from "../json";
 import type { VoiceRoute } from "./session";
+import { appLifecycle } from "../platform/lifecycle";
 
 // Plain strings, not templates: public builds can then drop them all.
 const ISSUER = "https://auth.openai.com";
@@ -86,13 +87,18 @@ export class CodexVoiceAuth {
 
   /** Step 1: get a code for the user to enter at `verificationUrl`. */
   async startDeviceSignIn(): Promise<CodexDeviceCode> {
-    const response = await requestUrl({
-      url: `${ISSUER}/api/accounts/deviceauth/usercode`,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: CODEX_CLIENT_ID }),
-      throw: false,
-    });
+    let response;
+    try {
+      response = await requestUrl({
+        url: `${ISSUER}/api/accounts/deviceauth/usercode`,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: CODEX_CLIENT_ID }),
+        throw: false,
+      });
+    } catch (error) {
+      throw new Error(`No connection to auth.openai.com (${error instanceof Error ? error.message : String(error)}). Check the internet connection and try again.`);
+    }
     const data = json(response);
     const deviceAuthId = str(data.device_auth_id), userCode = str(data.user_code) ?? str(data.usercode);
     if (response.status < 200 || response.status >= 300 || !deviceAuthId || !userCode) {
@@ -107,13 +113,27 @@ export class CodexVoiceAuth {
     const deadline = Date.now() + SIGN_IN_TIMEOUT_MS;
     while (Date.now() < deadline) {
       if (cancelled()) throw new Error("Sign-in cancelled.");
-      const response = await requestUrl({
-        url: `${ISSUER}/api/accounts/deviceauth/token`,
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ device_auth_id: code.deviceAuthId, user_code: code.userCode }),
-        throw: false,
-      });
+      // The user signs in in the browser meanwhile: Obsidian is in the
+      // background, where a phone may block its network. Ask again once
+      // it's back instead of failing.
+      if (appLifecycle.isHidden()) {
+        await appLifecycle.whenVisible();
+        continue;
+      }
+      let response;
+      try {
+        response = await requestUrl({
+          url: `${ISSUER}/api/accounts/deviceauth/token`,
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_auth_id: code.deviceAuthId, user_code: code.userCode }),
+          throw: false,
+        });
+      } catch {
+        // No connection (e.g. the host couldn't be resolved): try again.
+        await sleep(code.intervalMs);
+        continue;
+      }
       if (response.status >= 200 && response.status < 300) {
         const data = json(response);
         const authorizationCode = str(data.authorization_code), codeVerifier = str(data.code_verifier);
@@ -270,7 +290,13 @@ export class CodexVoiceSignInModal extends Modal {
   }
 
   onOpen(): void {
+    this.start();
+  }
+
+  /** Get a code and wait for the sign-in; on failure, offer to try again. */
+  private start(): void {
     const { contentEl } = this;
+    contentEl.empty();
     new Setting(contentEl).setName("Sign in as Codex (unofficial)").setHeading();
     contentEl.createEl("p", {
       text: "Voice through Codex's internal route, with your ChatGPT plan. It isn't an official API: OpenAI may change or block it.",
@@ -294,7 +320,10 @@ export class CodexVoiceSignInModal extends Modal {
         });
       })
       .catch((error: unknown) => {
-        if (!this.closed) status.setText(error instanceof Error ? error.message : String(error));
+        if (this.closed) return;
+        status.setText(error instanceof Error ? error.message : String(error));
+        const retry = contentEl.createEl("button", { text: "Try again" });
+        retry.addEventListener("click", () => this.start());
       });
   }
 

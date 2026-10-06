@@ -121,4 +121,6 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   hidden, and pads its own parts (header, messages, input), so the input
   sits at the panel's bottom edge.
 - Animations and transitions are off under `prefers-reduced-motion`.
+- Settings rows wrap (`.chatting-minus-settings`): on a phone, several
+  buttons move below the description and onto more lines.
 - UI text is English, in sentence case (Obsidian guideline).

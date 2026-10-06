@@ -478,6 +478,17 @@ for (const [level, models, reasoning] of [
     assert.deepEqual(requests[0].include,reasoning && ['reasoning.encrypted_content']);
   });
 }
+test('Settings Test: the lightest catalog level and no web search; the chat settings stay as they are', async () => {
+  const models = [{value:'gpt-5.5',label:'GPT-5.5',reasoningEfforts:['low','medium','high'],defaultReasoningEffort:'medium'}];
+  const s = await withCatalog('chatgpt-oauth',models,{thinkingLevel:'high',enableWebSearch:true});
+  api.cachedCatalog(s.modelCatalog,'chatgpt-oauth',await api.catalogIdentity('chatgpt-oauth','fake-account'));
+  const requests = transport(()=>response('chatgpt-oauth',[text('Hello')]));
+  assert.equal(await api.connectionTest(s),'Hello');
+  assert.deepEqual(requests[0].reasoning,{effort:'low',summary:'auto'});
+  assert.ok(!(requests[0].tools ?? []).some(t=>t.type==='web_search'));
+  assert.equal(s.thinkingLevel,'high');
+  assert.equal(s.enableWebSearch,true);
+});
 test('Anthropic Opus 5.5: adaptive thinking and model changes strip old signatures while preserving tool pairs', async () => {
   const requests = transport(()=>response('anthropic',[{type:'thinking',thinking:'private',signature:'signed-old'},text('Reading'),call('read','read_file',{path:'template'})],'tool_use'));
   const first = await api.sendAnthropicMessage(await withCatalog('anthropic',[{value:'claude-opus-5-5',label:'Claude Opus 5.5',thinkingType:'adaptive'}],{model:'claude-opus-5-5'}),[{role:'user',content:'test'}],[],'test');
