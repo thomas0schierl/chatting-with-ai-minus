@@ -21,6 +21,13 @@
   overflow: hidden;
 }
 
+/* On phones the sidebar's tab menu below the view fades the content above
+   it (Obsidian: box-shadow 0 -12px 12px in the sidebar colour, about 24px
+   high); keep the input out of that band. Desktop and tablets have none. */
+.is-phone .workspace-leaf-content[data-type="chatting-minus-view"] .view-content {
+  padding-bottom: 24px;
+}
+
 /* Desktop sidebar min-width */
 .workspace-leaf-content[data-type="chatting-minus-view"] {
   min-width: 280px;

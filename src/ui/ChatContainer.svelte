@@ -1255,7 +1255,7 @@
     background: var(--background-primary);
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+    padding: 8px;
   }
 
   .chatting-minus-history:focus {
@@ -1840,7 +1840,6 @@
     align-items: flex-end;
     gap: var(--chatting-minus-bar-gap);
     padding: 8px 12px;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--background-modifier-border);
     background: transparent;
     flex-shrink: 0;
@@ -2000,7 +1999,6 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--background-modifier-border);
     flex-shrink: 0;
     animation: chatting-minus-voice-in 200ms ease-out;
@@ -2228,7 +2226,6 @@
     .chatting-minus-input-bar {
       --chatting-minus-bar-gap: 10px;
       padding: 10px 12px;
-      padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     }
 
     .chatting-minus-input {
