@@ -780,10 +780,14 @@
       <span class="chatting-minus-header-title" title={displayTitle}>{displayTitle || "New chat"}</span>
       <span class="chatting-minus-header-model">{displayModel || "No model"}</span>
     </div>
+    <!-- Nothing to clear in an empty chat: the trash folds away until there is -->
     <button
       class="chatting-minus-icon-btn chatting-minus-clear-btn"
+      class:is-folded={messages.length === 0}
       type="button"
       onclick={onClear}
+      tabindex={messages.length === 0 ? -1 : undefined}
+      aria-hidden={messages.length === 0 ? "true" : undefined}
       aria-label="Clear conversation"
       title="Clear conversation"
     >
@@ -1380,6 +1384,27 @@
   .chatting-minus-icon-btn.chatting-minus-clear-btn,
   .chatting-minus-icon-btn.chatting-minus-clear-btn:hover {
     color: var(--text-error);
+  }
+
+  /* Folds away in an empty chat, like the attach button while typing */
+  .chatting-minus-icon-btn.chatting-minus-clear-btn {
+    transition: width 200ms ease, min-width 200ms ease, margin 200ms ease, opacity 150ms ease, transform 200ms ease;
+  }
+
+  .chatting-minus-icon-btn.chatting-minus-clear-btn.is-folded {
+    width: 0;
+    min-width: 0;
+    margin-right: -4px; /* takes the header's gap with it */
+    opacity: 0;
+    transform: scale(0.5);
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chatting-minus-icon-btn.chatting-minus-clear-btn {
+      transition: none;
+    }
   }
 
   /* ─── Messages ──────────────────────────────────────────────────────── */
