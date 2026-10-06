@@ -25,7 +25,12 @@ let copied;
 beforeEach(() => {
   globalThis.__notices = [];
   copied = null;
-  globalThis.navigator = { clipboard: { writeText: async (text) => { copied = text; } } };
+  // Newer Node versions define a read-only `navigator`; replace it the way a browser test would.
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { clipboard: { writeText: async (text) => { copied = text; } } },
+    configurable: true,
+    writable: true,
+  });
 });
 
 test('Off by default: nothing is written, and Copy says how to turn it on', async () => {
