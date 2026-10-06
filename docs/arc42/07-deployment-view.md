@@ -19,13 +19,17 @@
    version, with three assets: `main.js`, `manifest.json`, `styles.css`.
 3. `scripts/release.sh` bumps the version in `manifest.json`,
    `package.json`, `package-lock.json` and `versions.json`, commits, tags
-   and pushes.
+   and pushes to the branch the current one tracks (the repository is
+   [thomas0schierl/chatting-with-ai-minus](https://github.com/thomas0schierl/chatting-with-ai-minus),
+   private for now; next to the upstream clone its remote is `minus`).
 4. The tag starts the Release workflow (`.github/workflows/release.yml`):
    - checks that the tag equals the `manifest.json` version and that
      `versions.json` lists it
    - runs lint, tests, type and Svelte checks, then builds
    - attests the three assets (build provenance, verifiable with
-     `gh attestation verify`)
+     `gh attestation verify`), only while the repository is public:
+     GitHub's plans offer attestations for private repositories only on
+     Enterprise
    - creates a draft GitHub release with them; a maintainer publishes it.
 5. Obsidian's community plugin directory installs and updates from those
    releases. `versions.json` maps each plugin version to the minimum

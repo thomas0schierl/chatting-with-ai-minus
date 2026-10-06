@@ -5,6 +5,10 @@
   "author": {
     "name": "Thomas Schierl"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thomas0schierl/chatting-with-ai-minus.git"
+  },
   "scripts": {
     "test": "node scripts/test.mjs",
     "dev": "node esbuild.config.mjs",

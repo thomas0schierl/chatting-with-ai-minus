@@ -39,7 +39,9 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run svelte-check
       - run: npm run build
-      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+      # Attestations need a public repository (or GitHub Enterprise) on GitHub's plans.
+      - if: ${{ !github.event.repository.private }}
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: |
             main.js

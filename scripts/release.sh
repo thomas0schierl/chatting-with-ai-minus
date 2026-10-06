@@ -29,6 +29,15 @@ if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
   exit 1
 fi
 
+# Push to the branch this one tracks (origin/main in a plain clone; another
+# remote when the fork sits next to its upstream).
+if ! UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"; then
+  echo "error: the current branch tracks no remote branch (git push -u <remote> HEAD:main)." >&2
+  exit 1
+fi
+REMOTE="${UPSTREAM%%/*}"
+BRANCH="${UPSTREAM#*/}"
+
 npm version "$VERSION" --no-git-tag-version >/dev/null
 node -e '
   const fs = require("fs");
@@ -43,6 +52,6 @@ node -e '
 
 git commit -m "Release $VERSION" -- manifest.json package.json package-lock.json versions.json
 git tag -a "$VERSION" -m "Release $VERSION"
-git push --atomic origin HEAD "refs/tags/$VERSION"
+git push --atomic "$REMOTE" "HEAD:refs/heads/$BRANCH" "refs/tags/$VERSION"
 
-echo "Pushed $VERSION. The Release workflow creates a draft release; publish it on GitHub."
+echo "Pushed $VERSION to $UPSTREAM. The Release workflow creates a draft release; publish it on GitHub."
