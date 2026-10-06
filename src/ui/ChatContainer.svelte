@@ -227,7 +227,6 @@
   let messages = $state<ChatMessage[]>([]);
   let inputText = $state("");
   let inputEnabled = $state(true);
-  let placeholder = $state("Ask anything...");
   let messagesEl: HTMLElement | undefined = $state();
   let textareaEl: HTMLTextAreaElement | undefined = $state();
   let fileInputEl: HTMLInputElement | undefined = $state();
@@ -429,7 +428,6 @@
 
   /** The next input answers an `ask_user` question (the view shows the question). */
   export function showAskUser(): Promise<string> {
-    placeholder = "Type your answer...";
     inputEnabled = true;
     textareaEl?.focus();
 
@@ -440,11 +438,17 @@
 
   export function setInputEnabled(enabled: boolean): void {
     inputEnabled = enabled;
-    placeholder = enabled ? "Ask anything..." : "Waiting for response...";
   }
 
   export function setBusy(value: boolean): void {
     busy = value;
+  }
+
+  /** Messages sent while the answer runs, until the agent takes them in (or they run next). */
+  let queued = $state<string[]>([]);
+
+  export function setQueued(texts: string[]): void {
+    queued = texts;
   }
 
   /** Drop a pending `ask_user` question (its turn was stopped). */
@@ -507,6 +511,15 @@
 
     if (askUserResolve && attachments.length > 0) {
       new Notice("Image attachments are not supported when answering a tool question.");
+      return;
+    }
+    if (busy && !askUserResolve) {
+      // Added to the running task (the view steers it); images and the
+      // selection stay for the next message.
+      if (!text) return;
+      inputText = "";
+      resetHeight();
+      onSend(text, null, []);
       return;
     }
 
@@ -1034,6 +1047,15 @@
     {/if}
   </div>
 
+  {#if queued.length}
+    <!-- Sent while the answer runs; each moves into the chat when the agent takes it in -->
+    <div class="chatting-minus-queued" aria-live="polite">
+      {#each queued as text, i (i)}
+        <div class="chatting-minus-queued-item"><span class="chatting-minus-queued-label">Queued</span><span class="chatting-minus-queued-text">{text}</span></div>
+      {/each}
+    </div>
+  {/if}
+
   <!-- Selection pill -->
   {#if selection}
     <div class="chatting-minus-selection-pill">
@@ -1151,7 +1173,7 @@
       class:is-folded={typing}
       type="button"
       onclick={openImagePicker}
-      disabled={!inputEnabled || attachments.length >= MAX_IMAGE_COUNT}
+      disabled={!inputEnabled || busy || attachments.length >= MAX_IMAGE_COUNT}
       tabindex={typing ? -1 : undefined}
       aria-hidden={typing ? "true" : undefined}
       aria-label="Attach images"
@@ -1163,7 +1185,7 @@
       class="chatting-minus-input"
       bind:this={textareaEl}
       bind:value={inputText}
-      {placeholder}
+      placeholder={askUserResolve ? "Type your answer..." : busy ? "Add to the running task..." : "Ask anything..."}
       disabled={!inputEnabled}
       rows="1"
       enterkeyhint={enterSends ? "send" : "enter"}
@@ -1173,8 +1195,16 @@
       onfocus={() => { inputFocused = true; }}
       onblur={() => { inputFocused = false; }}
     ></textarea>
-    <!-- One action slot, as in the chat apps: voice while there's nothing to send, else send; stop while a turn runs -->
-    {#if inputEnabled && showVoiceStart}
+    <!-- One action slot, as in the chat apps: voice while there's nothing to send, else send; while a turn runs, stop until there is text to add -->
+    {#if busy && !inputText.trim()}
+      <button
+        class="chatting-minus-send-btn chatting-minus-stop-btn"
+        onclick={onStop}
+        aria-label="Stop generation"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+      </button>
+    {:else if inputEnabled && !busy && showVoiceStart}
       <button
         class="chatting-minus-attach-btn chatting-minus-voice-start"
         type="button"
@@ -1185,21 +1215,13 @@
         <!-- Live voice, as in the chat apps: a filled circle with sound-wave bars (the microphone means dictation there) -->
         <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="currentColor"></circle><g class="chatting-minus-voice-bars" fill="none" stroke-width="2" stroke-linecap="round"><line x1="7.5" y1="10.5" x2="7.5" y2="13.5"></line><line x1="10.5" y1="7.5" x2="10.5" y2="16.5"></line><line x1="13.5" y1="9" x2="13.5" y2="15"></line><line x1="16.5" y1="10.5" x2="16.5" y2="13.5"></line></g></svg>
       </button>
-    {:else if inputEnabled}
+    {:else}
       <button
         class="chatting-minus-send-btn"
         onclick={handleSend}
-        aria-label="Send message"
+        aria-label={busy ? "Add to the running task" : "Send message"}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
-      </button>
-    {:else}
-      <button
-        class="chatting-minus-send-btn chatting-minus-stop-btn"
-        onclick={onStop}
-        aria-label="Stop generation"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
       </button>
     {/if}
   </div>
@@ -1647,6 +1669,36 @@
   }
 
   /* Usage limit: the ChatGPT identity stays visible; Manage usage is the main action */
+  /* Messages sent while the answer runs, until the agent takes them in */
+  .chatting-minus-queued {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 12px 0;
+    flex-shrink: 0;
+  }
+
+  .chatting-minus-queued-item {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    min-width: 0;
+  }
+
+  .chatting-minus-queued-label {
+    flex-shrink: 0;
+    font-weight: var(--font-semibold);
+    color: var(--text-faint);
+  }
+
+  .chatting-minus-queued-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .chatting-minus-stopped-note {
     align-self: flex-start;
     font-size: var(--font-ui-smaller);

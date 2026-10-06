@@ -167,6 +167,19 @@ switching or listing.
 **Clear** (the header's red trash icon, command) empties the current conversation's histories;
 it stays active and, being empty, leaves the list.
 
+## Typing while an answer runs
+
+The input stays usable during a turn. With text in it the action slot is
+Send, without it Stop. `ChatView.handleUserMessage()` sees the running turn
+and calls `AgentLoop.steer()` (as voice steering does): the message shows
+as *Queued* above the input until the loop adds it to its next step
+(after the current tool results); then it moves into the chat as a user
+message without a turn ID. Messages the turn had no step left for run as
+the next turn once the answer is in. Without streaming (the ChatGPT plan
+on phones) this works the same: steps are separate requests. Images and
+the selection wait for the next turn; Stop, Clear and switching drop the
+queue.
+
 ## Voice conversation (`voice/`, ADR-11)
 
 1. **Start:** the voice button sits in the input's one action slot. It
@@ -223,7 +236,8 @@ it stays active and, being empty, leaves the list.
    delegation. A request queued after the turn's last step runs as the
    next turn. The voice instructions say a running task stays steerable
    (as in Codex's prompt): the voice model hands over additions and
-   corrections at once instead of waiting.
+   corrections at once instead of waiting. Typing works the same way
+   (see *Typing while an answer runs* below).
 6. **End:** **End**, a conversation switch, a new chat, Clear, closing the
    view or unloading sends `session.close`, waits up to 5 s for
    `session.closed`, then closes the connection and stops the microphone.

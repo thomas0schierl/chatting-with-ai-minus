@@ -26,6 +26,7 @@ needed. They don't prove live-service or mobile behaviour.
 | `chatgpt-usage.test.mjs` | Usage limit: not retried, its own message; the one-time plan welcome. |
 | `client-version.test.mjs` | The Codex CLI version sent as `client_version`: cached, stable releases only, fallback. |
 | `conversations.test.mjs` | New chat, switch, rename, delete, restore, titles, caps, saves one at a time, an unreadable saved file kept aside, history isolation and OpenAI chaining. |
+| `typed-steering.test.mjs` | Typing while an answer runs: queued, taken in with the next step, or run next; Stop drops it. |
 | `screen-awake.test.mjs` | The screen lock: held while anyone needs it, asked for again after the background, a turn holds it; the "Stopped." note. |
 | `debug-log.test.mjs` | The *Debug log* setting: nothing written while off; Copy and Clear. |
 | `enter-sends.test.mjs` | The *Enter sends message* setting: default, kept in `data.json`, passed to the chat. |

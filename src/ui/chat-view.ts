@@ -35,6 +35,7 @@ interface ChatContainerApi extends Record<string, unknown> {
   showAskUser(): Promise<string>;
   setInputEnabled(enabled: boolean): void;
   setBusy(busy: boolean): void;
+  setQueued(texts: string[]): void;
   cancelAskUser(): void;
   answerAskUser(text: string): boolean;
   clearMessages(): void;
@@ -62,6 +63,10 @@ export class ObsidianChatView extends ItemView {
   private running = false;
   /** Some of the running turn's answer is on screen (streamed or whole). */
   private answerShown = false;
+  /** Typed while a turn ran, until the agent takes them in or they run next (shown as queued). */
+  private queued: string[] = [];
+  /** Typed when no loop step could take them (the turn was ending): they run next. */
+  private unsteered: string[] = [];
   /** Counts turns started here; only the latest one may end the running state. */
   private turnCount = 0;
   /** The assistant message being streamed, until the loop delivers it whole. */
@@ -288,7 +293,7 @@ export class ObsidianChatView extends ItemView {
       runTurn: (text, hooks) => this.handleUserMessage(text, null, [], newTurnId(), hooks),
       // A spoken request while the agent waits for an answer is that answer.
       steerTurn: (text) => this.running && (this.chatContainer?.answerAskUser(text) || this.plugin.agent.steer(text)),
-      takeSteered: () => this.plugin.agent.takeSteered(),
+      takeSteered: () => this.takeLeftovers(),
       stopTurn: () => this.handleStop(),
       turnRunning: () => this.running,
       history: () => this.plugin.chatHistory,
@@ -467,8 +472,9 @@ export class ObsidianChatView extends ItemView {
     turnId: string = newTurnId(),
     voice?: VoiceTurnHooks
   ): Promise<void> {
+    // While a turn runs, a typed message is added to it (steering, as in voice).
     if (this.running) {
-      new Notice("Please wait for the current response to complete.");
+      this.addToRunningTurn(text);
       return;
     }
     const chat = this.chatContainer;
@@ -515,7 +521,7 @@ export class ObsidianChatView extends ItemView {
     // at the next start, the turn was cut off.
     conversation.pendingTurn = { turnId, startedAt: Date.now() };
     chat.setContinue(false);
-    chat.setInputEnabled(false);
+    // The input stays usable: what is sent now is added to this turn.
     chat.setBusy(true);
 
     const toolCalls = new Map<string, { id: number; input: Record<string, unknown> }>();
@@ -581,7 +587,6 @@ export class ObsidianChatView extends ItemView {
           const answer = await chat.showAskUser();
           // Empty: the question was dropped (Stop, Clear, switching).
           if (answer) this.append(history, { type: "user", text: answer });
-          chat.setInputEnabled(false);
           return answer;
         },
         onError: (error, kind) => {
@@ -590,10 +595,15 @@ export class ObsidianChatView extends ItemView {
           this.append(history, { type: "error", text: error, ...(kind ? { errorKind: kind } : {}) });
           voice?.onError(error);
         },
-        // Added to the running turn (voice steering): shown where the agent took it in.
+        // Added to the running turn (typed or spoken): shown where the agent took it in.
         onSteered: (text) => {
           this.endStream(false);
           this.append(history, { type: "user", text });
+          const index = this.queued.indexOf(text);
+          if (index >= 0) {
+            this.queued.splice(index, 1);
+            chat.setQueued([...this.queued]);
+          }
         },
       });
     } catch (e) {
@@ -611,6 +621,12 @@ export class ObsidianChatView extends ItemView {
         chat.focus();
         // Persist after each turn
         void this.plugin.saveChatHistory();
+        // Typed after the turn's last step: they run as the next turn. (A
+        // voice turn's controller takes its leftovers itself.)
+        if (!voice) {
+          const later = this.takeLeftovers();
+          if (later.length) void this.handleUserMessage(later.join("\n\n"), null);
+        }
       }
     }
   }
@@ -632,7 +648,26 @@ export class ObsidianChatView extends ItemView {
   }
 
   /** Stops the running turn; text already shown stays. */
+  /** A message typed while the turn runs: the agent takes it in after its current step. */
+  private addToRunningTurn(text: string): void {
+    this.queued.push(text);
+    this.chatContainer?.setQueued([...this.queued]);
+    if (!this.plugin.agent.steer(text)) this.unsteered.push(text);
+  }
+
+  /** Added messages the turn didn't take in; they leave the queue (they run next). */
+  private takeLeftovers(): string[] {
+    const later = [...this.unsteered.splice(0), ...this.plugin.agent.takeSteered()];
+    this.queued = this.queued.filter((text) => !later.includes(text));
+    this.chatContainer?.setQueued([...this.queued]);
+    return later;
+  }
+
   private stopTurn(): void {
+    // Stop drops what was added to the turn, as it drops the turn.
+    this.queued = [];
+    this.unsteered = [];
+    this.chatContainer?.setQueued([]);
     this.plugin.agent.abort();
     this.endStream(true);
     this.running = false;

@@ -25,6 +25,10 @@ instead of as they're written.
   regenerate the last answer, copy an answer as Markdown.
 - **Web search and thinking level:** turn web search on in the settings,
   and pick how much the model thinks, where the model offers levels.
+- **Add to a running answer:** type and send while the AI is still
+  working: your message joins the running task (shown as *Queued* until
+  the AI takes it in) instead of waiting. Stop is the button while the
+  box is empty.
 - **Enter sends message:** on by default (Shift+Enter starts a new line).
   Turn it off in the settings to make Enter start a new line; then send
   with the send button or Ctrl+Enter (Cmd+Enter on a Mac).
