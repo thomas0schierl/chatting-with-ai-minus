@@ -92,7 +92,7 @@ export class ObsidianChatView extends ItemView {
   async onOpen(): Promise<void> {
     try {
       this.mountChat();
-      this.measureBelowOnPhone();
+      this.followKeyboardOnPhone();
     } finally {
       // Also when mounting failed: commands waiting for the view go on
       // (its methods do nothing without the UI) instead of waiting forever.
@@ -102,23 +102,32 @@ export class ObsidianChatView extends ItemView {
 
   /**
    * Phones: Obsidian doesn't shrink the sidebar for the keyboard, it only
-   * sets --keyboard-height (styles.css lifts the chat by it). The keyboard
-   * also covers what lies below the view (the sidebar's tab menu), so the
-   * lift is the keyboard minus that: measured here whenever the view's size
-   * changes with the keyboard closed (e.g. the sidebar opening).
+   * sets --keyboard-height (and drops the sidebar's bottom padding). With
+   * the keyboard open, measure how much of the view it covers and lift the
+   * chat by that (`--chatting-minus-lift`, styles.css). Measured, not
+   * predicted: whatever lies below the view, the input ends at the keyboard.
+   * Runs when Obsidian changes the keyboard state (its style and class on
+   * <html> and <body>) and when the view's size changes.
    */
-  private measureBelowOnPhone(): void {
+  private followKeyboardOnPhone(): void {
     if (!Platform.isPhone) return;
     const view = this.contentEl;
-    const measure = () => {
+    const update = () => {
       const keyboard = Number.parseFloat(getComputedStyle(document.body).getPropertyValue("--keyboard-height")) || 0;
       const rect = view.getBoundingClientRect();
-      if (keyboard > 0 || rect.height === 0) return;
-      view.style.setProperty("--chatting-minus-below", `${Math.max(0, Math.round(window.innerHeight - rect.bottom))}px`);
+      const lift = keyboard > 0 && rect.height > 0 ? Math.max(0, Math.round(rect.bottom - (window.innerHeight - keyboard))) : 0;
+      view.style.setProperty("--chatting-minus-lift", `${lift}px`);
     };
-    const observer = new ResizeObserver(measure);
-    observer.observe(view);
-    this.register(() => observer.disconnect());
+    const resize = new ResizeObserver(update);
+    resize.observe(view);
+    const keyboardState = new MutationObserver(update);
+    for (const el of [document.documentElement, document.body]) {
+      keyboardState.observe(el, { attributes: true, attributeFilter: ["style", "class"] });
+    }
+    this.register(() => {
+      resize.disconnect();
+      keyboardState.disconnect();
+    });
   }
 
   private mountChat(): void {

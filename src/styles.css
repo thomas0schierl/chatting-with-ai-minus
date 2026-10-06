@@ -27,11 +27,17 @@
    (contain: strict; isolation: isolate), so nothing in the view can sit
    above it: keep the input out of that band. Desktop and tablets have none.
    With the keyboard open: Obsidian shrinks the main area but not the
-   sidebar (fixed to the screen); it only sets --keyboard-height. Lift the
-   chat by the part of the keyboard that covers it: the keyboard minus what
-   lies below the view (the tab menu), measured in chat-view.ts. */
+   sidebar (fixed to the screen); it only sets --keyboard-height. The chat
+   lifts itself by the part of the view the keyboard covers, measured in
+   chat-view.ts (--chatting-minus-lift). */
 .is-phone .workspace-drawer .workspace-leaf-content[data-type="chatting-minus-view"] .view-content {
-  padding-bottom: max(24px, calc(var(--keyboard-height, 0px) - var(--chatting-minus-below, 0px)));
+  padding-bottom: max(24px, var(--chatting-minus-lift, 0px));
+  transition: padding-bottom 150ms ease-out;
+}
+
+/* A line under the input row separates it from the tab menu below. */
+.is-phone .workspace-drawer .workspace-leaf-content[data-type="chatting-minus-view"] .chatting-minus-container {
+  border-bottom: 1px solid var(--background-modifier-border);
 }
 
 /* With the floating navigation Obsidian also fades the bottom 48px of every

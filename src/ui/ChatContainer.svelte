@@ -780,7 +780,15 @@
       <span class="chatting-minus-header-title" title={displayTitle}>{displayTitle || "New chat"}</span>
       <span class="chatting-minus-header-model">{displayModel || "No model"}</span>
     </div>
-    <button class="chatting-minus-clear-btn" type="button" onclick={onClear}>Clear</button>
+    <button
+      class="chatting-minus-icon-btn chatting-minus-clear-btn"
+      type="button"
+      onclick={onClear}
+      aria-label="Clear conversation"
+      title="Clear conversation"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+    </button>
     <button
       class="chatting-minus-icon-btn"
       type="button"
@@ -1368,22 +1376,10 @@
     white-space: nowrap;
   }
 
-  .chatting-minus-clear-btn {
-    font-size: var(--font-ui-smaller);
-    color: var(--text-muted);
-    background: none;
-    border: none;
-    cursor: pointer;
-    min-height: 32px;
-    padding: 4px 8px;
-    border-radius: var(--radius-s);
-    box-shadow: none;
-    flex-shrink: 0;
-  }
-
-  .chatting-minus-clear-btn:hover {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
+  /* Clear: a red trash icon (it empties the conversation) */
+  .chatting-minus-icon-btn.chatting-minus-clear-btn,
+  .chatting-minus-icon-btn.chatting-minus-clear-btn:hover {
+    color: var(--text-error);
   }
 
   /* ─── Messages ──────────────────────────────────────────────────────── */
@@ -1908,7 +1904,9 @@
     padding: 0;
     border: none;
     border-radius: 50%;
-    background: transparent;
+    /* A subtle circle the size of the send button; Obsidian's button shadow off */
+    background: var(--background-modifier-hover);
+    box-shadow: none;
     color: var(--text-muted);
     cursor: pointer;
     display: flex;
@@ -1924,9 +1922,14 @@
     height: calc(var(--chatting-minus-control) * 0.5);
   }
 
+  /* The voice circle is the whole button, as big as the send button */
+  .chatting-minus-attach-btn.chatting-minus-voice-start {
+    background: transparent;
+  }
+
   .chatting-minus-voice-start svg {
-    width: calc(var(--chatting-minus-control) * 0.76);
-    height: calc(var(--chatting-minus-control) * 0.76);
+    width: var(--chatting-minus-control);
+    height: var(--chatting-minus-control);
   }
 
   .chatting-minus-send-btn svg {
@@ -1940,7 +1943,7 @@
   }
 
   .chatting-minus-attach-btn:hover {
-    background: var(--background-modifier-hover);
+    background: var(--background-modifier-active-hover);
     color: var(--text-normal);
   }
 

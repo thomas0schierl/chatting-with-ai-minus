@@ -129,9 +129,13 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   where it would cover the input. The safe-area inset (gesture bar) is
   left to Obsidian's containers. With the keyboard open, Obsidian shrinks
   the main area but not the sidebar and only sets `--keyboard-height`;
-  in the sidebar the chat lifts itself by the keyboard minus what lies
-  below the view (`--chatting-minus-below`, measured in `chat-view.ts`
-  while the keyboard is closed).
+  in the sidebar the chat lifts itself by the part of the view the
+  keyboard covers, measured in `chat-view.ts` whenever Obsidian changes
+  the keyboard state (`--chatting-minus-lift`; the height comes from the
+  OS, so it fits every keyboard). A line under the input row separates it
+  from the tab menu below.
+- Round buttons have no Obsidian button shadow; the attach button shows a
+  subtle circle and the voice circle fills its button, so all three match.
 - The input row and voice bar share one control height
   (`--chatting-minus-control`: 36 px, 44 px at phone width): buttons, the
   voice pill and one line of the input (its padding is computed from it),

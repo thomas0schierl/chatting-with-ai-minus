@@ -160,7 +160,7 @@ switching or listing.
 6. **List:** conversations with content, most recently used first; an
    empty new chat isn't listed. Escape or the history button closes it.
 
-**Clear** (header, command) empties the current conversation's histories;
+**Clear** (the header's red trash icon, command) empties the current conversation's histories;
 it stays active and, being empty, leaves the list.
 
 ## Voice conversation (`voice/`, ADR-11)
