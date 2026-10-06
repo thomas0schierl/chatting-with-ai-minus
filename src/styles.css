@@ -25,9 +25,13 @@
    it (Obsidian: box-shadow 0 -12px 12px in the sidebar colour, about 24px
    high). It is drawn outside the view, and Obsidian isolates each view
    (contain: strict; isolation: isolate), so nothing in the view can sit
-   above it: keep the input out of that band. Desktop and tablets have none. */
-.is-phone .workspace-leaf-content[data-type="chatting-minus-view"] .view-content {
-  padding-bottom: 24px;
+   above it: keep the input out of that band. Desktop and tablets have none.
+   With the keyboard open: Obsidian shrinks the main area but not the
+   sidebar (fixed to the screen); it only sets --keyboard-height. Lift the
+   chat by the part of the keyboard that covers it: the keyboard minus what
+   lies below the view (the tab menu), measured in chat-view.ts. */
+.is-phone .workspace-drawer .workspace-leaf-content[data-type="chatting-minus-view"] .view-content {
+  padding-bottom: max(24px, calc(var(--keyboard-height, 0px) - var(--chatting-minus-below, 0px)));
 }
 
 /* With the floating navigation Obsidian also fades the bottom 48px of every

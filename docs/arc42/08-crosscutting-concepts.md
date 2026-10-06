@@ -127,7 +127,16 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   48 px fade Obsidian puts on every sidebar view with the floating
   navigation (the view's own `::after`) is switched off for the chat,
   where it would cover the input. The safe-area inset (gesture bar) is
-  left to Obsidian's containers.
+  left to Obsidian's containers. With the keyboard open, Obsidian shrinks
+  the main area but not the sidebar and only sets `--keyboard-height`;
+  in the sidebar the chat lifts itself by the keyboard minus what lies
+  below the view (`--chatting-minus-below`, measured in `chat-view.ts`
+  while the keyboard is closed).
+- The input row and voice bar share one control height
+  (`--chatting-minus-control`: 36 px, 44 px at phone width): buttons, the
+  voice pill and one line of the input (its padding is computed from it),
+  with icons in proportion. The plan line above has the row's padding, so
+  both gaps are even.
 - Animations and transitions are off under `prefers-reduced-motion`.
 - Settings rows wrap (`.chatting-minus-settings`): on a phone, several
   buttons move below the description and onto more lines.

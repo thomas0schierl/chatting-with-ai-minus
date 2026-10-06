@@ -1181,6 +1181,10 @@
 <style>
   /* ─── Container ─────────────────────────────────────────────────────── */
   .chatting-minus-container {
+    /* The input row's and voice bar's buttons and one line of the input share this height. */
+    --chatting-minus-control: 36px;
+    /* Padding above the input row; the same above the plan line keeps both gaps even. */
+    --chatting-minus-bar-pad: 8px;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -1648,7 +1652,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 4px 12px 0;
+    padding: var(--chatting-minus-bar-pad) 12px 0;
     border-top: 1px solid var(--background-modifier-border);
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
@@ -1837,9 +1841,10 @@
   .chatting-minus-input-bar {
     --chatting-minus-bar-gap: 8px;
     display: flex;
+    /* Buttons stay at the bottom while the input grows to more lines. */
     align-items: flex-end;
     gap: var(--chatting-minus-bar-gap);
-    padding: 8px 12px;
+    padding: var(--chatting-minus-bar-pad) 12px;
     border-top: 1px solid var(--background-modifier-border);
     background: transparent;
     flex-shrink: 0;
@@ -1896,10 +1901,10 @@
   }
 
   .chatting-minus-attach-btn {
-    width: 34px;
-    height: 34px;
-    min-width: 34px;
-    min-height: 34px;
+    width: var(--chatting-minus-control);
+    height: var(--chatting-minus-control);
+    min-width: var(--chatting-minus-control);
+    min-height: var(--chatting-minus-control);
     padding: 0;
     border: none;
     border-radius: 50%;
@@ -1910,6 +1915,28 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+  }
+
+  /* Icons in proportion to the control size */
+  .chatting-minus-attach-btn svg,
+  .chatting-minus-voice-round svg {
+    width: calc(var(--chatting-minus-control) * 0.5);
+    height: calc(var(--chatting-minus-control) * 0.5);
+  }
+
+  .chatting-minus-voice-start svg {
+    width: calc(var(--chatting-minus-control) * 0.76);
+    height: calc(var(--chatting-minus-control) * 0.76);
+  }
+
+  .chatting-minus-send-btn svg {
+    width: calc(var(--chatting-minus-control) * 0.46);
+    height: calc(var(--chatting-minus-control) * 0.46);
+  }
+
+  .chatting-minus-stop-btn svg {
+    width: calc(var(--chatting-minus-control) * 0.4);
+    height: calc(var(--chatting-minus-control) * 0.4);
   }
 
   .chatting-minus-attach-btn:hover {
@@ -1926,8 +1953,11 @@
     flex: 1;
     resize: none;
     border: 1.5px solid var(--background-modifier-border-hover, var(--background-modifier-border));
-    border-radius: 20px;
-    padding: 8px 16px;
+    box-sizing: border-box;
+    border-radius: calc(var(--chatting-minus-control) / 2);
+    /* One line is exactly the control height: (height - line height - borders) / 2 */
+    padding: calc((var(--chatting-minus-control) - 1.4em - 3px) / 2) 16px;
+    min-height: var(--chatting-minus-control);
     font-size: var(--font-ui-medium);
     font-family: var(--font-interface);
     background-color: var(--background-secondary);
@@ -1956,10 +1986,10 @@
   }
 
   .chatting-minus-send-btn {
-    width: 34px;
-    height: 34px;
-    min-width: 34px;
-    min-height: 34px;
+    width: var(--chatting-minus-control);
+    height: var(--chatting-minus-control);
+    min-width: var(--chatting-minus-control);
+    min-height: var(--chatting-minus-control);
     padding: 0;
     border: none;
     border-radius: 50%;
@@ -1998,7 +2028,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
+    padding: var(--chatting-minus-bar-pad) 12px;
     border-top: 1px solid var(--background-modifier-border);
     flex-shrink: 0;
     animation: chatting-minus-voice-in 200ms ease-out;
@@ -2020,9 +2050,9 @@
   }
 
   .chatting-minus-voice-round {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
+    width: var(--chatting-minus-control);
+    height: var(--chatting-minus-control);
+    min-width: var(--chatting-minus-control);
     padding: 0;
     border: none;
     border-radius: 50%;
@@ -2068,13 +2098,13 @@
   .chatting-minus-voice-pill {
     flex: 1;
     min-width: 0;
-    height: 36px;
+    height: var(--chatting-minus-control);
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 0 14px;
     border: 1.5px solid var(--background-modifier-border-hover, var(--background-modifier-border));
-    border-radius: 20px;
+    border-radius: calc(var(--chatting-minus-control) / 2);
     background: var(--background-secondary);
     font-size: var(--font-ui-small);
   }
@@ -2223,22 +2253,18 @@
       font-size: 16px; /* Prevents iOS zoom on focus */
     }
 
+    /* Touch size for the row's controls */
+    .chatting-minus-container {
+      --chatting-minus-control: 44px;
+      --chatting-minus-bar-pad: 10px;
+    }
+
     .chatting-minus-input-bar {
       --chatting-minus-bar-gap: 10px;
-      padding: 10px 12px;
     }
 
     .chatting-minus-input {
       font-size: 16px; /* Prevents iOS zoom on focus */
-      padding: 10px 16px;
-      border-radius: 22px;
-    }
-
-    .chatting-minus-send-btn {
-      width: 36px;
-      height: 36px;
-      min-width: 36px;
-      min-height: 36px;
     }
   }
 </style>

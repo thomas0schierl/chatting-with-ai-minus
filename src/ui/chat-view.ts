@@ -92,11 +92,33 @@ export class ObsidianChatView extends ItemView {
   async onOpen(): Promise<void> {
     try {
       this.mountChat();
+      this.measureBelowOnPhone();
     } finally {
       // Also when mounting failed: commands waiting for the view go on
       // (its methods do nothing without the UI) instead of waiting forever.
       this.markReady();
     }
+  }
+
+  /**
+   * Phones: Obsidian doesn't shrink the sidebar for the keyboard, it only
+   * sets --keyboard-height (styles.css lifts the chat by it). The keyboard
+   * also covers what lies below the view (the sidebar's tab menu), so the
+   * lift is the keyboard minus that: measured here whenever the view's size
+   * changes with the keyboard closed (e.g. the sidebar opening).
+   */
+  private measureBelowOnPhone(): void {
+    if (!Platform.isPhone) return;
+    const view = this.contentEl;
+    const measure = () => {
+      const keyboard = Number.parseFloat(getComputedStyle(document.body).getPropertyValue("--keyboard-height")) || 0;
+      const rect = view.getBoundingClientRect();
+      if (keyboard > 0 || rect.height === 0) return;
+      view.style.setProperty("--chatting-minus-below", `${Math.max(0, Math.round(window.innerHeight - rect.bottom))}px`);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(view);
+    this.register(() => observer.disconnect());
   }
 
   private mountChat(): void {
