@@ -273,7 +273,16 @@ export class VoiceController {
       this.lastRequest = "";
       return;
     }
-    if (this.openTurn?.role !== role) this.closeTurn();
+    if (this.openTurn?.role !== role) {
+      // Reported after the other speaker started (the voice often answers
+      // first): the turn is already kept from its pieces.
+      const kept = [...this.spoken].reverse().find((turn) => turn.role === role);
+      if (kept && sameWords(kept.text, text)) {
+        kept.text = text.trim();
+        return;
+      }
+      this.closeTurn();
+    }
     this.openTurn = { role, text };
     this.closeTurn();
   }

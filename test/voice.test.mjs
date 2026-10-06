@@ -389,8 +389,9 @@ test('As in Codex: what was said since the last request goes with the next one (
   const ch = channel();
   ch.receive({ type: 'input_transcript.added', item: { text: 'Ask me what the heading should be called, ' } });
   ch.receive({ type: 'input_transcript.added', item: { text: 'then add it.' } });
-  ch.receive({ type: 'turn.done', turn: { role: 'user', transcript: 'Ask me what the heading should be called, then add it.' } });
+  // The voice answers before the user's turn is reported: kept once.
   ch.receive({ type: 'output_transcript.added', item: { text: 'What should the heading be called?' } });
+  ch.receive({ type: 'turn.done', turn: { role: 'user', transcript: 'Ask me what the heading should be called, then add it.' } });
   ch.receive({ type: 'turn.done', turn: { role: 'assistant', transcript: 'What should the heading be called?' } });
   ch.receive({ type: 'input_transcript.added', item: { text: 'Test.' } });
   ch.receive({ type: 'delegation.created', item: { id: 'it_1', type: 'delegation', target: 'client', content: [{ type: 'input_text', text: 'test' }] } });
