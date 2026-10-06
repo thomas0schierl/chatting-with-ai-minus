@@ -23,9 +23,18 @@
 
 /* On phones the sidebar's tab menu below the view fades the content above
    it (Obsidian: box-shadow 0 -12px 12px in the sidebar colour, about 24px
-   high); keep the input out of that band. Desktop and tablets have none. */
+   high). It is drawn outside the view, and Obsidian isolates each view
+   (contain: strict; isolation: isolate), so nothing in the view can sit
+   above it: keep the input out of that band. Desktop and tablets have none. */
 .is-phone .workspace-leaf-content[data-type="chatting-minus-view"] .view-content {
   padding-bottom: 24px;
+}
+
+/* With the floating navigation Obsidian also fades the bottom 48px of every
+   sidebar view (a gradient on the view's own ::after). Under a list that
+   hints at more; here it would lie over the input, so not in the chat. */
+.is-mobile.is-floating-nav .workspace-drawer .workspace-leaf-content[data-type="chatting-minus-view"]::after {
+  display: none;
 }
 
 /* Desktop sidebar min-width */

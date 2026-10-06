@@ -121,8 +121,13 @@ unexpected is dropped. All writes are best-effort and never block the chat.
   hidden, and pads its own parts (header, messages, input), so the input
   sits at the panel's bottom edge. On phones it keeps 24 px at the
   bottom: the sidebar's tab menu there fades the content above it
-  (Obsidian's `box-shadow` on `.workspace-drawer-tab-options-list`). The
-  safe-area inset (gesture bar) is left to Obsidian's containers.
+  (Obsidian's `box-shadow` on `.workspace-drawer-tab-options-list`),
+  drawn outside the view; Obsidian isolates each view (`contain: strict`,
+  `isolation: isolate`), so nothing inside can be layered above it. The
+  48 px fade Obsidian puts on every sidebar view with the floating
+  navigation (the view's own `::after`) is switched off for the chat,
+  where it would cover the input. The safe-area inset (gesture bar) is
+  left to Obsidian's containers.
 - Animations and transitions are off under `prefers-reduced-motion`.
 - Settings rows wrap (`.chatting-minus-settings`): on a phone, several
   buttons move below the description and onto more lines.
