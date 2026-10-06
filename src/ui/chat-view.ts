@@ -38,7 +38,6 @@ interface ChatContainerApi extends Record<string, unknown> {
   setBusy(busy: boolean): void;
   setQueued(texts: string[]): void;
   cancelAskUser(): void;
-  answerAskUser(text: string): boolean;
   clearMessages(): void;
   focus(): void;
   setModel(name: string, provider: string): void;
@@ -292,8 +291,8 @@ export class ObsidianChatView extends ItemView {
     const releaseScreen = screenAwake.hold();
     const controller: VoiceController = new VoiceController({
       runTurn: (text, hooks, context) => this.handleUserMessage(text, null, [], newTurnId(), hooks, context),
-      // A spoken request while the agent waits for an answer is that answer.
-      steerTurn: (text, context) => this.running && (this.chatContainer?.answerAskUser(text) || this.steerByVoice(text, context)),
+      // A spoken request while the voice turn runs is added to it.
+      steerTurn: (text, context) => this.running && this.steerByVoice(text, context),
       takeSteered: () => this.takeLeftovers(),
       stopTurn: () => this.handleStop(),
       turnRunning: () => this.running,
@@ -592,7 +591,6 @@ export class ObsidianChatView extends ItemView {
           chat.hideThinking();
           this.endStream(false);
           chat.setInputEnabled(true);
-          voice?.onAskUser(question);
           // Question and answer stay in the history, the answer without a
           // turn ID: it isn't a turn of its own, so it can't be edited.
           this.append(history, { type: "assistant", text: question });

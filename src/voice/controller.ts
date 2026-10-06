@@ -37,7 +37,6 @@ export interface VoiceTurnHooks {
   onToolCall(name: string): void;
   /** Answer text the loop delivered (text before tool calls, then the final answer). */
   onText(text: string): void;
-  onAskUser(question: string): void;
   onError(message: string): void;
 }
 
@@ -365,9 +364,6 @@ export class VoiceController {
           progress(`Working on it: ${name.replace(/_/g, " ")}.`);
         },
         onText: (value) => { answer = value; },
-        onAskUser: (question) => {
-          if (!this.ended) this.sendAll(speakEvents(this.dialect, this.answerTo, `The assistant asks: ${question}`));
-        },
         onError: (message) => { failed = message; },
       }, context);
     } finally {

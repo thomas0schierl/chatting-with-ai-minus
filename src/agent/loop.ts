@@ -34,6 +34,13 @@ function displayResult(result: ToolResult): ToolResult {
   };
 }
 
+/**
+ * The tool result of `ask_user` in a voice turn: the question ends the
+ * turn as its answer (as Codex's background agent does) and the voice
+ * hands over the user's spoken answer as the next request.
+ */
+export const VOICE_ASK_RESULT = "Asked aloud in the voice conversation. The user's answer comes as their next message.";
+
 /** Resuming after the background (ADR-15); tests shorten the wait. */
 export const RESUME = {
   /** Requests resent per turn at most; after that the error is shown. */
@@ -96,6 +103,8 @@ export class AgentLoop {
   private loopVersion = 0;
   /** Requests the user added while the loop works; sent with its next request (`steer`). */
   private steered: { text: string; context?: string }[] = [];
+  /** The running turn comes from a voice conversation (`ask_user` ends it). */
+  private voiceTurn = false;
 
   constructor(app: App, settings: ChatSettings) {
     this.app = app;
@@ -245,6 +254,7 @@ export class AgentLoop {
     { voice = false, voiceTranscript = [] }: { voice?: boolean; voiceTranscript?: VoiceTurn[] } = {}
   ): Promise<void> {
     const version = ++this.runVersion;
+    this.voiceTurn = voice;
     // Keep one provider/model/credential configuration for this entire turn.
     const turnSettings = { ...this.settings };
 
@@ -298,6 +308,7 @@ export class AgentLoop {
    */
   async continueTurn(callbacks: AgentCallbacks): Promise<void> {
     const version = ++this.runVersion;
+    this.voiceTurn = false;
     if (!this.owesAnswer()) return;
     debugLog(this.app, "CONTINUE_TURN", { messages: this.messages.length });
     await this.loop(version, callbacks, { ...this.settings });
@@ -408,17 +419,22 @@ export class AgentLoop {
       }));
       this.messages.push({ role: "user", content: resultBlocks });
 
+      let askedAloud = "";
       for (const [index, tc] of toolCalls.entries()) {
         if (isStopped()) return;
         callbacks.onToolCall(tc.name!, tc.input!);
         if (isStopped()) return;
 
-        const result = await executeTool(
-          this.app,
-          tc.name!,
-          tc.input!,
-          callbacks.onAskUser
-        );
+        const voiceQuestion = this.voiceTurn && tc.name === "ask_user" ? (typeof tc.input?.question === "string" ? tc.input.question.trim() : "") : "";
+        if (voiceQuestion) askedAloud = askedAloud ? `${askedAloud}\n\n${voiceQuestion}` : voiceQuestion;
+        const result = voiceQuestion
+          ? { result: VOICE_ASK_RESULT, isError: false }
+          : await executeTool(
+            this.app,
+            tc.name!,
+            tc.input!,
+            callbacks.onAskUser
+          );
 
         if (isStopped()) return;
         resultBlocks[index] = {
@@ -436,6 +452,11 @@ export class AgentLoop {
       for (const { text, context } of this.steered.splice(0)) {
         resultBlocks.push({ type: "text", text: `[The user added while you were working:${context ? ` ${context}` : ""}] ${text}` });
         callbacks.onSteered?.(text);
+      }
+      // A question in a voice turn is its answer; the user's reply starts the next turn.
+      if (askedAloud) {
+        callbacks.onResponse(askedAloud);
+        return;
       }
     }
 

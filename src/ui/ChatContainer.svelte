@@ -458,14 +458,6 @@
     resolve?.("");
   }
 
-  /** Answer a pending `ask_user` question (e.g. by voice); false when none is pending. */
-  export function answerAskUser(text: string): boolean {
-    const resolve = askUserResolve;
-    if (!resolve) return false;
-    askUserResolve = null;
-    resolve(text);
-    return true;
-  }
 
   export function clearMessages(): void {
     pendingText.clear();

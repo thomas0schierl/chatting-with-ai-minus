@@ -474,7 +474,7 @@ test('A new request while the voice turn runs steers it: nothing is stopped, the
   view.endVoice();
 });
 
-test('While the agent waits for an answer to its question, the spoken request is that answer', async () => {
+test('As in Codex: the agent\'s question ends the voice turn as its answer; the spoken reply is the next request', async () => {
   const { view, plugin, chat } = await voiceSetup();
   const log = serve({
     chat: (body, index) => index === 0
@@ -485,15 +485,24 @@ test('While the agent waits for an answer to its question, the spoken request is
   const ch = channel();
   ch.receive({ type: 'session.input_transcript.delta', delta: 'Add a section' });
   ch.receive({ type: 'session.delegation.created', delegation: { id: 'del_1', target: 'client' } });
-  await until(() => chat.askUser);
+  // The question is the delegation's answer: spoken, the turn is over, nothing waits.
+  await until(() => ch.sent.some((e) => e.type === 'session.commentary.append' && e.content === 'Which name?'));
+  await until(() => !view.running);
+  assert.equal(chat.askUser ?? null, null);
+  assert.equal(log.chat.length, 1);
+
+  ch.receive({ type: 'session.output_transcript.delta', delta: 'Which name?' });
   ch.receive({ type: 'session.input_transcript.delta', delta: 'notes-notes' });
   ch.receive({ type: 'session.delegation.created', delegation: { id: 'del_2', target: 'client' } });
   await until(() => ch.sent.some((e) => e.type === 'session.commentary.append' && e.content === 'Added notes-notes.'));
 
   assert.equal(log.chat.length, 2);
-  assert.match(JSON.stringify(log.chat[1]), /notes-notes/);
+  const second = JSON.stringify(log.chat[1]);
+  assert.match(second, /Asked aloud in the voice conversation/);
+  assert.match(userText(log.chat[1]), /\(context\): Voice: "Which name\?"\.[\s\S]*notes-notes$/);
   assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'user').map((e) => [e.text, !!e.turnId]),
-    [['Add a section', true], ['notes-notes', false]]);
+    [['Add a section', true], ['notes-notes', true]]);
+  assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'assistant').map((e) => e.text), ['Which name?', 'Added notes-notes.']);
   view.endVoice();
 });
 

@@ -231,9 +231,11 @@ queue.
    the `commentary` channel); the final answer as text to speak
    (`session.commentary.append`, ≤1500 characters each; Codex `speakable`,
    ≤500 bytes each). Answers over 3000 characters are cut and end with
-   "The full answer is in the chat." An `ask_user` question is spoken; the
-   user answers by voice (a new delegation answers it) or, after ending
-   the call, by typing.
+   "The full answer is in the chat." An `ask_user` question ends the
+   voice turn as its answer, as Codex's background agent ends its task
+   with a question: nothing waits (the tool result says the answer comes
+   next), the voice speaks it, and the user's reply is a new delegation
+   with the question in its context.
 5. **Steering:** a new delegation while the voice turn runs doesn't stop
    it. `AgentLoop.steer()` queues the request; after the current step's
    tool results the loop adds it to that user message ("[The user added
