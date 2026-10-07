@@ -12,7 +12,8 @@ difference: on phones, answers on the ChatGPT plan appear when complete
 instead of as they're written.
 
 **Needs an account:** an Anthropic or OpenAI API key (paid API access), or
-a ChatGPT plan to sign in with. Voice needs an OpenAI API key. Your
+a ChatGPT plan to sign in with. Voice needs an OpenAI API key (or, unofficially
+and at your own risk, a ChatGPT plan; see [Voice](#voice)). Your
 messages and the notes the AI reads go to that provider (see
 [Privacy and network use](#privacy-and-network-use)).
 
@@ -119,6 +120,16 @@ account can use `gpt-live-1`. OpenAI bills voice at **$0.05 per minute**
 of conversation, silence included, until you end it; the chat model's
 answers are billed as usual.
 
+**Voice with the ChatGPT plan (unofficial, at your own risk):** under
+**Voice → Voice route** you can choose **ChatGPT plan** instead of an API
+key. It is off by default, and you have to accept a warning first. This
+route signs in as OpenAI's Codex app and uses Codex's internal,
+undocumented voice service with your ChatGPT plan. OpenAI doesn't offer
+or approve this for other apps: it may stop working at any time, and
+OpenAI could treat it as a breach of its terms and restrict or suspend
+the ChatGPT account you use. Use it only if you accept that risk; the
+route with an OpenAI API key has none of it.
+
 - **Start:** the voice button (a circle with sound-wave bars) sits where
   Send is. It shows while the input is empty, nothing is attached, no
   answer is running and the AI isn't waiting for your answer to a
@@ -180,8 +191,9 @@ The plugin connects only to these services, and only for what you use:
 |---|---|
 | `api.anthropic.com` | Chat and model list, with an Anthropic API key. |
 | `api.openai.com` | Chat and model list with an OpenAI API key or the ChatGPT sign-in; voice (GPT-Live) with an OpenAI API key. |
-| `auth.openai.com` | Signing in with ChatGPT and renewing that sign-in. |
-| `api.github.com` | With the ChatGPT sign-in, at most once a day: the latest Codex CLI version number, which OpenAI's model list needs to show current models. Nothing about you is sent. |
+| `auth.openai.com` | Signing in with ChatGPT and renewing that sign-in; the separate Codex sign-in for voice with the ChatGPT plan. |
+| `chatgpt.com` | Only if you chose voice with the ChatGPT plan (unofficial, see [Voice](#voice)): starting a voice call. |
+| `api.github.com` | With the ChatGPT sign-in or voice on the ChatGPT plan, at most once a day: the latest Codex CLI version number, which OpenAI's model list and that voice route need. Nothing about you is sent. |
 
 Web search, when turned on, runs at the provider; the plugin itself
 doesn't contact search engines. There is no telemetry and no tracking.

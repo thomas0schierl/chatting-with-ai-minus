@@ -1,7 +1,7 @@
 /**
- * The private, unofficial Codex voice route (ADR-14). Compiled only into
- * private builds: every use sits behind `if (__CODEX_VOICE__)`, so the
- * public bundle leaves this module out.
+ * The unofficial Codex voice route (ADR-14): voice on the ChatGPT plan.
+ * Off by default; the user has to choose it and confirm the risk warning
+ * (`CodexRiskModal`). At the user's own risk.
  *
  * - Sign-in: a separate sign-in as the Codex app (device code flow),
  *   stored in SecretStorage under its own key, never in `data.json`.
@@ -21,7 +21,6 @@ import { asRecord, isRecord, readJson } from "../json";
 import type { VoiceRoute } from "./session";
 import { appLifecycle } from "../platform/lifecycle";
 
-// Plain strings, not templates: public builds can then drop them all.
 const ISSUER = "https://auth.openai.com";
 export const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 export const CODEX_DEVICE_URL = "https://auth.openai.com/codex/device";
@@ -341,6 +340,42 @@ export class CodexVoiceSignInModal extends Modal {
   }
 }
 
+/** The risk of the Codex route, as the settings and the confirmation show it. */
+export const CODEX_RISK =
+  "This route signs in as OpenAI's Codex app and uses Codex's internal, undocumented voice service with your ChatGPT plan. " +
+  "OpenAI doesn't offer or approve this for other apps: it may stop working at any time, and OpenAI could treat it as a breach " +
+  "of its terms and restrict or suspend the ChatGPT account you use. The official route with an OpenAI API key has none of these risks.";
+
+/** Asks the user to accept the Codex route's risk before it is chosen. */
+export class CodexRiskModal extends Modal {
+  private accepted = false;
+
+  constructor(app: App, private readonly onDecided: (accepted: boolean) => void) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    new Setting(contentEl).setName("Voice with the ChatGPT plan: at your own risk").setHeading();
+    contentEl.createEl("p", { text: CODEX_RISK });
+    contentEl.createEl("p", { text: "Use it only if you accept that risk for your account." });
+    new Setting(contentEl)
+      .addButton((button) => button.setButtonText("Cancel").onClick(() => this.close()))
+      .addButton((button) => {
+        button.setButtonText("I accept the risk").onClick(() => {
+          this.accepted = true;
+          this.close();
+        });
+        button.setDestructive();
+      });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+    this.onDecided(this.accepted);
+  }
+}
+
 /** What the Codex settings rows need from the settings tab. */
 interface SettingsTab {
   app: App;
@@ -349,23 +384,36 @@ interface SettingsTab {
   codexRouteChosen(): boolean;
 }
 
-/** Settings row: the voice route, OpenAI API key or the unofficial Codex sign-in. */
+/**
+ * Settings row: the voice route, OpenAI API key (default) or the unofficial
+ * Codex sign-in, which is chosen only after the risk is accepted.
+ */
 export function codexRouteSetting(tab: SettingsTab): SettingDefinition {
   return {
     name: "Voice route",
     render: (setting) => {
       const s = tab.plugin.settings;
+      const choose = async (route: VoiceRouteId) => {
+        s.voiceRoute = route;
+        await tab.plugin.saveSettings();
+        tab.update();
+      };
       setting
-        .setDesc("The Codex route is unofficial: it uses Codex's internal voice service with your ChatGPT plan and may stop working at any time.")
+        .setDesc(`OpenAI API key: the official route. ChatGPT plan: unofficial, at your own risk. ${CODEX_RISK}`)
         .addDropdown((dropdown) =>
           dropdown
             .addOption("openai", "OpenAI API key")
-            .addOption("codex", "Codex sign-in (unofficial)")
+            .addOption("codex", "ChatGPT plan (unofficial, at your own risk)")
             .setValue(s.voiceRoute)
-            .onChange(async (value) => {
-              s.voiceRoute = value as VoiceRouteId;
-              await tab.plugin.saveSettings();
-              tab.update();
+            .onChange((value) => {
+              if (value !== "codex") {
+                void choose(value as VoiceRouteId);
+                return;
+              }
+              new CodexRiskModal(tab.app, (accepted) => {
+                if (accepted) void choose("codex");
+                else dropdown.setValue(s.voiceRoute);
+              }).open();
             })
         );
     },

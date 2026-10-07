@@ -82,7 +82,7 @@ export default class ChatPlugin extends Plugin {
     const oauthStore = new ChatGPTOAuthStore(this.app);
     this.chatgptOAuth = new ChatGPTOAuthService(oauthStore);
     setChatGPTOAuthService(this.chatgptOAuth);
-    if (__CODEX_VOICE__) this.codexVoice = new CodexVoiceAuth(this.app);
+    this.codexVoice = new CodexVoiceAuth(this.app);
     // The chat header shows the thinking level from the saved catalog.
     await this.activateModelCatalog();
 
@@ -233,12 +233,12 @@ export default class ChatPlugin extends Plugin {
 
   /**
    * The voice route the settings choose, or null when it isn't set up: an
-   * OpenAI API key (official), or in private builds the Codex sign-in
-   * (ADR-14).
+   * OpenAI API key (official), or the unofficial Codex sign-in, which the
+   * user has to choose and confirm (ADR-14).
    */
   voiceRoute(): VoiceRoute | null {
     const s = this.settings;
-    if (__CODEX_VOICE__ && s.voiceRoute === "codex") {
+    if (s.voiceRoute === "codex") {
       const auth = this.codexVoice;
       if (!auth?.getCredential()) return null;
       return codexVoiceRoute(auth, s.codexVoice, () => codexClientVersion(s.modelCatalog, false));

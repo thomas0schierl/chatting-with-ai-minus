@@ -9,9 +9,8 @@
 
 ```bash
 npm install
-npm run dev            # build on change (private build)
-npm run build          # public production build (main.js, styles.css), as released
-npm run build:private  # private build: adds the unofficial Codex voice route (ADR-14)
+npm run dev            # build on change
+npm run build          # production build (main.js, styles.css), as released
 npm test               # offline regression tests
 npm run lint           # Obsidian review rules (ESLint, .ts files); any warning fails
 npx tsc --noEmit       # type check

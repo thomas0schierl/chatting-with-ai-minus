@@ -794,6 +794,39 @@ function secretApp() {
   return { secrets, app: { secretStorage: { getSecret: (key) => secrets[key] ?? '', setSecret: (key, value) => { secrets[key] = value; } } } };
 }
 
+test('Codex route: off by default, chosen only after the risk is accepted; the setting names the risk', async () => {
+  const settings = { voiceRoute: 'openai' };
+  const tab = { app: {}, plugin: { settings, saveSettings: async () => {} }, update() {}, codexRouteChosen: () => settings.voiceRoute === 'codex' };
+  const row = { setDesc(desc) { row.desc = desc; return row; }, addDropdown(fn) {
+    const dd = { options: [], addOption(v, l) { dd.options.push([v, l]); return dd; }, setValue(v) { dd.value = v; return dd; }, onChange(f) { dd.change = f; return dd; } };
+    fn(dd); row.dropdown = dd; return row;
+  } };
+  X.codexRouteSetting(tab).render(row);
+  assert.equal(row.dropdown.value, 'openai');
+  assert.match(row.desc, /at your own risk/);
+  assert.match(row.desc, /restrict or suspend the ChatGPT account/);
+  assert.deepEqual(row.dropdown.options.map(([, label]) => label), ['OpenAI API key', 'ChatGPT plan (unofficial, at your own risk)']);
+
+  // Cancel: the route stays, the dropdown goes back.
+  globalThis.__modals = [];
+  row.dropdown.change('codex');
+  const declined = globalThis.__modals.at(-1);
+  assert.ok(declined instanceof X.CodexRiskModal);
+  declined.contentEl = { empty() {} };
+  declined.onClose();
+  assert.equal(settings.voiceRoute, 'openai');
+  assert.equal(row.dropdown.value, 'openai');
+
+  // Accept: the route is chosen.
+  row.dropdown.change('codex');
+  const accepted = globalThis.__modals.at(-1);
+  accepted.contentEl = { empty() {} };
+  accepted.accepted = true;
+  accepted.onClose();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(settings.voiceRoute, 'codex');
+});
+
 test('Codex sign-in: device code, polling while pending, code exchange; tokens only in SecretStorage', async () => {
   const { app, secrets } = secretApp();
   const auth = new X.CodexVoiceAuth(app);

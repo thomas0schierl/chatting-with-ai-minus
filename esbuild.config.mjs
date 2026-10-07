@@ -6,10 +6,6 @@ import { existsSync, renameSync } from "fs";
 import { dirname, join } from "path";
 
 const prod = process.argv[2] === "production";
-// The unofficial Codex voice route (ADR-14) is compiled only into private
-// builds: `npm run dev` and `npm run build:private`. `npm run build` (CI and
-// releases) leaves it out; esbuild drops the code behind the false flag.
-const codexVoice = !prod || process.argv[3] === "private";
 // Tests build into a temporary file (test/voice-build.test.mjs).
 const outfile = process.env.OUTFILE ?? "main.js";
 
@@ -31,7 +27,6 @@ const stylesCss = {
 const context = await esbuild.context({
   entryPoints: ["src/main.ts"],
   bundle: true,
-  define: { __CODEX_VOICE__: codexVoice ? "true" : "false" },
   plugins: [
     esbuildSvelte({
       compilerOptions: {
@@ -65,8 +60,7 @@ const context = await esbuild.context({
   target: "es2022",
   logLevel: "info",
   sourcemap: prod ? false : "inline",
-  // Folds constant conditions, so code behind a false __CODEX_VOICE__ is
-  // removed, not just left unreachable. Names and layout stay readable.
+  // Folds constant conditions; names and layout stay readable.
   minifySyntax: prod,
   treeShaking: true,
   outfile,

@@ -53,8 +53,8 @@ Run on an iPhone and an Android phone. Expected results follow each step.
    while a turn runs; attach folds away while typing; focusing the input
    doesn't zoom; scrolled up, the jump-to-latest button shows; a
    streaming answer keeps the view at the bottom.
-6. **Voice, both routes** (official with an OpenAI key; Codex in private
-   builds): the microphone prompt, and a denial → error, then allowed in
+6. **Voice, both routes** (official with an OpenAI key; Codex with the
+   ChatGPT plan): the microphone prompt, and a denial → error, then allowed in
    the system settings; hands-free and mute; hold to talk on touch; a
    question about a note → delegated, tool cards, spoken answer; a
    spoken addition while it works → added to the running task; an

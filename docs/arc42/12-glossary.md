@@ -19,7 +19,6 @@
 | Model catalog | A provider's list of models with their capabilities, loaded from its API and cached for 24 hours. |
 | Pending turn | See Continue. |
 | PKCE | Proof Key for Code Exchange: the sign-in sends a hash of a one-time secret, the code exchange the secret itself, so a stolen code is useless. |
-| Private build | A build with `__CODEX_VOICE__` true (`npm run build:private`, `npm run dev`): includes the unofficial Codex voice route. Never released. |
 | Provider | One of `anthropic`, `openai`, `chatgpt-oauth`. |
 | `requestUrl()` | Obsidian's HTTP function; works around CORS on mobile and returns complete responses only. |
 | Responses API | OpenAI's `/v1/responses` API, used by the OpenAI provider (API key) and the ChatGPT provider (ChatGPT-plan token). |
@@ -33,4 +32,4 @@
 | Thinking level | How much a model reasons before answering (provider names: effort, reasoning effort). |
 | Tool | A function the model may call, declared in `src/tools/registry.ts` and run by `src/tools/executor.ts`. |
 | Unified message | The provider-neutral message format (`UnifiedMessage` in `src/types.ts`) the agent loop works with. |
-| Voice route | How a voice call is created: the official one with an OpenAI API key, or the Codex one in private builds (`main.voiceRoute()`). |
+| Voice route | How a voice call is created: the official one with an OpenAI API key, or the unofficial Codex one on the ChatGPT plan, off by default (`main.voiceRoute()`). |

@@ -14,8 +14,6 @@ export default defineConfig([
   ...obsidianmd.configs.recommended,
   {
     languageOptions: {
-      // Build flag set by esbuild (src/globals.d.ts).
-      globals: { __CODEX_VOICE__: "readonly" },
       parserOptions: {
         projectService: {
           allowDefaultProject: ["eslint.config.mjs"],

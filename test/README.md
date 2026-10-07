@@ -14,8 +14,7 @@ Runs every `test/*.test.mjs` (`scripts/test.mjs`). `test/harness.mjs`
 bundles the real plugin modules with a fake Obsidian API, an in-memory
 vault and a mocked `requestUrl()`; new test files import from it. Its
 `fetch` fails like a CORS block unless a test sets `globalThis.__fetch`, so
-chat requests take the `requestUrl()` fallback and receive SSE. The
-harness builds with `__CODEX_VOICE__` true. No credentials or network
+chat requests take the `requestUrl()` fallback and receive SSE. No credentials or network
 needed. They don't prove live-service or mobile behaviour.
 
 | File | Covers |
@@ -39,7 +38,7 @@ needed. They don't prove live-service or mobile behaviour.
 | `streaming.test.mjs` | SSE parsing, rebuilt responses, the `requestUrl()` fallback and when `fetch` is skipped, Stop, the rate-limit retry. |
 | `tools.test.mjs` | Every offered tool has a handler; `set_properties`; local date; selection quoting; saved settings checked on load. |
 | `view-tools.test.mjs` | `view_image`, `view_canvas` drawing, older tool images left out of requests. |
-| `voice-build.test.mjs` | The real build config: no Codex voice code in the public bundle; all CSS in `styles.css`. |
+| `voice-build.test.mjs` | The real build config: both voice routes in the bundle; all CSS in `styles.css`. |
 | `voice.test.mjs` | Live voice with fake WebRTC, microphone and audio: both routes and event dialects, delegation, chunked answers, the live caption, steering (nothing stopped; answers `ask_user`; a late request runs as the next turn), hold to talk, ending, the background on mobile, the device check's session, the Codex sign-in. |
 
 ## Live checks

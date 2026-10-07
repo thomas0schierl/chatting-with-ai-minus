@@ -15,7 +15,7 @@
 | OpenAI changes or ends the "Sign in with ChatGPT" preview | ChatGPT sign-in breaks until updated | API-key providers stay available; errors point to them. |
 | OpenAI objects to signing in by pasting the callback address (not described in its docs) | ChatGPT sign-in on mobile stops working | Desktop could catch the callback with a loopback server; watch for a device flow. |
 | Provider APIs change request or response formats | Errors until fixed | Offline regression tests; live checks before releases ([10](10-quality-requirements.md)). |
-| OpenAI changes or blocks Codex's internal voice route, or objects to its use (private builds only, ADR-14) | Codex voice stops working | Opt-in and labelled unofficial; the official route with an API key stays available. |
+| OpenAI changes or blocks Codex's internal voice route, or objects to its use (ADR-14) | Codex voice stops working; OpenAI may restrict or suspend the ChatGPT account used; Obsidian's reviewers may reject the plugin from the community directory | Off by default; choosing it needs a confirmed risk warning and its setting says it is at the user's own risk; the official route with an API key is the default. |
 | Upstream fixes don't reach the fork automatically | Bugs fixed upstream stay here | Review upstream changes now and then (o1xhack/obsidian-chatting and its origin omarshahine/obsidian-chat); port what fits. |
 
 ## Gaps

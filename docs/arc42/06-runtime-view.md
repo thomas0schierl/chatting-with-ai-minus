@@ -196,8 +196,8 @@ queue.
 ## Voice conversation (`voice/`, ADR-11)
 
 1. **Start:** the voice button sits in the input's one action slot. It
-   shows when `main.voiceRoute()` finds a route (an OpenAI API key, or in
-   private builds the Codex sign-in) and the input is empty, nothing is
+   shows when `main.voiceRoute()` finds a route (an OpenAI API key, or the
+   Codex sign-in if the user chose that route) and the input is empty, nothing is
    attached, no turn runs and no `ask_user` question is open. It calls
    `ChatView.startVoice()`, which creates a `VoiceController`; the voice
    bar replaces the input row.
@@ -214,7 +214,7 @@ queue.
    - official: `POST https://api.openai.com/v1/live/sessions` (model
      `gpt-live-1`, voice, `delegation: {type: "client"}`, `input`); the
      JSON answer holds the answer SDP.
-   - Codex (private builds): `POST
+   - Codex (unofficial, ADR-14): `POST
      https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas`;
      the answer SDP is the body, the call ID the end of `Location`.
    The answer SDP is applied. The official route waits for

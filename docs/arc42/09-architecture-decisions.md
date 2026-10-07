@@ -246,10 +246,12 @@
   - The programme is a preview and may change.
   - Users of the old route sign in again.
 
-## ADR-14: Private, opt-in Codex voice route (unofficial)
+## ADR-14: Opt-in Codex voice route (unofficial)
 
-- **Status:** accepted 2026-10-05. Partly revisits ADR-13 for private
-  builds only: public releases stay on OpenAI's official routes.
+- **Status:** accepted 2026-10-05 for private builds only. Updated
+  2026-10-07: the maintainer decided to ship the route in every build,
+  public releases included, off by default, behind a confirmed risk
+  warning, at the user's own risk. Partly revisits ADR-13.
 - **Context:**
   - OpenAI's official ChatGPT-plan access excludes audio (ADR-11), so the
     official voice needs an API key and costs per minute.
@@ -259,13 +261,18 @@
     route is undocumented, may change or be blocked, and using it as
     another app is a risk to the user's account.
 - **Decision:**
-  - A second voice route, compiled only into private builds: esbuild's
-    `__CODEX_VOICE__` flag is true for `npm run dev` and
-    `npm run build:private`, false for `npm run build` (CI and releases).
-    Every use sits behind `if (__CODEX_VOICE__)`; production builds fold
-    the condition (`minifySyntax`) and drop the code. A test checks the
-    public bundle has none of it.
-  - Opt-in and labelled unofficial: a separate sign-in as the Codex app
+  - A second voice route, in every build (until 2026-10-07 only in
+    private builds, behind a build flag that is now gone).
+  - Off by default: the voice route is "OpenAI API key". Choosing
+    "ChatGPT plan (unofficial)" opens a warning the user must confirm,
+    and the route's setting says it is at the user's own risk. The risk
+    as stated: it signs in as OpenAI's Codex app and uses Codex's
+    internal, undocumented voice service with the ChatGPT plan; it is
+    not offered or approved by OpenAI, may stop working at any time, and
+    OpenAI could treat it as a breach of its terms and restrict or
+    suspend the ChatGPT account used. The official route has none of
+    these risks.
+  - A separate sign-in as the Codex app
     (client `app_EMoamEEZ73f0CkXaXp7hrann`, device code at
     `auth.openai.com/codex/device`), stored in its own SecretStorage key,
     independent of the ChatGPT provider's sign-in.
@@ -282,8 +289,11 @@
     WebSocket fallback, if the data channel carries no events, would be
     desktop-only (browsers can't set its headers).
 - **Consequences:**
-  - The public plugin and its docs (README) don't mention the route; it
-    is documented here and in §3, §5 and §6.
+  - Every user can turn the route on. This likely conflicts with
+    Obsidian's community directory review and with OpenAI's terms:
+    reviewers may reject the plugin, and OpenAI may act against the
+    accounts used (risk in §11). The official route with an API key
+    stays the default.
   - It can break without notice. Checked on desktop 2026-10-05: the
     data channel carries the events in Codex's dialect, so no WebSocket
     is needed; two requests ran on the ChatGPT plan with vault tools and

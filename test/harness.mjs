@@ -37,8 +37,6 @@ export const bundled = await build({
     export { checkLiveVoice } from './src/diagnostics/capability-check';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, write: false, platform: 'node', format: 'esm',
-  // Tests cover the private build, Codex voice route included (ADR-14).
-  define: { __CODEX_VOICE__: 'true' },
   plugins: [{ name: 'obsidian-test-transport', setup(build) {
     build.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian', namespace: 'test' }));
     // Styles don't matter here (the build test checks styles.css).

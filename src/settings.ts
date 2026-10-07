@@ -105,10 +105,10 @@ export class ChatSettingTab extends PluginSettingTab {
       { name: "Enter sends message", aliases: ["Keyboard", "New line"], render: setting => this.renderEnterSends(setting) },
       { name: "Max tool iterations", render: setting => this.renderMaxIterations(setting) },
       { type: "group", heading: "Voice", items: [
-        // The Codex route exists only in private builds (ADR-14).
-        ...(__CODEX_VOICE__ ? [codexRouteSetting(this)] : []),
+        // The unofficial Codex route, off unless chosen and confirmed (ADR-14).
+        codexRouteSetting(this),
         { name: "OpenAI API key for voice", aliases: ["GPT-Live"], visible: () => !this.codexRouteChosen(), render: setting => this.renderVoiceKey(setting) },
-        ...(__CODEX_VOICE__ ? [codexAccountSetting(this)] : []),
+        codexAccountSetting(this),
         { name: "Voice", render: setting => this.renderVoiceName(setting) },
         { name: "Microphone", aliases: ["Hold to talk", "Hands-free"], render: setting => this.renderMicMode(setting) },
       ] },
@@ -232,9 +232,9 @@ export class ChatSettingTab extends PluginSettingTab {
 
   // ─── Voice (ADR-11; Codex route ADR-14) ───────────────────────────────────
 
-  /** The unofficial Codex route is chosen (private builds only, ADR-14). */
+  /** The unofficial Codex route is chosen (ADR-14). */
   codexRouteChosen(): boolean {
-    return __CODEX_VOICE__ && this.plugin.settings.voiceRoute === "codex";
+    return this.plugin.settings.voiceRoute === "codex";
   }
 
   private renderVoiceKey(setting: Setting): void {
@@ -280,9 +280,8 @@ export class ChatSettingTab extends PluginSettingTab {
 
   private renderVoiceName(setting: Setting): void {
     const s = this.plugin.settings;
-    // The flag is repeated in each condition so public builds fold them away.
-    const voices = __CODEX_VOICE__ && this.codexRouteChosen() ? CODEX_VOICES : LIVE_VOICES;
-    const current = __CODEX_VOICE__ && this.codexRouteChosen() ? s.codexVoice : s.voice;
+    const voices = this.codexRouteChosen() ? CODEX_VOICES : LIVE_VOICES;
+    const current = this.codexRouteChosen() ? s.codexVoice : s.voice;
     setting
       .setName("Voice")
       .setDesc("How the assistant sounds.")
@@ -290,7 +289,7 @@ export class ChatSettingTab extends PluginSettingTab {
         for (const voice of voices) dropdown.addOption(voice, voice.charAt(0).toUpperCase() + voice.slice(1));
         if (!voices.includes(current)) dropdown.addOption(current, current);
         dropdown.setValue(current).onChange(async (value) => {
-          if (__CODEX_VOICE__ && this.codexRouteChosen()) s.codexVoice = value;
+          if (this.codexRouteChosen()) s.codexVoice = value;
           else s.voice = value;
           await this.plugin.saveSettings();
         });
