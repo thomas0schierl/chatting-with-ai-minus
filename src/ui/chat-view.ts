@@ -632,8 +632,9 @@ export class ObsidianChatView extends ItemView {
         // Persist after each turn
         void this.plugin.saveChatHistory();
         // Typed after the turn's last step: they run as the next turn. (A
-        // voice turn's controller takes its leftovers itself.)
-        if (!voice) {
+        // voice turn's controller takes its leftovers itself, unless the
+        // call has ended meanwhile.)
+        if (!voice?.active()) {
           const later = this.takeLeftovers();
           if (later.length) void this.handleUserMessage(later.join("\n\n"), null);
         }

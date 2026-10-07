@@ -547,6 +547,28 @@ test('Ending voice lets a running turn finish in the chat without speaking it', 
   assert.equal(ch.sent.filter((e) => e.type === 'session.commentary.append').length, 0);
 });
 
+test('Typed during a voice turn, then the call ends: the message still runs as a typed turn', async () => {
+  const { view, plugin, chat } = await voiceSetup();
+  let release;
+  const log = serve({ chat: (body, index) => index === 0
+    ? new Promise((resolve) => { release = () => resolve(response('anthropic', [text('First done.')])); })
+    : response('anthropic', [text('Summary added.')]) });
+  await startListening(view, chat);
+  const ch = channel();
+  ch.receive({ type: 'session.input_transcript.delta', delta: 'Do it' });
+  ch.receive({ type: 'session.delegation.created', delegation: { id: 'del_1', target: 'client' } });
+  await until(() => typeof release === 'function');
+  // Typed while the turn's last step runs: it can't join that step.
+  await view.handleUserMessage('Also add a summary', null);
+  view.endVoice();
+  release();
+  await until(() => plugin.chatHistory.some((e) => e.text === 'Summary added.'));
+  assert.equal(log.chat.length, 2);
+  assert.match(userText(log.chat[1]), /Also add a summary$/);
+  assert.doesNotMatch(userText(log.chat[1]), /voice conversation/);
+  assert.deepEqual(chat.queued, []);
+});
+
 // ─── Microphone and ending ──────────────────────────────────────────────────
 
 test('Hold to talk: the microphone track is on only while pressed; hands-free mute toggles it', async () => {

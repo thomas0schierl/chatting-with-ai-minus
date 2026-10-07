@@ -38,6 +38,8 @@ export interface VoiceTurnHooks {
   /** Answer text the loop delivered (text before tool calls, then the final answer). */
   onText(text: string): void;
   onError(message: string): void;
+  /** The conversation still runs: it takes the turn's leftovers itself (else the view runs them). */
+  active(): boolean;
 }
 
 /** What the controller needs from the chat view. */
@@ -365,13 +367,15 @@ export class VoiceController {
         },
         onText: (value) => { answer = value; },
         onError: (message) => { failed = message; },
+        active: () => !this.ended,
       }, context);
     } finally {
       this.voiceTurnRunning = false;
     }
+    // Ended meanwhile: the view ran what was added (as typed turns).
+    if (this.ended) return;
     // Added after the turn's last step: it needs a turn of its own.
     const later = this.host.takeSteered();
-    if (this.ended) return;
     if (answer) this.sendAll(speakEvents(this.dialect, this.answerTo, spokenAnswer(answer)));
     else if (failed) this.sendAll(speakEvents(this.dialect, this.answerTo, "That didn't work; the error is shown in the chat."));
     if (later.length) {
