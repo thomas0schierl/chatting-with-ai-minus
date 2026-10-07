@@ -38,8 +38,8 @@ instead of as they're written.
   delete earlier chats from the history list. The chat that was open comes
   back after a restart.
 - **Selection scope:** select text in a note and choose *Send selection to
-  chat*; the AI is told to change only that text, and the message shows
-  the selection it worked on.
+  chat*; in that note the AI can change only the selected text, and the
+  message shows the selection it worked on.
 - **Images:** attach or paste up to four images per message, for models
   that accept them.
 - **Current models:** model lists are loaded from each provider when you

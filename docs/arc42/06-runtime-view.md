@@ -45,7 +45,14 @@ No network requests happen at start.
    and model stay fixed for the turn. It adds the context prefix (and the
    selection-scope instruction), appends the user message with the turn ID,
    and trims the history to the last 80 messages (whole turns), the cap
-   that saving uses too.
+   that saving uses too. With a selection, the tools also enforce it for
+   the turn (the instruction alone isn't always followed): on that note
+   only `edit_document` `find_replace` with text from the selection runs,
+   applied to the selected occurrence, and the scope then holds the
+   changed text for later edits in the turn; a whole-note replace, an
+   insert, properties, rename and delete of that note are refused with a
+   message the model can act on. Other notes stay editable. A turn
+   continued after a restart has no scope (it isn't saved).
 3. **Loop, up to the iteration limit:**
    1. Show the thinking indicator.
    2. Call `client.sendMessage()`, which sends through the provider's

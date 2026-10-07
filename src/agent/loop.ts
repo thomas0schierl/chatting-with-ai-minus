@@ -105,6 +105,8 @@ export class AgentLoop {
   private steered: { text: string; context?: string }[] = [];
   /** The running turn comes from a voice conversation (`ask_user` ends it). */
   private voiceTurn = false;
+  /** The running turn's selection: the tools change only that text of its note (its text follows the edits). */
+  private scope: SelectionScope | null = null;
 
   constructor(app: App, settings: ChatSettings) {
     this.app = app;
@@ -255,6 +257,7 @@ export class AgentLoop {
   ): Promise<void> {
     const version = ++this.runVersion;
     this.voiceTurn = voice;
+    this.scope = selection ? { ...selection } : null;
     // Keep one provider/model/credential configuration for this entire turn.
     const turnSettings = { ...this.settings };
 
@@ -309,6 +312,8 @@ export class AgentLoop {
   async continueTurn(callbacks: AgentCallbacks): Promise<void> {
     const version = ++this.runVersion;
     this.voiceTurn = false;
+    // A turn continued after a restart has no selection any more (not saved).
+    this.scope = null;
     if (!this.owesAnswer()) return;
     debugLog(this.app, "CONTINUE_TURN", { messages: this.messages.length });
     await this.loop(version, callbacks, { ...this.settings });
@@ -433,7 +438,8 @@ export class AgentLoop {
             this.app,
             tc.name!,
             tc.input!,
-            callbacks.onAskUser
+            callbacks.onAskUser,
+            this.scope ?? undefined
           );
 
         if (isStopped()) return;
