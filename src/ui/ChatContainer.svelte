@@ -4,6 +4,7 @@
   import { onDestroy } from "svelte";
   import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind } from "../types";
   import { normalizeMathMarkdown } from "./math-markdown";
+  import { toolLabel } from "./tool-label";
   import { USAGE_URL } from "../auth/chatgptOAuth";
   import type { VoiceViewState } from "../voice/controller";
   import type { VoiceAction } from "./chat-view";
@@ -768,10 +769,6 @@
     };
   }
 
-  function formatToolName(name: string): string {
-    return name.replace(/_/g, " ");
-  }
-
   function truncate(str: string, max: number): string {
     if (str.length <= max) return str;
     return str.substring(0, max) + "\n... (truncated)";
@@ -1008,37 +1005,32 @@
           {/if}
         </div>
 
-      {:else if msg.type === "tool-call"}
-        <div class="chatting-minus-tool-call">
-          <div class="chatting-minus-tool-status">
-            <span class="chatting-minus-spinner"></span>
-            <span class="chatting-minus-tool-name">{formatToolName(msg.toolName ?? "")}</span>
-          </div>
-          <details class="chatting-minus-tool-details">
-            <summary>Parameters</summary>
-            <pre class="chatting-minus-tool-json">{JSON.stringify(msg.toolInput, null, 2)}</pre>
-          </details>
-        </div>
-
-      {:else if msg.type === "tool-result"}
-        <div class="chatting-minus-tool-call">
-          <div class="chatting-minus-tool-status">
-            <span class={msg.toolResult?.isError ? "chatting-minus-tool-error" : "chatting-minus-tool-success"}>
-              {msg.toolResult?.isError ? "\u2718" : "\u2714"}
-            </span>
-            <span class="chatting-minus-tool-name">{formatToolName(msg.toolName ?? "")}</span>
-          </div>
-          {#if msg.toolInput && Object.keys(msg.toolInput).length > 0}
-            <details class="chatting-minus-tool-details">
-              <summary>Parameters</summary>
+      {:else if msg.type === "tool-call" || msg.type === "tool-result"}
+        {@const state = msg.type === "tool-call" ? "running" : msg.toolResult?.isError ? "error" : "done"}
+        <!-- One line per tool step ("Edited Plan"); parameters and result open on click -->
+        <details class="chatting-minus-tool" class:is-error={state === "error"}>
+          <summary class="chatting-minus-tool-row">
+            {#if state === "running"}
+              <span class="chatting-minus-spinner"></span>
+            {:else if state === "error"}
+              <svg class="chatting-minus-tool-icon" aria-label="Failed" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+            {:else}
+              <svg class="chatting-minus-tool-icon" aria-label="Done" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+            {/if}
+            <span class="chatting-minus-tool-label">{toolLabel(msg.toolName ?? "", msg.toolInput ?? {}, state)}</span>
+            <span class="chatting-minus-tool-chevron" aria-hidden="true"></span>
+          </summary>
+          <div class="chatting-minus-tool-body">
+            {#if msg.toolInput && Object.keys(msg.toolInput).length > 0}
+              <div class="chatting-minus-tool-section">Parameters</div>
               <pre class="chatting-minus-tool-json">{JSON.stringify(msg.toolInput, null, 2)}</pre>
-            </details>
-          {/if}
-          <details class="chatting-minus-tool-details">
-            <summary>{msg.toolResult?.isError ? "Error" : "Result"}</summary>
-            <pre class="chatting-minus-tool-json">{truncate(msg.toolResult?.result ?? "", 2000)}</pre>
-          </details>
-        </div>
+            {/if}
+            {#if msg.toolResult}
+              <div class="chatting-minus-tool-section">{state === "error" ? "Error" : "Result"}</div>
+              <pre class="chatting-minus-tool-json">{truncate(msg.toolResult.result ?? "", 2000)}</pre>
+            {/if}
+          </div>
+        </details>
 
       {:else if msg.type === "error" && msg.errorKind === "stopped"}
         <!-- Stop before any of the answer arrived: a quiet note, not an error -->
@@ -1830,42 +1822,91 @@
   }
 
   /* ─── Tool Calls ────────────────────────────────────────────────────── */
-  .chatting-minus-tool-call {
-    align-self: flex-start;
-    padding: 6px 10px;
-    background: var(--background-secondary-alt);
-    border-radius: var(--radius-s);
+  /* A quiet line per tool step; consecutive steps sit close together */
+  .chatting-minus-tool {
+    align-self: stretch;
+    max-width: 100%;
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
-    max-width: 90%;
   }
 
-  .chatting-minus-tool-status {
+  .chatting-minus-tool + .chatting-minus-tool {
+    margin-top: -6px;
+  }
+
+  .chatting-minus-tool-row {
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+    padding: 2px 4px;
+    border-radius: var(--radius-s);
+    cursor: pointer;
+    list-style: none;
   }
 
-  .chatting-minus-tool-name {
-    font-weight: 500;
+  .chatting-minus-tool-row::-webkit-details-marker {
+    display: none;
   }
 
-  .chatting-minus-tool-success {
-    color: var(--text-success);
+  .chatting-minus-tool-row:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
   }
 
-  .chatting-minus-tool-error {
+  .chatting-minus-tool-icon,
+  .chatting-minus-tool-row .chatting-minus-spinner {
+    flex-shrink: 0;
+    color: var(--text-faint);
+  }
+
+  .chatting-minus-tool-row .chatting-minus-spinner {
+    width: 10px;
+    height: 10px;
+    border-width: 1.5px;
+  }
+
+  .chatting-minus-tool.is-error .chatting-minus-tool-icon,
+  .chatting-minus-tool.is-error .chatting-minus-tool-label {
     color: var(--text-error);
   }
 
-  .chatting-minus-tool-details {
-    margin-top: 4px;
+  .chatting-minus-tool-label {
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .chatting-minus-tool-details summary {
-    cursor: pointer;
+  /* A small chevron after the label, turned down when open */
+  .chatting-minus-tool-chevron {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    opacity: 0;
+    transition: transform 150ms ease, opacity 150ms ease;
+  }
+
+  .chatting-minus-tool-row:hover .chatting-minus-tool-chevron,
+  .chatting-minus-tool[open] .chatting-minus-tool-chevron {
+    opacity: 0.7;
+  }
+
+  .chatting-minus-tool[open] .chatting-minus-tool-chevron {
+    transform: rotate(45deg);
+  }
+
+  .chatting-minus-tool-body {
+    margin: 2px 0 6px 22px;
+  }
+
+  .chatting-minus-tool-section {
+    margin-top: 4px;
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
   }
 
   .chatting-minus-tool-json {
