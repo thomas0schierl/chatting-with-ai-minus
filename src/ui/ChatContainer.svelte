@@ -922,6 +922,13 @@
               </div>
             </div>
           {:else}
+            {#if msg.selection}
+              <!-- What the message worked on, as the chat apps show a quote above it -->
+              <div class="chatting-minus-msg-selection" title={msg.selection.text}>
+                <span class="chatting-minus-msg-selection-label">Selection from {msg.selection.filePath.split("/").pop()}</span>
+                <span class="chatting-minus-msg-selection-text">{msg.selection.text}</span>
+              </div>
+            {/if}
             <div class="chatting-minus-msg chatting-minus-user-msg">
               {#if msg.images?.length}
                 {@render userImages(msg.images)}
@@ -1542,6 +1549,32 @@
     font-family: var(--font-interface);
     font-size: var(--font-ui-medium);
     line-height: 1.4;
+  }
+
+  /* The selection a message was sent with: a muted quote above the bubble */
+  .chatting-minus-msg-selection {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: 100%;
+    margin-bottom: 4px;
+    padding: 4px 10px;
+    border-inline-start: 2px solid var(--interactive-accent);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+  }
+
+  .chatting-minus-msg-selection-label {
+    font-weight: var(--font-semibold);
+  }
+
+  .chatting-minus-msg-selection-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-line;
   }
 
   .chatting-minus-edit-note {
