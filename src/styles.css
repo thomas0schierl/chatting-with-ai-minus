@@ -21,6 +21,17 @@
   overflow: hidden;
 }
 
+/* On desktop the status bar is fixed over the bottom right corner of the
+   window; Obsidian's bottom padding is what keeps side panels clear of it.
+   Keep it, except in the left sidebar, which the status bar never covers. */
+body:not(.is-mobile) .workspace-leaf-content[data-type="chatting-minus-view"] .view-content {
+  padding-bottom: var(--size-4-8);
+}
+
+body:not(.is-mobile) .mod-left-split .workspace-leaf-content[data-type="chatting-minus-view"] .view-content {
+  padding-bottom: 0;
+}
+
 /* On phones the sidebar's tab menu below the view fades the content above
    it (Obsidian: box-shadow 0 -12px 12px in the sidebar colour, about 24px
    high). It is drawn outside the view, and Obsidian isolates each view
