@@ -1,15 +1,20 @@
 # Chatting with AI Minus
 
-> **Belongs here:** what the plugin does, how to install, set up and
-> troubleshoot it (also on a phone), and what users need to know about
-> privacy. **Elsewhere:** how it works
-> inside (→ [docs/arc42](docs/arc42/)), how to develop it
-> (→ [AGENTS.md](AGENTS.md)).
+<!-- Belongs here: what the plugin does, how to install, set up and
+troubleshoot it (also on a phone), and what users need to know about
+privacy and network use. Elsewhere: how it works inside (docs/arc42), how
+to develop it (AGENTS.md). Kept as a comment: this README is the plugin's
+page in Obsidian's community directory. -->
 
 An AI chat for Obsidian that can read, search, create and edit your notes.
 It works the same on desktop, iPhone, iPad and Android, with one
 difference: on phones, answers on the ChatGPT plan appear when complete
 instead of as they're written.
+
+**Needs an account:** an Anthropic or OpenAI API key (paid API access), or
+a ChatGPT plan to sign in with. Voice needs an OpenAI API key. Your
+messages and the notes the AI reads go to that provider (see
+[Privacy and network use](#privacy-and-network-use)).
 
 ![The chat in the right sidebar summarizes this week's meetings and lists the open action items, next to the vault's home note](docs/screenshots/summary.png)
 
@@ -164,7 +169,19 @@ conversation on a phone and iOS are not verified yet.
   problem, then **Copy debug log** (command, or **Copy** in the settings)
   and paste it into a message. **Clear** deletes it.
 
-## Privacy
+## Privacy and network use
+
+The plugin connects only to these services, and only for what you use:
+
+| Service | What for |
+|---|---|
+| `api.anthropic.com` | Chat and model list, with an Anthropic API key. |
+| `api.openai.com` | Chat and model list with an OpenAI API key or the ChatGPT sign-in; voice (GPT-Live) with an OpenAI API key. |
+| `auth.openai.com` | Signing in with ChatGPT and renewing that sign-in. |
+| `api.github.com` | With the ChatGPT sign-in, at most once a day: the latest Codex CLI version number, which OpenAI's model list needs to show current models. Nothing about you is sent. |
+
+Web search, when turned on, runs at the provider; the plugin itself
+doesn't contact search engines. There is no telemetry and no tracking.
 
 - **Sent to the provider:** your messages and attached images, the vault
   name, the number of notes, the active note's path, selected text, and
@@ -175,8 +192,9 @@ conversation on a phone and iOS are not verified yet.
 - **API keys and ChatGPT tokens:** stored in your OS keychain, never in
   plugin files.
 - **Chat history:** all conversations are stored locally in
-  `chat-state.json` in the plugin folder; deleting a conversation removes
-  it from there.
+  `chat-state.json` in the plugin folder, with a copy in
+  `chat-state.next.json` so an interrupted save loses nothing; deleting a
+  conversation removes it from both.
 - **Debug log:** off by default. While on, `debug.log` in the plugin
   folder records requests, errors and events, including your messages
   (never keys).
