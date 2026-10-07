@@ -62,6 +62,8 @@ No network requests happen at start.
    in) are refused with a
    message the model can act on. Other notes stay editable. A turn
    continued after a restart has no scope (it isn't saved).
+   The system prompt is the built-in one plus the vault's root
+   `AGENTS.md`, read now (ADR-16).
 3. **Loop, up to the iteration limit:**
    1. Show the thinking indicator.
    2. Call `client.sendMessage()`, which sends through the provider's
@@ -87,7 +89,9 @@ No network requests happen at start.
       presses Stop. A result may carry images (`view_image`,
       `view_canvas`): they go into the agent history with the result; the
       view gets only the text and an "image sent to the model" marker, so
-      `chat-state.json` doesn't hold them twice.
+      `chat-state.json` doesn't hold them twice. A result touching a file
+      in a folder with its own `AGENTS.md` that the history hasn't had
+      yet gets that file's text appended (ADR-16).
 4. **Finish:** the view re-enables input and saves the chat history after
    every turn.
 

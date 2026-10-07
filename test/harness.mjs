@@ -12,6 +12,7 @@ export const bundled = await build({
     export { ChangeLog } from './src/tools/undo';
     export { WEB_PAGE_CHARS } from './src/tools/web-page';
     export * as mentions from './src/ui/mentions';
+    export * as instructions from './src/agent/instructions';
     export { UndoConfirmModal } from './src/ui/undo-confirm';
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';

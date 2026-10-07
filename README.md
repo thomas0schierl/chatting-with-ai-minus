@@ -29,6 +29,11 @@ messages and the notes the AI reads go to that provider (see
   backlinks, read web pages, read and edit
   canvases, look at images and canvases, and ask you when something is
   unclear.
+- **Your instructions in AGENTS.md:** put standing instructions for the AI
+  (writing style, where new notes go, how you structure things) in an
+  `AGENTS.md` note at the vault root; every chat follows them. A folder can
+  have its own `AGENTS.md` for its notes. The same file works for other AI
+  tools that follow [agents.md](https://agents.md).
 - **Mention notes:** type `@` or `[[` and pick a note, canvas or image;
   it goes into your message as a link, and its current content goes to
   the AI with the message, so it doesn't have to look it up first.

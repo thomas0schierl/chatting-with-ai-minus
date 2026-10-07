@@ -56,6 +56,8 @@
 - **Decision:** the system prompt never contains per-turn data; the active
   note and selection go into the user message.
 - **Consequences:** prompt changes must keep the system prompt static.
+- **Amended by ADR-16 (2026-10-07):** the vault's root `AGENTS.md` is part
+  of the system prompt; it changes only when the user edits it.
 
 ## ADR-06: Three providers only
 
@@ -363,3 +365,32 @@
     resent on the return; no watchdog, voice unchanged.
   - Whether `pause`/`resume` fire, how long iOS lets a request finish,
     and voice after the background are to be checked on devices (§11).
+
+## ADR-16: The vault's AGENTS.md files as instructions
+
+- **Context:** users want standing instructions for the AI (style, where
+  things go, how notes are structured) without repeating them in each
+  chat. [agents.md](https://agents.md) is the shared convention for this
+  (Codex, Cursor and others read it): an `AGENTS.md` at the root, more in
+  subfolders for their part, the closest one winning. ADR-05 keeps the
+  system prompt static for the providers' prompt caches.
+- **Decision:**
+  - The root `AGENTS.md` (up to 32,768 characters, as Codex caps its
+    project docs) goes into the system prompt after the built-in one,
+    read at the start of each turn. It changes only when the user edits
+    it, so the cache holds otherwise.
+  - A folder's `AGENTS.md` is added to the first tool result of the
+    conversation that touches a file in that folder or below (the tool's
+    `path` or `new_path`, else the active note for tools that default to
+    it), outer folders first, as Claude Code loads nested `CLAUDE.md`
+    files. Whether one was given is read from the history, so it comes
+    once per conversation, and again when the turn that had it was cut
+    away (edit, trimming, a new chat).
+  - The prompt tells the model that chat messages win over the file and
+    that a folder's file wins over the root's where they differ.
+- **Consequences:**
+  - An edit to the root file costs one uncached request.
+  - Folder instructions arrive only once the AI works there: a request
+    about a folder it hasn't touched yet doesn't see them.
+  - Only `AGENTS.md`; other names (`CLAUDE.md`, `.cursorrules`) aren't
+    read.
