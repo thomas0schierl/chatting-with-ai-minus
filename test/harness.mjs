@@ -13,6 +13,7 @@ export const bundled = await build({
     export { WEB_PAGE_CHARS } from './src/tools/web-page';
     export * as mentions from './src/ui/mentions';
     export * as instructions from './src/agent/instructions';
+    export * as files from './src/files/attachments';
     export { UndoConfirmModal } from './src/ui/undo-confirm';
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';
@@ -222,7 +223,7 @@ export function fakeChat() {
     shown: [],
     assistantAdds: [],
     askUser: null,
-    addUserMessage(value, images = [], turnId, selection) { chat.shown.push({ id: nextId++, type: 'user', text: value, images, turnId, selection }); },
+    addUserMessage(value, images = [], turnId, selection, files = []) { chat.shown.push({ id: nextId++, type: 'user', text: value, images, turnId, selection, files }); },
     addAssistantMessage(value, streaming = false) {
       chat.assistantAdds.push({ text: value, streaming });
       chat.shown.push({ id: nextId, type: 'assistant', text: value, streaming });

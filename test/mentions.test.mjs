@@ -76,7 +76,7 @@ test('mentionedFiles: each linked file once, with headings and aliases, unknown 
   assert.deepEqual(found.map(f => f.path), ['Work/Plan.md', 'Pics/cat.png']);
 });
 
-test('mentionContext: note text (capped), canvas outline, images as images, other files by name', async () => {
+test('mentionContext: note text (capped), canvas outline, images as images, PDF and Office as files, others by name', async () => {
   const long = 'x'.repeat(M.MENTION_CHARS + 5);
   const app = mentionVault({
     'Work/Plan.md': 'Goal: ship',
@@ -84,14 +84,17 @@ test('mentionContext: note text (capped), canvas outline, images as images, othe
     'Board.canvas': JSON.stringify({ nodes: [{ id: 'n1', type: 'text', text: 'Card', x: 0, y: 0, width: 10, height: 10 }], edges: [] }),
     'Pics/cat.png': 'PNG',
     'Data.xlsx': 'PK',
+    'Song.mp3': '\u0000ID3',
   });
-  const files = ['Work/Plan.md', 'Long.md', 'Board.canvas', 'Pics/cat.png', 'Data.xlsx'].map(p => app.vault.getFileByPath(p));
+  const files = ['Work/Plan.md', 'Long.md', 'Board.canvas', 'Pics/cat.png', 'Data.xlsx', 'Song.mp3'].map(p => app.vault.getFileByPath(p));
   const context = await M.mentionContext(app, files);
   assert.match(context.text, /^\[Files the user linked in this message, as they are now:\]\n<file path="Work\/Plan\.md">\nGoal: ship\n<\/file>/);
   assert.match(context.text, new RegExp(`cut after ${M.MENTION_CHARS} of ${long.length} characters; use read_document`));
   assert.match(context.text, /<file path="Board\.canvas">\n[\s\S]*Card[\s\S]*<\/file>/);
   assert.match(context.text, /<file path="Pics\/cat\.png">\(the image is attached\)<\/file>/);
-  assert.match(context.text, /<file path="Data\.xlsx">\(not sent along/);
+  assert.match(context.text, /<file path="Data\.xlsx">\(the file is attached\)<\/file>/);
+  assert.deepEqual(context.files.map(f => f.fileName), ['Data.xlsx']);
+  assert.match(context.text, /<file path="Song\.mp3">\(not sent along: Song\.mp3 can't be sent/);
   assert.equal(context.images.length, 1);
   assert.equal(context.images[0].fileName, 'cat.png');
   assert.equal(await M.mentionContext(app, []), null);

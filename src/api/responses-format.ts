@@ -3,8 +3,9 @@
  * (tools, history as input items, sending and its errors) and the answer
  * (stream events, output items). Also the replay rule for all adapters.
  */
-import type { ContentBlock, ImageAttachment, Provider, ProviderReplay, StreamOptions, UnifiedMessage, UnifiedResponse, UnifiedToolDef } from "../types";
+import type { ContentBlock, FileAttachment, ImageAttachment, Provider, ProviderReplay, StreamOptions, UnifiedMessage, UnifiedResponse, UnifiedToolDef } from "../types";
 import { withoutOldToolImages } from "../agent/history";
+import { fileAsText, isSentAsFile } from "../files/attachments";
 import { streamSSE, type StreamResult } from "./stream";
 import { StreamCutError } from "./errors";
 import { isRecord } from "../json";
@@ -108,6 +109,8 @@ export function buildResponsesInput(
           : { type: "input_text", text: block.text });
       } else if (block.type === "image" && block.image && message.role === "user") {
         content.push(inputImage(block.image));
+      } else if (block.type === "file" && block.file && message.role === "user") {
+        content.push(inputFile(block.file));
       } else if (block.type === "tool_use" && block.id && block.name) {
         flush();
         items.push({ type: "function_call", call_id: block.id, name: block.name, arguments: JSON.stringify(block.input ?? {}),
@@ -133,12 +136,24 @@ export function buildResponsesInput(
  */
 function functionOutput(block: ContentBlock): string | Record<string, unknown>[] {
   const text = block.content ?? "";
-  if (!block.images?.length) return text;
-  return [{ type: "input_text", text: text || "(image)" }, ...block.images.map(inputImage)];
+  if (!block.images?.length && !block.files?.length) return text;
+  return [{ type: "input_text", text: text || "(attached)" }, ...(block.images ?? []).map(inputImage), ...(block.files ?? []).map(inputFile)];
 }
 
 function inputImage(image: ImageAttachment): Record<string, unknown> {
   return { type: "input_image", image_url: `data:${image.mediaType};base64,${image.data}`, detail: "auto" };
+}
+
+/**
+ * A file (ADR-17): PDF and Office files as `input_file` with inline data
+ * (the ChatGPT route takes files too, but not the Files upload API; siwc
+ * preview limitations), text files as text.
+ */
+function inputFile(file: FileAttachment): Record<string, unknown> {
+  if (isSentAsFile(file)) {
+    return { type: "input_file", filename: file.fileName, file_data: `data:${file.mediaType};base64,${file.data}` };
+  }
+  return { type: "input_text", text: fileAsText(file) };
 }
 
 /** Preserve native reasoning/search/refusal items even when they have no UI block. */

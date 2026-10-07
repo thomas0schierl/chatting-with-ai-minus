@@ -3,7 +3,7 @@
  * format, the one-time migrations from older formats, and storing each
  * image once. Pure functions; `main.ts` reads and writes the file.
  */
-import type { ChatHistoryEntry, ImageAttachment, UnifiedMessage } from "./types";
+import type { ChatHistoryEntry, FileAttachment, ImageAttachment, UnifiedMessage } from "./types";
 import { assignLegacyTurnIds, trimHistory, HISTORY_MESSAGES } from "./agent/history";
 import { isRecord } from "./json";
 
@@ -191,9 +191,16 @@ export function savedToolInput(input: Record<string, unknown>): Record<string, u
 
 /** Entries as saved: images keep their name, type and size, not their data. */
 export function withoutImageData(entries: ChatHistoryEntry[]): ChatHistoryEntry[] {
-  return entries.map((entry) => entry.images?.length
-    ? { ...entry, images: entry.images.map(({ data: _data, ...image }) => image as ImageAttachment) }
-    : entry);
+  return entries.map((entry) => {
+    if (!entry.images?.length && !entry.attachedFiles?.length) return entry;
+    const saved = { ...entry };
+    if (entry.images?.length) saved.images = entry.images.map(({ data: _data, ...image }) => image as ImageAttachment);
+    // Files likewise: name, type and size; data and text stay in the API history.
+    if (entry.attachedFiles?.length) {
+      saved.attachedFiles = entry.attachedFiles.map(({ id, fileName, mediaType, sizeBytes }) => ({ id, fileName, mediaType, sizeBytes, data: "" }));
+    }
+    return saved;
+  });
 }
 
 /**
@@ -203,15 +210,21 @@ export function withoutImageData(entries: ChatHistoryEntry[]): ChatHistoryEntry[
  */
 export function restoreImages(entries: ChatHistoryEntry[], messages: UnifiedMessage[]): ChatHistoryEntry[] {
   const images = new Map<string, ImageAttachment>();
+  const files = new Map<string, FileAttachment>();
   for (const message of messages) {
     if (typeof message.content === "string") continue;
     for (const block of message.content) {
       if (block.type === "image" && block.image) images.set(block.image.id, block.image);
+      if (block.type === "file" && block.file) files.set(block.file.id, block.file);
     }
   }
-  return entries.map((entry) => entry.images?.length
-    ? { ...entry, images: entry.images.map((image) => images.get(image.id) ?? { ...image, data: "" }) }
-    : entry);
+  return entries.map((entry) => {
+    if (!entry.images?.length && !entry.attachedFiles?.length) return entry;
+    const restored = { ...entry };
+    if (entry.images?.length) restored.images = entry.images.map((image) => images.get(image.id) ?? { ...image, data: "" });
+    if (entry.attachedFiles?.length) restored.attachedFiles = entry.attachedFiles.map((file) => files.get(file.id) ?? file);
+    return restored;
+  });
 }
 
 function arrayOf<T>(value: unknown): T[] {

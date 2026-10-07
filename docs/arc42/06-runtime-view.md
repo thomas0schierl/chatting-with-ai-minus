@@ -39,14 +39,18 @@ No network requests happen at start.
 
 1. **Send:** the user presses Enter or Send (or a command such as *Chat
    about this note*). `chat-view.ts` creates a turn ID, shows the message,
-   saves it to the UI history (with the ID, images and selection scope) and
-   calls `AgentLoop.run(text, callbacks, selection, images, turnId)`.
+   saves it to the UI history (with the ID, images, attached files and
+   selection scope) and calls `AgentLoop.run(text, callbacks, selection,
+   images, turnId)`. Attached files (the paperclip, or pasted) are read
+   when attached (`files/attachments.ts`, ADR-17): a PDF or Office file
+   as data (Office text read for Anthropic), another text file as text;
+   up to 4 per message, 10 MB each.
    Files the message links to (`[[…]]`, also put in by the mention list,
    see below) go along as they are now (`ui/mentions.ts`): up to 10, a
-   note's text (20,000 characters each, 60,000 together), a canvas's
-   outline, an image as an image; other files by name only. They come
-   after the context prefix, before the message; the chat shows only the
-   message.
+   note's or text file's text (20,000 characters each, 60,000 together), a
+   canvas's outline, an image as an image, a PDF or Office file as a file;
+   other files by name only. They come after the context prefix, before
+   the message; the chat shows only the message.
 2. **Turn setup:** `run()` takes a snapshot of the settings, so provider
    and model stay fixed for the turn. It adds the context prefix (and the
    selection-scope instruction), appends the user message with the turn ID,

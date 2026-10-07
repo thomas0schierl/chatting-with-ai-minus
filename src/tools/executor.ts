@@ -7,6 +7,7 @@ import { renderCanvas, shortIds } from "./canvas-render";
 import type { ChangeLog } from "./undo";
 import { listMetadata, queryNotes } from "./metadata-query";
 import { readWebPage } from "./web-page";
+import { fileAttachment, isDocumentFile } from "../files/attachments";
 import { createCanvasElement, decodeImage, encodeCanvas, extensionOf, fitImage, formatBytes, imageMediaType, isImagePath } from "../images";
 
 /** Files read_file refuses because their text would be useless to the model. */
@@ -413,6 +414,12 @@ async function readFile(
 
   if (isImagePath(file.path)) {
     return { result: `${file.path} is an image; read_file reads text only. Use view_image to look at it.`, isError: true };
+  }
+  if (isDocumentFile(file.path)) {
+    // PDF and Office files go to the model as files (ADR-17).
+    const attachment = await fileAttachment(file.path.slice(file.path.lastIndexOf("/") + 1), await app.vault.readBinary(file));
+    if (typeof attachment === "string") return { result: attachment, isError: true };
+    return { result: `${file.path} (${formatBytes(attachment.sizeBytes)}) is attached.`, isError: false, files: [attachment] };
   }
   if (BINARY_EXTENSIONS.includes(extensionOf(file.path))) {
     return { result: `${file.path} is a binary file; read_file reads text only.`, isError: true };

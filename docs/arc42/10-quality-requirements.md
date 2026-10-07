@@ -28,6 +28,10 @@ check against the real services and note the result in the release notes:
   the middle keeps the text shown so far (Q-09).
 - For ChatGPT: the model list loads for the signed-in account and the
   default model answers.
+- Files (ADR-17), for each provider: attach a PDF with a chart and a
+  docx, xlsx and pptx, and ask about each; ask the AI to read a PDF from
+  the vault (`read_file`). → Answers use the content (the chart from the
+  PDF's page images); Anthropic answers from the Office text.
 - Voice (OpenAI key): a question about a note is delegated, runs as a
   chat turn with tool cards, and the answer is spoken; End closes the
   session.

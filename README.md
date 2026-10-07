@@ -69,6 +69,11 @@ messages and the notes the AI reads go to that provider (see
   message shows the selection it worked on.
 - **Images:** attach or paste up to four images per message, for models
   that accept them.
+- **Files:** attach up to four PDF, Word, Excel, PowerPoint or text files
+  per message (10 MB each), mention them with `@`, or let the AI read
+  them from your vault. OpenAI and the ChatGPT plan read PDF and Office
+  files themselves, Anthropic reads PDFs; for Anthropic the plugin reads
+  the text of Word, Excel and PowerPoint files (without their images).
 - **Current models:** model lists are loaded from each provider when you
   open the settings, and kept for a day.
 - **Voice:** talk with the assistant in the current chat and hear the
@@ -220,7 +225,7 @@ The plugin connects only to these services, and only for what you use:
 Web search, when turned on, runs at the provider; the plugin itself
 doesn't contact search engines. There is no telemetry and no tracking.
 
-- **Sent to the provider:** your messages and attached images, the vault
+- **Sent to the provider:** your messages and attached images and files, the vault
   name, the number of notes, the active note's path, selected text, and
   whatever note content and images the AI reads with its tools during that
   turn. Nothing is sent in the background, and there is no vault index.

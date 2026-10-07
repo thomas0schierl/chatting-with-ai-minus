@@ -10,6 +10,7 @@ import type {
   ToolResult,
   VoiceTurn,
   MentionContext,
+  FileAttachment,
 } from "../types";
 import { errorKind, resetProviderState, sendMessage } from "../api/client";
 import { lastChunkAt } from "../api/stream";
@@ -29,10 +30,15 @@ import { debugLog } from "../debug";
  * (otherwise chat-state.json would hold it twice).
  */
 function displayResult(result: ToolResult): ToolResult {
-  const count = result.images?.length ?? 0;
-  if (!count) return result;
+  const images = result.images?.length ?? 0;
+  const files = result.files?.length ?? 0;
+  if (!images && !files) return result;
+  const what = [
+    ...(images ? [images === 1 ? "1 image" : `${images} images`] : []),
+    ...(files ? [files === 1 ? "1 file" : `${files} files`] : []),
+  ].join(" and ");
   return {
-    result: `${result.result}\n\n[${count === 1 ? "1 image" : `${count} images`} sent to the model]`,
+    result: `${result.result}\n\n[${what} sent to the model]`,
     isError: result.isError,
   };
 }
@@ -259,8 +265,8 @@ export class AgentLoop {
     selection?: SelectionScope | null,
     images: ImageAttachment[] = [],
     turnId: string = newTurnId(),
-    { voice = false, voiceTranscript = [], notes = [], mentioned = null }: {
-      voice?: boolean; voiceTranscript?: VoiceTurn[]; notes?: string[]; mentioned?: MentionContext | null;
+    { voice = false, voiceTranscript = [], notes = [], mentioned = null, files = [] }: {
+      voice?: boolean; voiceTranscript?: VoiceTurn[]; notes?: string[]; mentioned?: MentionContext | null; files?: FileAttachment[];
     } = {}
   ): Promise<void> {
     const version = ++this.runVersion;
@@ -274,6 +280,7 @@ export class AgentLoop {
     const context = { ...buildContext(this.app, voice, voiceTranscript), ...(notes.length ? { notes } : {}) };
     const contextPrefix = mentioned ? `${buildContextMessage(context)}\n\n${mentioned.text}` : buildContextMessage(context);
     images = [...images, ...mentioned?.images ?? []];
+    files = [...files, ...mentioned?.files ?? []];
 
     // If there's a selection, inject it as scoped context
     let fullMessage: string;
@@ -292,9 +299,10 @@ export class AgentLoop {
       fullMessage = `${contextPrefix}\n\n${userMessage}`;
     }
 
-    const content: string | ContentBlock[] = images.length > 0
+    const content: string | ContentBlock[] = images.length > 0 || files.length > 0
       ? [
           ...images.map((image): ContentBlock => ({ type: "image", image })),
+          ...files.map((file): ContentBlock => ({ type: "file", file })),
           { type: "text", text: fullMessage },
         ]
       : fullMessage;
@@ -467,6 +475,7 @@ export class AgentLoop {
           content: result.result,
           is_error: result.isError,
           ...(result.images?.length ? { images: result.images } : {}),
+          ...(result.files?.length ? { files: result.files } : {}),
         };
         callbacks.onToolResult(tc.name!, displayResult(result));
       }

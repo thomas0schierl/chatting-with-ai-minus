@@ -81,10 +81,27 @@ export interface ImageAttachment {
   sizeBytes: number;
 }
 
+/**
+ * A file for the model (`files/attachments.ts`, ADR-17): a PDF or Office
+ * document as base64 `data` (with `text` read from Office files, for
+ * providers that don't read them), or a text file as `text` only.
+ */
+export interface FileAttachment {
+  id: string;
+  fileName: string;
+  /** The document's type; `text/plain` for a file sent as its text. */
+  mediaType: string;
+  /** Base64 bytes without a data-URL prefix; empty for text files and in the saved visible history. */
+  data: string;
+  sizeBytes: number;
+  text?: string;
+}
+
 export interface ContentBlock {
-  type: "text" | "image" | "tool_use" | "tool_result";
+  type: "text" | "image" | "file" | "tool_use" | "tool_result";
   text?: string;
   image?: ImageAttachment;
+  file?: FileAttachment;
   id?: string;
   name?: string;
   input?: Record<string, unknown>;
@@ -93,6 +110,8 @@ export interface ContentBlock {
   is_error?: boolean;
   /** tool_result only: images the tool returned (view_image, view_canvas). */
   images?: ImageAttachment[];
+  /** tool_result only: files the tool returned (read_file on a PDF or Office file). */
+  files?: FileAttachment[];
 }
 
 export interface UnifiedMessage {
@@ -159,6 +178,8 @@ export interface ConversationContext {
 export interface MentionContext {
   text: string;
   images: ImageAttachment[];
+  /** PDF and Office files, sent as files where the provider reads them (ADR-17). */
+  files: FileAttachment[];
 }
 
 /** One turn of a voice conversation: what the user or the voice said. */
@@ -185,6 +206,8 @@ export interface ChatHistoryEntry {
   type: "user" | "assistant" | "tool-result" | "error" | "changes";
   text?: string;
   images?: ImageAttachment[];
+  /** User entries: attached files (saved without data and text; restored from the API history). */
+  attachedFiles?: FileAttachment[];
   /** User entries: the turn's ID, shared with the agent history; changes entries: their turn. */
   turnId?: string;
   /** User entries: the selection scope the turn ran with. */
@@ -223,6 +246,8 @@ export interface ToolResult {
    * chat view gets the text with a marker instead (`AgentLoop`).
    */
   images?: ImageAttachment[];
+  /** Files for the model (read_file on a PDF or Office file); like images, only in the agent history. */
+  files?: FileAttachment[];
   /** What a tool changed, for showing it to the user; never sent to the model or saved. */
   focus?: ViewTarget;
 }

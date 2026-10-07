@@ -1,5 +1,6 @@
 import { App, TFile, normalizePath, prepareFuzzySearch } from "obsidian";
-import type { ImageAttachment, MentionContext } from "../types";
+import type { FileAttachment, ImageAttachment, MentionContext } from "../types";
+import { fileAttachment, isSentAsFile } from "../files/attachments";
 import { describeCanvas, isCanvasPath, parseCanvas } from "../tools/canvas";
 import { fitImage, imageMediaType } from "../images";
 
@@ -91,16 +92,24 @@ export function mentionedFiles(app: App, text: string, sourcePath: string): TFil
 }
 
 /**
- * The mentioned files for the model: a note's text (capped), a canvas's
- * outline, an image as an image; other files only by name (the AI can
- * read them with its tools).
+ * The mentioned files for the model: a note's or text file's text
+ * (capped), a canvas's outline, an image as an image, a PDF or Office
+ * file as a file (ADR-17); others only by name.
  */
-export async function mentionContext(app: App, files: TFile[]): Promise<MentionContext | null> {
-  if (files.length === 0) return null;
+export async function mentionContext(app: App, mentioned: TFile[]): Promise<MentionContext | null> {
+  if (mentioned.length === 0) return null;
   const parts: string[] = [];
   const images: ImageAttachment[] = [];
+  const files: FileAttachment[] = [];
   let budget = MENTION_TOTAL_CHARS;
-  for (const file of files) {
+  /** A file's text, within what is left of the budget. */
+  const addText = (path: string, content: string) => {
+    const room = Math.min(MENTION_CHARS, Math.max(0, budget));
+    const cut = content.length > room;
+    budget -= Math.min(content.length, room);
+    parts.push(`<file path="${path}">\n${content.slice(0, room)}${cut ? `\n(cut after ${room} of ${content.length} characters; use read_document for the rest)` : ""}\n</file>`);
+  };
+  for (const file of mentioned) {
     const mediaType = imageMediaType(file.path);
     if (mediaType) {
       try {
@@ -118,18 +127,24 @@ export async function mentionContext(app: App, files: TFile[]): Promise<MentionC
         outline = "(not valid JSON Canvas; use read_file)";
       }
       parts.push(`<file path="${file.path}">\n${outline}\n</file>`);
-    } else if (file.extension === "md" || file.extension === "txt") {
-      const content = await app.vault.cachedRead(file);
-      const room = Math.min(MENTION_CHARS, Math.max(0, budget));
-      const cut = content.length > room;
-      budget -= Math.min(content.length, room);
-      parts.push(`<file path="${file.path}">\n${content.slice(0, room)}${cut ? `\n(cut after ${room} of ${content.length} characters; use read_document for the rest)` : ""}\n</file>`);
+    } else if (file.extension === "md") {
+      addText(file.path, await app.vault.cachedRead(file));
     } else {
-      parts.push(`<file path="${file.path}">(not sent along; read it with your tools if needed)</file>`);
+      // PDF and Office files as files (ADR-17), other text as text.
+      const attachment = await fileAttachment(file.name, await app.vault.readBinary(file));
+      if (typeof attachment === "string") {
+        parts.push(`<file path="${file.path}">(not sent along: ${attachment})</file>`);
+      } else if (isSentAsFile(attachment)) {
+        files.push(attachment);
+        parts.push(`<file path="${file.path}">(the file is attached)</file>`);
+      } else {
+        addText(file.path, attachment.text ?? "");
+      }
     }
   }
   return {
     text: `[Files the user linked in this message, as they are now:]\n${parts.join("\n")}`,
     images,
+    files,
   };
 }

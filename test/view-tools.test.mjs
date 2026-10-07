@@ -75,6 +75,7 @@ function imageVault() {
     ['Pics/wide.gif', imageBytes(3000, 100)],
     ['Pics/old.bmp', imageBytes(10, 10)],
     ['Docs/manual.pdf', imageBytes(1, 1)],
+    ['Data/app.sqlite', imageBytes(1, 1)],
   ]);
   const has = path => text.has(path) || binary.has(path);
   const app = {
@@ -257,13 +258,16 @@ test('view_image rejects other formats, canvases and missing files with a hint',
   assert.deepEqual(missing, { result: 'File not found: Pics/none.png', isError: true });
 });
 
-test('read_file refuses images and binary files but still reads text', async () => {
+test('read_file refuses images and binary files, attaches PDFs, reads text', async () => {
   const { app } = imageVault();
   const png = await run(app, 'read_file', { path: 'Pics/cat.png' });
   assert.equal(png.isError, true);
   assert.match(png.result, /is an image; read_file reads text only\. Use view_image/);
   assert.match((await run(app, 'read_file', { path: 'Pics/old.bmp' })).result, /Use view_image/);
-  assert.match((await run(app, 'read_file', { path: 'Docs/manual.pdf' })).result, /binary file/);
+  const pdf = await run(app, 'read_file', { path: 'Docs/manual.pdf' });
+  assert.match(pdf.result, /^Docs\/manual\.pdf \(.*\) is attached\.$/);
+  assert.equal(pdf.files[0].fileName, 'manual.pdf');
+  assert.match((await run(app, 'read_file', { path: 'Data/app.sqlite' })).result, /binary file/);
   assert.deepEqual(await run(app, 'read_file', { path: 'Notes/Beta.md' }), { result: '# Beta', isError: false });
   assert.deepEqual(await run(app, 'read_file', { path: 'Pics/logo.svg' }), { result: '<svg/>', isError: false });
 });

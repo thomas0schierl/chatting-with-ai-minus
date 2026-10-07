@@ -75,7 +75,7 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
   },
   {
     name: "read_file",
-    description: "Read the full raw text of any text file in the vault by its path. Refuses images (use view_image) and other binary files. For .canvas files prefer read_canvas, which is shorter and easier to follow.",
+    description: "Read a file in the vault by its path: a text file's full raw text, or a PDF, Word, Excel or PowerPoint file (attached for you to read, up to 10 MB). Refuses images (use view_image) and other binary files. For .canvas files prefer read_canvas, which is shorter and easier to follow.",
     inputSchema: {
       type: "object",
       properties: {

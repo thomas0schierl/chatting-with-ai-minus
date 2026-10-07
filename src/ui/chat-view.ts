@@ -2,7 +2,7 @@ import { ItemView, WorkspaceLeaf, Notice, Platform } from "obsidian";
 import { mount, unmount } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
-import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry, VoiceTurn, ViewTarget } from "../types";
+import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, FileAttachment, ChatErrorKind, ChatHistoryEntry, VoiceTurn, ViewTarget } from "../types";
 import { showInView } from "./show-in-view";
 import { confirmUndo } from "./undo-confirm";
 import { mentionContext, mentionedFiles } from "./mentions";
@@ -26,7 +26,7 @@ export type VoiceAction = "start" | "end" | "mute" | "talk-start" | "talk-end" |
  * here; svelte-check checks the props passed to `mount()`.
  */
 interface ChatContainerApi extends Record<string, unknown> {
-  addUserMessage(text: string, images?: ImageAttachment[], turnId?: string, selection?: SelectionScope): void;
+  addUserMessage(text: string, images?: ImageAttachment[], turnId?: string, selection?: SelectionScope, files?: FileAttachment[]): void;
   addAssistantMessage(text: string, streaming?: boolean): number;
   updateAssistantMessage(id: number, text: string, final?: boolean): void;
   removeMessage(id: number): void;
@@ -159,8 +159,8 @@ export class ObsidianChatView extends ItemView {
       props: {
         app: this.app,
         component: this,
-        onSend: (text: string, selection: SelectionScope | null, images: ImageAttachment[]) => {
-          void this.handleUserMessage(text, selection, images);
+        onSend: (text: string, selection: SelectionScope | null, images: ImageAttachment[], files: FileAttachment[]) => {
+          void this.handleUserMessage(text, selection, images, newTurnId(), undefined, [], files);
         },
         onClear: () => this.handleClear(),
         onStop: () => this.handleStop(),
@@ -214,7 +214,7 @@ export class ObsidianChatView extends ItemView {
     if (!chat) return;
     switch (entry.type) {
       case "user":
-        chat.addUserMessage(entry.text ?? "", entry.images, entry.turnId, entry.selection);
+        chat.addUserMessage(entry.text ?? "", entry.images, entry.turnId, entry.selection, entry.attachedFiles);
         break;
       case "assistant":
         chat.addAssistantMessage(entry.text ?? "");
@@ -465,14 +465,15 @@ export class ObsidianChatView extends ItemView {
     const { selection = null } = history[index];
     // Images the API history no longer holds can't be sent again.
     const images = (history[index].images ?? []).filter((image) => image.data);
-    if (!text.trim() && images.length === 0) return;
+    const files = (history[index].attachedFiles ?? []).filter((file) => file.data || file.text);
+    if (!text.trim() && images.length === 0 && files.length === 0) return;
     if (this.running) this.stopTurn();
     this.plugin.agent.cutBeforeTurn(turnId);
     this.plugin.chatHistory = this.plugin.chatHistory.slice(0, index);
     this.chatContainer?.cutMessages(turnId);
     // The saved state is taken now, before the new turn starts.
     void this.plugin.saveChatHistory();
-    await this.handleUserMessage(text, selection, images);
+    await this.handleUserMessage(text, selection, images, newTurnId(), undefined, [], files);
   }
 
   /** Regenerate the last answer: run the last user turn again, unchanged. */
@@ -501,7 +502,8 @@ export class ObsidianChatView extends ItemView {
     images: ImageAttachment[] = [],
     turnId: string = newTurnId(),
     voice?: VoiceTurnHooks,
-    voiceContext: VoiceTurn[] = []
+    voiceContext: VoiceTurn[] = [],
+    files: FileAttachment[] = []
   ): Promise<void> {
     // While a turn runs, a typed message is added to it (steering, as in voice).
     if (this.running) {
@@ -515,7 +517,7 @@ export class ObsidianChatView extends ItemView {
     for (const turn of said) {
       if (turn.role === "user") this.append(this.plugin.chatHistory, { type: "user", text: turn.text });
     }
-    this.append(this.plugin.chatHistory, { type: "user", text, images, turnId, ...(selection ? { selection } : {}) });
+    this.append(this.plugin.chatHistory, { type: "user", text, images, turnId, ...(selection ? { selection } : {}), ...(files.length ? { attachedFiles: files } : {}) });
     this.plugin.touchConversation();
     const conversation = this.plugin.activeConversation;
     chat.setTitle(conversation.title);
@@ -527,7 +529,7 @@ export class ObsidianChatView extends ItemView {
       const app = this.plugin.app;
       const source = app.workspace.getActiveFile()?.path ?? "";
       const mentioned = await mentionContext(app, mentionedFiles(app, text, source));
-      await this.plugin.agent.run(text, callbacks, selection, images, turnId, { voice: !!voice, voiceTranscript: voiceContext, notes, mentioned });
+      await this.plugin.agent.run(text, callbacks, selection, images, turnId, { voice: !!voice, voiceTranscript: voiceContext, notes, mentioned, files });
     }, voice);
   }
 

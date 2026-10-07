@@ -48,15 +48,19 @@ export function withoutOldToolImages(messages: UnifiedMessage[], turns = TOOL_IM
       if (block.type === "tool_use" && block.id && block.name) toolNames.set(block.id, block.name);
     }
   }
+  // Files a tool returned (read_file on a PDF) go the same way.
+  const hasMedia = (block: ContentBlock) => block.type === "tool_result" && !!(block.images?.length || block.files?.length);
   return messages.map((message, index) => {
-    if (index >= cutoff || typeof message.content === "string" ||
-      !message.content.some((block) => block.type === "tool_result" && block.images?.length)) return message;
+    if (index >= cutoff || typeof message.content === "string" || !message.content.some(hasMedia)) return message;
     return {
       ...message,
       content: message.content.map((block): ContentBlock => {
-        if (block.type !== "tool_result" || !block.images?.length) return block;
-        const { images, ...rest } = block;
-        const what = images.length === 1 ? "image" : `${images.length} images`;
+        if (!hasMedia(block)) return block;
+        const { images = [], files = [], ...rest } = block;
+        const what = [
+          ...(images.length ? [images.length === 1 ? "image" : `${images.length} images`] : []),
+          ...(files.length ? [files.length === 1 ? "file" : `${files.length} files`] : []),
+        ].join(" and ");
         const tool = toolNames.get(block.tool_use_id ?? "") ?? "a tool";
         const note = `[${what} from ${tool} omitted to save context]`;
         return { ...rest, content: rest.content ? `${rest.content}\n\n${note}` : note };

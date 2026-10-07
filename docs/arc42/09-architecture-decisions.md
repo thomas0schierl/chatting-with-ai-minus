@@ -394,3 +394,48 @@
     about a folder it hasn't touched yet doesn't see them.
   - Only `AGENTS.md`; other names (`CLAUDE.md`, `.cursorrules`) aren't
     read.
+
+## ADR-17: Files go to the provider as files where it reads them; Office text read locally for Anthropic
+
+- **Context:** users want to give the AI PDFs, Word, Excel and PowerPoint
+  files (attached, mentioned or in the vault). The providers differ
+  (checked 2026-10-07):
+  - OpenAI's Responses API takes `input_file` (inline base64) for PDF
+    (text and page images), Word, Excel (first 1,000 rows per sheet),
+    PowerPoint, older Office formats and text, also inside a function
+    result; 50 MB per request.
+  - The ChatGPT plan's route is the same API: "Text, images, and files
+    are supported when the selected model accepts them", but not the
+    Files upload API (siwc *Preview limitations*).
+  - Anthropic reads PDF `document` blocks (text and page images) and text
+    documents, also inside a `tool_result`; 32 MB and 600 pages per
+    request. Word, Excel and PowerPoint files aren't read: its docs say to
+    convert them to text.
+- **Decision:**
+  - PDF and Office files are a `file` block (base64) in the user message
+    or in a tool result (`read_file`), sent to each provider in its own
+    form: `input_file` for OpenAI and the ChatGPT plan, a PDF `document`
+    for Anthropic. Up to 10 MB per file, four per message.
+  - For Anthropic, the plugin reads the text of docx, xlsx and pptx files
+    itself when they are attached (`files/office.ts`: their XML, read with
+    patterns) and sends it as a text document. The ZIP container is read
+    with the platform's `DecompressionStream("deflate-raw")`
+    (`files/zip.ts`), so no library is added. Older Office formats
+    (doc, xls, ppt, odt, rtf) can't be read this way; Anthropic gets a
+    note naming the file.
+  - Text files of any kind go as text to all providers.
+  - Tool results with files follow the rule for tool images: two user
+    turns later they are left out of requests (the AI can read the file
+    again).
+- **Consequences:**
+  - The same PDF is read with its pages' images by all providers, at
+    their token cost (for Anthropic about 1,500 to 3,000 tokens per page
+    plus the images).
+  - `chat-state.json` keeps attached files in the API history like images
+    (up to 10 MB each, base64), which can make it large.
+  - Excel text for Anthropic is CSV per sheet (2,000 rows), Word text is
+    Markdown with headings, lists and tables; images and charts in Office
+    files are lost there.
+  - `DecompressionStream("deflate-raw")` needs Chromium 103 or iOS 16.4;
+    older devices can't read Office text for Anthropic (the note is sent
+    instead).
