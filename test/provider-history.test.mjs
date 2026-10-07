@@ -757,7 +757,7 @@ test('Chat history is not saved before the saved chat has been read', async () =
   const { app } = vaultApp();
   const writes = [];
   let finishRead;
-  app.vault.adapter = { read: () => new Promise(resolve => { finishRead = resolve; }), write: async (path, data) => { writes.push(JSON.parse(data)); } };
+  app.vault.adapter = { read: () => new Promise(resolve => { finishRead = resolve; }), write: async (path, data) => { if (!path.endsWith('.next.json')) writes.push(JSON.parse(data)); } };
   const plugin = new api.ChatPlugin();
   plugin.app = app;
   plugin.agent = new api.AgentLoop(app, settings('openai'));
@@ -773,7 +773,7 @@ test('Chat history is not saved before the saved chat has been read', async () =
   assert.equal(writes[0].conversations[0].chatHistory[0].text, 'Saved question');
   // Without a saved file yet, saving is allowed once the read has failed.
   const fresh = new api.ChatPlugin();
-  fresh.app = { vault: { configDir: '.obsidian', adapter: { read: async () => { throw new Error('ENOENT'); }, exists: async () => false, write: async (path, data) => { writes.push(JSON.parse(data)); } } } };
+  fresh.app = { vault: { configDir: '.obsidian', adapter: { read: async () => { throw new Error('ENOENT'); }, exists: async () => false, write: async (path, data) => { if (!path.endsWith('.next.json')) writes.push(JSON.parse(data)); } } } };
   fresh.agent = new api.AgentLoop(app, settings('openai'));
   await fresh.loadChatHistory();
   await fresh.saveChatHistory();

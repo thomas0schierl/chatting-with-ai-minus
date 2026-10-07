@@ -397,7 +397,7 @@ test('Nothing is saved before the saved conversations have been read', async () 
   const { app } = vaultApp();
   const writes = [];
   let finishRead;
-  app.vault.adapter = { read: () => new Promise(resolve => { finishRead = resolve; }), write: async (path, data) => { writes.push(JSON.parse(data)); } };
+  app.vault.adapter = { read: () => new Promise(resolve => { finishRead = resolve; }), write: async (path, data) => { if (!path.endsWith('.next.json')) writes.push(JSON.parse(data)); } };
   const plugin = new api.ChatPlugin();
   plugin.app = app;
   plugin.agent = new api.AgentLoop(app, settings('anthropic'));
@@ -458,7 +458,7 @@ async function loadFrom(content, { renameFails = false, next } = {}) {
   app.vault.adapter = {
     read: async (path) => { if (!files.has(path)) throw new Error('ENOENT'); return files.get(path); },
     exists: async (path) => files.has(path),
-    write: async (path, data) => { writes.push(JSON.parse(data)); files.set(path, data); },
+    write: async (path, data) => { if (!path.endsWith('.next.json')) writes.push(JSON.parse(data)); files.set(path, data); },
     remove: async (path) => { files.delete(path); },
     rename: async (from, to) => {
       if (renameFails) throw new Error('EBUSY');
@@ -480,25 +480,29 @@ const savedState = (text) => JSON.stringify({
   conversations: [{ id: 'c1', title: text, customTitle: false, createdAt: 1, updatedAt: 1, chatHistory: [{ type: 'user', text, turnId: 't1' }], agentMessages: [] }],
 });
 
-test('A save writes chat-state.next.json first and then replaces chat-state.json with it', async () => {
-  const { plugin, files } = await loadFrom(savedState('Old'));
+test('A save writes the state twice: chat-state.next.json, then chat-state.json; nothing is deleted or renamed', async () => {
+  const { plugin, files, renames } = await loadFrom(savedState('Old'));
+  const order = [];
+  const write = plugin.app.vault.adapter.write;
+  plugin.app.vault.adapter.write = async (path, data) => { order.push(path); await write(path, data); };
   plugin.chatHistory.push({ type: 'user', text: 'New', turnId: 't2' });
   await plugin.saveChatHistory();
-  assert.equal(files.has(NEXT), false);
+  assert.deepEqual(order, [NEXT, STATE]);
+  assert.equal(files.get(NEXT), files.get(STATE));
   assert.deepEqual(JSON.parse(files.get(STATE)).conversations[0].chatHistory.map((e) => e.text), ['Old', 'New']);
+  assert.deepEqual(renames, []);
 });
 
-test('Obsidian ended in the middle of a save (reload, quit): the chats load from what was written', async () => {
+test('Obsidian ended in the middle of a save (reload, quit): the chats load from the whole copy', async () => {
   globalThis.__notices = [];
-  // Ended after the new state was written but before it replaced the old file
-  // (the old one removed, or emptied by an older version's direct write).
-  for (const content of [undefined, '']) {
+  // Cut off while chat-state.json was written (emptied, or never there).
+  for (const content of [undefined, '', '{"version": 3, "conv']) {
     const { plugin, renames } = await loadFrom(content, { next: savedState('Kept') });
     assert.deepEqual(plugin.chatHistory.map((e) => e.text), ['Kept']);
     assert.deepEqual(renames, []);
   }
-  // Ended while the new state was written: the old file is still whole.
-  const { plugin } = await loadFrom(savedState('Old'), { next: '{"version": 3, "conv' });
+  // Cut off while the copy was written: chat-state.json is still whole.
+  const { plugin } = await loadFrom(savedState('Old'), { next: '' });
   assert.deepEqual(plugin.chatHistory.map((e) => e.text), ['Old']);
   assert.deepEqual(globalThis.__notices, []);
 });
@@ -544,6 +548,8 @@ test('Saves never overlap: calls during a write share one next write with the la
     read: async () => { throw new Error('ENOENT'); },
     exists: async () => false,
     write: (path, data) => {
+      // The copy written first goes through at once; chat-state.json waits.
+      if (path.endsWith('.next.json')) return Promise.resolve();
       active++;
       maxActive = Math.max(maxActive, active);
       writes.push(JSON.parse(data));
@@ -556,7 +562,7 @@ test('Saves never overlap: calls during a write share one next write with the la
   await plugin.loadChatHistory();
 
   const first = plugin.saveChatHistory();
-  assert.equal(writes.length, 1);
+  while (writes.length < 1) await tick();
   plugin.chatHistory.push({ type: 'user', text: 'One', turnId: 't1' });
   const second = plugin.saveChatHistory();
   plugin.chatHistory.push({ type: 'user', text: 'Two', turnId: 't2' });
@@ -575,6 +581,6 @@ test('Saves never overlap: calls during a write share one next write with the la
 
   // Idle again: the next save writes at once.
   void plugin.saveChatHistory();
-  assert.equal(writes.length, 3);
+  while (writes.length < 3) await tick();
   pending.shift()();
 });

@@ -202,7 +202,9 @@ test('The cut is saved at once, and the saved chat after the new turn restores c
   const savedBefore = writes.length;
 
   const editing = view.editMessage(ids[1], 'Edited');
-  // Saved before the new turn starts: only the first turn is left.
+  // Saved before the new turn starts (the state is taken then; the file is
+  // written after the copy): only the first turn is left.
+  while (writes.length <= savedBefore) await new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual(writes[savedBefore].conversations[0].chatHistory.map(e => e.text), ['Q1', 'A1']);
   assert.deepEqual(writes[savedBefore].conversations[0].agentMessages.filter(m => m.turnId).map(m => m.turnId), [ids[0]]);
   await editing;

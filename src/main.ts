@@ -491,9 +491,11 @@ export default class ChatPlugin extends Plugin {
   /**
    * Writes the current state; it is taken before the first await. Never
    * throws. The adapter empties a file before writing it, and Obsidian may
-   * end mid-write (reload, quit: onunload saves too), so the state goes to
-   * `chat-state.next.json` first and replaces `chat-state.json` once
-   * complete; loading falls back to it (`readChatState`).
+   * end mid-write (reload, quit: onunload saves too), so the state is
+   * written twice: to `chat-state.next.json`, then to `chat-state.json`.
+   * One of them is always whole; loading falls back to the copy
+   * (`readChatState`). No delete and rename: on Windows a file another
+   * process has open stays "delete pending" and the rename then fails.
    */
   private async writeChatState(): Promise<void> {
     try {
@@ -508,10 +510,9 @@ export default class ChatPlugin extends Plugin {
           .map(savedConversation),
       };
       const { adapter } = this.app.vault;
-      await adapter.write(this.nextChatStatePath, JSON.stringify(state));
-      // Obsidian's rename doesn't replace an existing file.
-      if (await adapter.exists(this.chatStatePath)) await adapter.remove(this.chatStatePath);
-      await adapter.rename(this.nextChatStatePath, this.chatStatePath);
+      const json = JSON.stringify(state);
+      await adapter.write(this.nextChatStatePath, json);
+      await adapter.write(this.chatStatePath, json);
     } catch {
       // Persistence is best-effort
     }
@@ -554,7 +555,7 @@ export default class ChatPlugin extends Plugin {
     } catch {
       exists = await adapter.exists(path).catch(() => true);
     }
-    // A save that ended before replacing the file: its complete new state.
+    // Cut off while chat-state.json was written: the copy written just before.
     try {
       const state = await read(this.nextChatStatePath);
       if (state) return state;
@@ -662,7 +663,7 @@ export default class ChatPlugin extends Plugin {
     return `${this.pluginDataDir}/chat-state.json`;
   }
 
-  /** Where a save writes before it replaces `chat-state.json`. */
+  /** The copy each save writes before `chat-state.json`. */
   private get nextChatStatePath(): string {
     return `${this.pluginDataDir}/chat-state.next.json`;
   }
