@@ -35,6 +35,29 @@ export interface ChatSettings {
   codexVoice: string;
   /** Hands-free (the server detects turns) or hold to talk (mic on while pressed). */
   voiceMicMode: VoiceMicMode;
+  /** Remote MCP servers the provider connects to (ADR-19); tokens only in SecretStorage. */
+  mcpServers: McpServer[];
+}
+
+/** A remote MCP server (ADR-19). */
+export interface McpServer {
+  id: string;
+  /** How the provider and the chat name it (letters, digits, `-`, `_`). */
+  name: string;
+  /** Its public https address. */
+  url: string;
+  enabled: boolean;
+  /** Its access token, in memory only (SecretStorage `…-mcp-<id>`; saved as nothing). */
+  token?: string;
+}
+
+/** A tool call the provider made on an MCP server, shown in the chat. */
+export interface ServerToolCall {
+  server: string;
+  tool: string;
+  input: Record<string, unknown>;
+  result: string;
+  isError: boolean;
 }
 
 export type VoiceRouteId = "openai" | "codex";
@@ -67,6 +90,7 @@ export const DEFAULT_SETTINGS: Omit<ChatSettings, "modelCatalog"> = {
   voice: "marin",
   codexVoice: "cove",
   voiceMicMode: "hands-free",
+  mcpServers: [],
 };
 
 
@@ -163,6 +187,8 @@ export interface UnifiedResponse {
   usage?: TokenUsage;
   /** The provider compacted the context in this request (ADR-18). */
   compaction?: Compaction;
+  /** Tools the provider called on MCP servers in this request (ADR-19); shown, not run. */
+  serverCalls?: ServerToolCall[];
 }
 
 /** One request's tokens, as the provider counted them. */

@@ -585,6 +585,24 @@ OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
    (a turn without a visible entry); a failed summary doesn't stop the
    turn.
 
+## MCP servers (`api/mcp.ts`, ADR-19)
+
+1. **Settings:** *MCP servers* lists the remote servers: name (letters,
+   digits, `-`, `_`), https address, optional token (SecretStorage
+   `chatting-with-ai-minus-mcp-<id>`), on or off. A row says what is
+   missing; with the ChatGPT plan the row explains they need an API key.
+2. **Request:** the servers that are on and valid (each name once) go
+   with each request: Anthropic `mcp_servers` (with `authorization_token`)
+   and an `mcp_toolset` per server in `tools`, header `anthropic-beta:
+   mcp-client-2025-11-20`; OpenAI an `mcp` tool per server
+   (`server_label`, `server_url`, `authorization`, `require_approval:
+   "never"`). The ChatGPT plan gets none.
+3. **Answer:** the provider calls the tools within the request. The
+   loop shows each call as a step (`mcp:<server>:<tool>`, "Used
+   create_issue on linear", failed when the result is an error) from
+   Anthropic's `mcp_tool_use`/`mcp_tool_result` blocks or OpenAI's
+   `mcp_call` items; they stay in the replay items as sent.
+
 ## Thinking level (`settings.ts`, adapters)
 
 1. **Options:** the settings row below Model lists "Default" plus the

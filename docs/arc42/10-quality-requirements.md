@@ -39,6 +39,10 @@ check against the real services and note the result in the release notes:
   the next answer still knows the earlier topic, and on ChatGPT whether
   the route accepts `context_management` (debug log). *Compact now*;
   switch provider after a compaction and ask about the earlier topic.
+- MCP (ADR-19), Anthropic and OpenAI keys: add a public MCP server (with
+  and without a token), ask for something only it can do. → The step
+  "Used … on …" shows, the answer uses its result; a wrong token shows
+  as a failed step or a provider error.
 - Voice (OpenAI key): a question about a note is delegated, runs as a
   chat turn with tool cards, and the answer is spoken; End closes the
   session.

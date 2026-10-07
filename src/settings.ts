@@ -15,6 +15,7 @@ import {
 import { LIVE_VOICES, hasLiveAccess } from "./voice/openai-live";
 import { CODEX_VOICES, codexAccountSetting, codexRouteSetting } from "./voice/codex";
 
+import { validServerName, validServerUrl } from "./api/mcp";
 import { type ModelOption, secretIdentity, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
 
 const CUSTOM_MODEL_OPTION = "__custom__";
@@ -113,8 +114,65 @@ export class ChatSettingTab extends PluginSettingTab {
         { name: "Voice", render: setting => this.renderVoiceName(setting) },
         { name: "Microphone", aliases: ["Hold to talk", "Hands-free"], render: setting => this.renderMicMode(setting) },
       ] },
+      { name: "MCP servers", aliases: ["Connectors", "Model Context Protocol"], render: setting => this.renderMcpServers(setting) },
       { name: "Debug log", aliases: ["Troubleshooting"], render: setting => this.renderDebugLog(setting) },
     ];
+  }
+
+  // ─── MCP servers (ADR-19) ─────────────────────────────────────────────────
+
+  /** The remote MCP servers: one row each (name, address, token, on/off, remove), and Add. */
+  private renderMcpServers(setting: Setting): void {
+    const s = this.plugin.settings;
+    const container = setting.settingEl.parentElement!;
+    const plan = s.provider === "chatgpt-oauth";
+    setting
+      .setName("MCP servers")
+      .setDesc(plan
+        ? "Remote MCP servers work with an Anthropic or OpenAI API key; the ChatGPT plan doesn't offer them."
+        : "Remote servers (public https) whose tools the AI can use. The provider connects to them and calls their tools without asking, so add only servers you trust.")
+      .addButton((button) => button.setButtonText("Add server").onClick(async () => {
+        s.mcpServers = [...s.mcpServers, { id: `mcp-${Date.now().toString(36)}`, name: "", url: "", enabled: true }];
+        await this.plugin.saveSettings();
+        this.update();
+      }));
+
+    for (const server of s.mcpServers) {
+      const problems = [
+        ...(validServerName(server.name) ? [] : ["a name of letters, digits, - or _"]),
+        ...(validServerUrl(server.url) ? [] : ["an https address"]),
+      ];
+      const duplicate = s.mcpServers.some((other) => other !== server && other.name === server.name && server.name);
+      const row = new Setting(container)
+        .setClass("chatting-minus-mcp-server")
+        .setDesc(problems.length ? `Needs ${problems.join(" and ")}.` : duplicate ? "Another server has this name." : server.enabled ? "On" : "Off")
+        .addText((text) => text.setPlaceholder("Name").setValue(server.name).onChange(async (value) => {
+          server.name = value.trim();
+          await this.plugin.saveSettings();
+        }))
+        .addText((text) => text.setPlaceholder("https://…").setValue(server.url).onChange(async (value) => {
+          server.url = value.trim();
+          await this.plugin.saveSettings();
+        }))
+        .addText((text) => {
+          text.inputEl.type = "password";
+          text.setPlaceholder("Token (optional)").setValue(server.token ?? "").onChange(async (value) => {
+            server.token = value.trim() || undefined;
+            await this.plugin.saveSettings();
+          });
+        })
+        .addToggle((toggle) => toggle.setValue(server.enabled).setTooltip("Use this server").onChange(async (value) => {
+          server.enabled = value;
+          await this.plugin.saveSettings();
+          this.update();
+        }))
+        .addExtraButton((button) => button.setIcon("trash").setTooltip("Remove").onClick(async () => {
+          await this.plugin.removeMcpServer(server.id);
+          this.update();
+        }));
+      // Checked again when a field loses focus.
+      row.controlEl.addEventListener("focusout", () => this.update());
+    }
   }
 
   hide(): void {

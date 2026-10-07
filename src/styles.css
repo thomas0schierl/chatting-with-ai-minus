@@ -77,6 +77,16 @@ body:not(.is-mobile) .mod-left-split .workspace-leaf-content[data-type="chatting
   max-width: 100%;
 }
 
+/* An MCP server: name, address and token fields share the row, the address widest */
+.chatting-minus-settings .chatting-minus-mcp-server .setting-item-control input[type="text"],
+.chatting-minus-settings .chatting-minus-mcp-server .setting-item-control input[type="password"] {
+  width: 9em;
+}
+
+.chatting-minus-settings .chatting-minus-mcp-server .setting-item-control input[placeholder^="https"] {
+  width: 16em;
+}
+
 /* ChatGPT sign-in modal */
 .chatting-minus-signin-input {
   width: 100%;

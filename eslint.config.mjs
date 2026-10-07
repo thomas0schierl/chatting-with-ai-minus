@@ -25,7 +25,7 @@ export default defineConfig([
         "warn",
         {
           brands: [...DEFAULT_BRANDS, "Chatting with AI Minus", "ChatGPT", "Codex", "OAuth"],
-          acronyms: [...DEFAULT_ACRONYMS, "OS"],
+          acronyms: [...DEFAULT_ACRONYMS, "OS", "MCP"],
           // Example URLs shown as text are not sentences.
           ignoreRegex: ["^https?://"],
         },

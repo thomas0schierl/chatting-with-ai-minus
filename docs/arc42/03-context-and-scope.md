@@ -39,6 +39,7 @@ Anthropic API   OpenAI API              OpenAI auth
 | Codex (unofficial, off by default, ADR-14) | `POST https://chatgpt.com/backend-api/codex/realtime/calls`; device code, token and refresh at `auth.openai.com` | Voice on the ChatGPT plan, unofficial | Codex sign-in token, `ChatGPT-Account-ID` |
 | Loopback | `http://127.0.0.1:<port>/auth/callback` | Where the sign-in lands; nothing listens there, the user copies the address | none |
 | Any website | `GET` the URL the model passes to `read_web_page` (http or https) | Reading a web page | none |
+| MCP servers (the user's) | The provider connects to them, not the device (ADR-19) | Tools the AI uses on other services | The server's token, sent to the provider |
 | Anthropic docs | `GET https://platform.claude.com/docs/en/about-claude/pricing.md` | Model prices, with the model list (ADR-18) | none |
 | OpenAI docs | `GET https://developers.openai.com/api/docs/models/<model>.md` | The selected OpenAI model's window and prices, once a day (ADR-18) | none |
 

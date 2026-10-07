@@ -1,5 +1,6 @@
 import { cachedCatalog, catalogIdentity } from "./model-catalog";
 import { compactThreshold } from "../agent/compaction";
+import { activeServers, openaiMcpTools } from "./mcp";
 import type {
   ChatSettings,
   UnifiedMessage,
@@ -75,6 +76,8 @@ export async function sendOpenAIMessage(
 
   const apiTools = functionTools(tools);
   if (settings.enableWebSearch) apiTools.push({ type: "web_search" });
+  // Remote MCP servers, connected by OpenAI (ADR-19).
+  apiTools.push(...openaiMcpTools(activeServers(settings)));
   if (apiTools.length > 0) body.tools = apiTools;
 
   // Always send instructions (system prompt) since previous_response_id

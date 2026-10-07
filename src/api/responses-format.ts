@@ -7,6 +7,7 @@ import type { ContentBlock, FileAttachment, ImageAttachment, Provider, ProviderR
 import { withoutOldToolImages } from "../agent/history";
 import { fileAsText, isSentAsFile } from "../files/attachments";
 import { afterCompaction } from "../agent/compaction";
+import { openaiServerCalls, withServerCalls } from "./mcp";
 import { streamSSE, type StreamResult } from "./stream";
 import { StreamCutError } from "./errors";
 import { isRecord } from "../json";
@@ -207,6 +208,8 @@ export function fromResponsesOutput(
     usage: usage ? responsesUsage(usage) : undefined,
     // Server-side compaction: its item is encrypted, so no readable summary (ADR-18).
     ...(output.some((item) => item.type === "compaction") ? { compaction: {} } : {}),
+    // Tools OpenAI called on MCP servers (ADR-19).
+    ...withServerCalls(openaiServerCalls(output)),
   };
 }
 

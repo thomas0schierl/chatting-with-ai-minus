@@ -16,6 +16,7 @@ import { errorKind, resetProviderState, sendMessage } from "../api/client";
 import { lastChunkAt } from "../api/stream";
 import { catalogModel, loadModelDetails } from "../api/model-catalog";
 import { chatgptCompacts } from "../api/chatgpt-oauth";
+import { serverToolName } from "../api/mcp";
 import { StreamCutError } from "../api/errors";
 import { appLifecycle } from "../platform/lifecycle";
 import { TOOL_DEFINITIONS } from "../tools/registry";
@@ -540,6 +541,12 @@ export class AgentLoop {
       }
 
       if (isStopped()) return;
+
+      // Tools the provider called on MCP servers: shown as steps, not run here (ADR-19).
+      for (const call of response.serverCalls ?? []) {
+        callbacks.onToolCall(serverToolName(call), call.input);
+        callbacks.onToolResult(serverToolName(call), { result: call.result, isError: call.isError });
+      }
 
       // Do not execute or persist truncated tool arguments as a completed call.
       if (response.stopReason === "max_tokens") {

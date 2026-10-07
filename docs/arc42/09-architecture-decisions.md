@@ -498,3 +498,33 @@
     refused as too long.
   - Whether the ChatGPT route accepts `context_management` is checked live
     (§11).
+
+## ADR-19: MCP servers through the provider (remote servers only)
+
+- **Context:** users want the AI to reach other tools (issue trackers,
+  calendars) through MCP. A client in the plugin would need the MCP
+  protocol, its transports and OAuth on desktop and mobile, and a local
+  stdio server can't run on a phone. Anthropic (MCP connector, beta
+  `mcp-client-2025-11-20`) and OpenAI (the `mcp` tool of the Responses
+  API) connect to remote servers themselves; the ChatGPT plan's route
+  doesn't ("hosted MCP/connectors" are unsupported, siwc *Preview
+  limitations*).
+- **Decision:**
+  - Settings keep a list of remote servers: a name, a public https
+    address, an optional token (SecretStorage only), on or off.
+  - Requests with an Anthropic or OpenAI API key name the servers that are
+    on: Anthropic `mcp_servers` with one `mcp_toolset` each, OpenAI one
+    `mcp` tool each with `require_approval: "never"`. The provider lists
+    and calls the tools; the plugin shows each call as a tool step ("Used
+    create_issue on linear") from the answer's `mcp_tool_use` and
+    `mcp_tool_result` blocks or `mcp_call` items, which are replayed as
+    the provider sent them.
+  - Not for the ChatGPT plan; no local (stdio) servers, no client in the
+    plugin, no approval step.
+- **Consequences:**
+  - Servers must be reachable from the provider (public https); tokens
+    are sent to the provider with each request, which passes them on.
+  - Tools run without asking: the settings say to add only trusted
+    servers.
+  - A token that expires has to be pasted again (no OAuth flow in the
+    plugin).

@@ -1,5 +1,6 @@
 import { ANTHROPIC_MAX_TOKENS, anthropicThinking, cachedCatalog, catalogIdentity, catalogModel } from "./model-catalog";
 import { afterCompaction, compactThreshold } from "../agent/compaction";
+import { ANTHROPIC_MCP_BETA, activeServers, anthropicMcp, anthropicServerCalls, withServerCalls } from "./mcp";
 import type {
   ChatSettings,
   UnifiedMessage,
@@ -97,6 +98,15 @@ export async function sendAnthropicMessage(
     body.tools = apiTools;
   }
 
+  // Remote MCP servers, connected by Anthropic (ADR-19).
+  const servers = activeServers(settings);
+  if (servers.length) {
+    const mcp = anthropicMcp(servers);
+    body.mcp_servers = mcp.mcp_servers;
+    body.tools = [...Array.isArray(body.tools) ? body.tools as Record<string, unknown>[] : [], ...mcp.toolsets];
+    betas.push(ANTHROPIC_MCP_BETA);
+  }
+
   const collected = collectAnthropicStream(stream.onTextDelta);
   const response = await streamSSE(ANTHROPIC_API_URL, {
     headers: {
@@ -131,6 +141,7 @@ export async function sendAnthropicMessage(
     stopReason: normalizeStopReason(data.stop_reason),
     usage: data.usage,
     ...compactionOf(data.content),
+    ...withServerCalls(anthropicServerCalls(data.content)),
   };
 }
 
@@ -229,7 +240,7 @@ function collectAnthropicStream(onTextDelta?: (text: string) => void): {
             }
           }
           // A server_tool_use may start without `input`; replay needs one.
-          if (block && (block.type === "tool_use" || block.type === "server_tool_use") && !isRecord(block.input)) block.input = {};
+          if (block && (block.type === "tool_use" || block.type === "server_tool_use" || block.type === "mcp_tool_use") && !isRecord(block.input)) block.input = {};
           break;
         }
         case "message_delta":

@@ -37,6 +37,11 @@ messages and the notes the AI reads go to that provider (see
 - **Mention notes:** type `@` or `[[` and pick a note, canvas or image;
   it goes into your message as a link, and its current content goes to
   the AI with the message, so it doesn't have to look it up first.
+- **MCP servers:** with an Anthropic or OpenAI API key, add remote MCP
+  servers (public https, optional token) in the settings; the provider
+  connects to them and the AI uses their tools, shown as steps in the
+  chat. They run without asking, so add only servers you trust. Not
+  available with the ChatGPT plan.
 - **Context and cost:** a small ring in the chat header shows how full
   the model's context is; click it for the tokens, the estimated cost of
   the chat and of the last answer (from the provider's list prices; the
@@ -242,7 +247,8 @@ doesn't contact search engines. There is no telemetry and no tracking.
 - **Voice:** while a voice conversation runs, your microphone audio and
   the last few chat messages (as text) go to OpenAI.
 - **API keys and ChatGPT tokens:** stored in your OS keychain, never in
-  plugin files.
+  plugin files. MCP server tokens too; they go to the provider with each
+  request, which connects to the server for you.
 - **Chat history:** all conversations are stored locally in
   `chat-state.json` in the plugin folder, with a copy in
   `chat-state.next.json` so an interrupted save loses nothing; deleting a
