@@ -76,6 +76,36 @@ test('The selected note can\'t be renamed, deleted or get new properties; other 
   assert.equal(files.get('Tasks.md'), 'New');
 });
 
+test('A selected text that also appears earlier: the selected copy changes (by its offset), the earlier stays', async () => {
+  const note = '## Monday\n- [ ] call Bob\n\n## Friday\n- [ ] call Bob\n';
+  const from = note.lastIndexOf('- [ ] call Bob');
+  const { app, files } = vault({ 'Review.md': note });
+  const scope = { filePath: 'Review.md', text: '- [ ] call Bob', from };
+  await run(app, 'edit_document', { path: 'Review.md', operation: 'find_replace', find: 'call Bob', content: 'call Bob about the quote' }, scope);
+  assert.equal(files.get('Review.md'), '## Monday\n- [ ] call Bob\n\n## Friday\n- [ ] call Bob about the quote\n');
+  // A second edit stays on the same copy.
+  await run(app, 'edit_document', { path: 'Review.md', operation: 'find_replace', find: '- [ ]', content: '- [x]' }, scope);
+  assert.equal(files.get('Review.md'), '## Monday\n- [ ] call Bob\n\n## Friday\n- [x] call Bob about the quote\n');
+});
+
+test('A folder the selected note is in can\'t be renamed or deleted', async () => {
+  const scope = { filePath: 'Projects/Plan.md', text: 'x' };
+  for (const [name, input] of [
+    ['delete_file', { path: 'Projects' }],
+    ['rename_file', { path: 'Projects/', new_path: 'Archive' }],
+    ['delete_file', { path: '/' }],
+  ]) {
+    const { app, files } = vault({ 'Projects/Plan.md': 'x', 'Projects': '' });
+    const result = await run(app, name, input, scope);
+    assert.match(result.result, /only that selection may change/, `${name} ${input.path}`);
+    assert.equal(files.has('touched'), false);
+  }
+  // A folder with a similar name is not the note's folder.
+  const { app } = vault({ 'Projects/Plan.md': 'x', 'Projects-old': '' });
+  const result = await run(app, 'delete_file', { path: 'Projects-old' }, scope);
+  assert.equal(result.isError, false);
+});
+
 test('A selection no longer in the note as selected (changed meanwhile) can\'t be edited', async () => {
   const { app, files } = vault({ 'Review.md': NOTE.replace('low contrast', 'contrast fixed') });
   const before = files.get('Review.md');

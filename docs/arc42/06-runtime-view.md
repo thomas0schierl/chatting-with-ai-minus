@@ -48,9 +48,12 @@ No network requests happen at start.
    that saving uses too. With a selection, the tools also enforce it for
    the turn (the instruction alone isn't always followed): on that note
    only `edit_document` `find_replace` with text from the selection runs,
-   applied to the selected occurrence, and the scope then holds the
+   applied to the selected occurrence (found at its saved offset, so a
+   repeated text elsewhere isn't mistaken for it; its first copy only if
+   the note changed there), and the scope then holds the
    changed text for later edits in the turn; a whole-note replace, an
-   insert, properties, rename and delete of that note are refused with a
+   insert, properties, rename and delete of that note (or of a folder it is
+   in) are refused with a
    message the model can act on. Other notes stay editable. A turn
    continued after a restart has no scope (it isn't saved).
 3. **Loop, up to the iteration limit:**

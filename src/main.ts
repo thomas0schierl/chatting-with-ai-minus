@@ -180,8 +180,7 @@ export default class ChatPlugin extends Plugin {
         const sel = editor.getSelection();
         if (!sel || sel.length === 0) return false;
         if (checking) return true;
-        const scope: SelectionScope = { text: sel, filePath: ctx.file?.path ?? "" };
-        void this.openChatWithSelection(scope);
+        void this.openChatWithSelection(selectionScope(editor, sel, ctx.file?.path ?? ""));
         return true;
       },
     });
@@ -210,10 +209,7 @@ export default class ChatPlugin extends Plugin {
             item
               .setTitle("Send selection to chat")
               .setIcon("message-circle")
-              .onClick(() => {
-                const scope: SelectionScope = { text: sel, filePath: info.file?.path ?? "" };
-                void this.openChatWithSelection(scope);
-              })
+              .onClick(() => void this.openChatWithSelection(selectionScope(editor, sel, info.file?.path ?? "")))
           );
         }
       })
@@ -667,6 +663,11 @@ export default class ChatPlugin extends Plugin {
   private get nextChatStatePath(): string {
     return `${this.pluginDataDir}/chat-state.next.json`;
   }
+}
+
+/** The editor's selection as a scope, with where it starts in the note. */
+function selectionScope(editor: Editor, text: string, filePath: string): SelectionScope {
+  return { text, filePath, from: editor.posToOffset(editor.getCursor("from")) };
 }
 
 /**

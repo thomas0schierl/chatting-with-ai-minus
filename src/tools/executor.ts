@@ -95,14 +95,23 @@ const scopeRefusal = (path: string): ToolResult => ({
 
 /** Refuses tools other than edit_document that would change the scoped note. */
 function scopeGuard(app: App, toolName: string, input: Record<string, unknown>, scope: SelectionScope): ToolResult | null {
-  let path: string | undefined;
   if (toolName === "rename_file" || toolName === "delete_file") {
+    // The note itself, or a folder it is in.
     const given = optionalString(input.path);
-    path = given ? normalizePath(given) : undefined;
-  } else if (toolName === "set_properties") {
-    path = resolveFile(app, optionalString(input.path))?.path;
+    const path = given === undefined ? undefined : normalizePath(given).replace(/\/+$/, "");
+    const touches = path !== undefined && (path === scope.filePath || path === "" || scope.filePath.startsWith(`${path}/`));
+    return touches ? scopeRefusal(scope.filePath) : null;
   }
-  return path === scope.filePath ? scopeRefusal(scope.filePath) : null;
+  if (toolName === "set_properties" && resolveFile(app, optionalString(input.path))?.path === scope.filePath) {
+    return scopeRefusal(scope.filePath);
+  }
+  return null;
+}
+
+/** Where the selection is in the note now: at its offset if still there, else its first copy; -1 if gone. */
+function selectionStart(data: string, scope: SelectionScope): number {
+  if (scope.from !== undefined && data.startsWith(scope.text, scope.from)) return scope.from;
+  return data.indexOf(scope.text);
 }
 
 /**
@@ -114,7 +123,7 @@ async function editInScope(app: App, file: TFile, scope: SelectionScope, find: s
   // Set in the callback; the cast keeps TypeScript from narrowing it to "done".
   let outcome = "done" as "done" | "outside" | "lost";
   await app.vault.process(file, (data) => {
-    const start = data.indexOf(scope.text);
+    const start = selectionStart(data, scope);
     const at = scope.text.indexOf(find);
     if (start === -1 || at === -1) {
       outcome = start === -1 ? "lost" : "outside";
@@ -122,6 +131,7 @@ async function editInScope(app: App, file: TFile, scope: SelectionScope, find: s
     }
     const selected = scope.text;
     scope.text = selected.slice(0, at) + content + selected.slice(at + find.length);
+    scope.from = start;
     return data.slice(0, start) + scope.text + data.slice(start + selected.length);
   });
   if (outcome === "lost") {

@@ -163,6 +163,8 @@ export interface SelectionScope {
   text: string;
   /** Path to the file containing the selection */
   filePath: string;
+  /** Where the selection starts in the note (character offset), so a repeated text isn't mistaken for it. */
+  from?: number;
 }
 
 // ─── Chat View History ──────────────────────────────────────────────────────
