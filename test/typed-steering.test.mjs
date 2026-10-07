@@ -47,6 +47,24 @@ test('Sent during a turn without another step: runs as the next turn once the an
   assert.deepEqual(plugin.chatHistory.filter((e) => e.type === 'assistant').map((e) => e.text), ['First.', 'Second.']);
 });
 
+test('Clear during a turn drops what was added: no queued chips, nothing runs in the cleared chat', async () => {
+  const { view, chat, plugin } = await chatSetup('anthropic');
+  let releaseFirst;
+  const requests = transport((body, index) => index === 0
+    ? new Promise((resolve) => { releaseFirst = () => resolve(response('anthropic', [text('First.')])); })
+    : response('anthropic', [text('Should not run.')]));
+  const turn = view.handleUserMessage('First', null);
+  while (!releaseFirst) await tick();
+  await view.handleUserMessage('Also this', null);
+  view.handleClear();
+  assert.deepEqual(chat.queued, []);
+  releaseFirst();
+  await turn;
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(requests.length, 1);
+  assert.deepEqual(plugin.chatHistory, []);
+});
+
 test('Stop drops what was added; nothing runs afterwards', async () => {
   const { view, chat } = await chatSetup('anthropic');
   let started = false;

@@ -682,11 +682,15 @@ export class ObsidianChatView extends ItemView {
     return later;
   }
 
-  private stopTurn(): void {
-    // Stop drops what was added to the turn, as it drops the turn.
+  /** Drop what was added to the running turn (Stop, Clear drop the turn too). */
+  private dropQueued(): void {
     this.queued = [];
     this.unsteered = [];
     this.chatContainer?.setQueued([]);
+  }
+
+  private stopTurn(): void {
+    this.dropQueued();
     this.plugin.agent.abort();
     this.endStream(true);
     this.running = false;
@@ -713,6 +717,7 @@ export class ObsidianChatView extends ItemView {
   private handleClear(): void {
     this.endVoice();
     this.dismissContinue();
+    this.dropQueued();
     this.plugin.agent.clear();
     this.streaming = null;
     this.plugin.chatHistory = [];
