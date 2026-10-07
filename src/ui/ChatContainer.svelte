@@ -4,10 +4,10 @@
   import { onDestroy } from "svelte";
   import type { ToolResult, SelectionScope, ImageAttachment, ConversationSummary, ChatErrorKind } from "../types";
   import { normalizeMathMarkdown } from "./math-markdown";
-  import { toolLabel } from "./tool-label";
+  import { fileLabel, toolLabel } from "./tool-label";
   import { USAGE_URL } from "../auth/chatgptOAuth";
   import type { VoiceViewState } from "../voice/controller";
-  import type { VoiceAction } from "./chat-view";
+  import type { ChangesState, VoiceAction } from "./chat-view";
 
   const MAX_IMAGE_COUNT = 4;
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -21,7 +21,7 @@
 
   interface ChatMessage {
     id: number;
-    type: "user" | "assistant" | "tool-call" | "tool-result" | "error" | "thinking";
+    type: "user" | "assistant" | "tool-call" | "tool-result" | "error" | "thinking" | "changes";
     text?: string;
     images?: ImageAttachment[];
     toolName?: string;
@@ -34,6 +34,9 @@
     streaming?: boolean;
     /** Error messages shown in their own way. */
     errorKind?: ChatErrorKind;
+    /** Changes rows: the files a turn changed, and whether it can be undone. */
+    files?: string[];
+    changesState?: ChangesState;
   }
 
   /** Header, title and voice button are set through setModel, setTitle and setVoiceAvailable. */
@@ -55,12 +58,14 @@
     onContinue: () => void;
     /** The eye button: follow the AI's edits on or off. */
     onToggleFollow: () => void;
+    /** Undo the vault changes of turn `turnId`. */
+    onUndo: (turnId: string) => void;
   }
 
   let {
     app, component, onSend, onClear, onStop, onEdit, onRegenerate, onCopy,
     onNewChat, listConversations, onOpenConversation, onRenameConversation, onDeleteConversation,
-    onVoice, onContinue, onToggleFollow,
+    onVoice, onContinue, onToggleFollow, onUndo,
   }: Props = $props();
 
   /** A turn was cut off when Obsidian was ended (ADR-15): offer Continue. */
@@ -440,6 +445,22 @@
 
   export function addError(text: string, kind?: ChatErrorKind): void {
     messages.push({ id: nextId++, type: "error", text, ...(kind ? { errorKind: kind } : {}) });
+  }
+
+  /** The row of files a turn changed, at the end of its turn. */
+  export function addChanges(turnId: string, files: string[], state: ChangesState): void {
+    messages.push({ id: nextId++, type: "changes", turnId, files, changesState: state });
+  }
+
+  export function setChangesUndone(turnId: string): void {
+    const row = messages.find((m) => m.type === "changes" && m.turnId === turnId);
+    if (row) row.changesState = "undone";
+  }
+
+  /** Open a changed file (one that no longer exists is left alone). */
+  function openChanged(path: string): void {
+    const file = app.vault.getFileByPath(path);
+    if (file) void app.workspace.getLeaf(false).openFile(file);
   }
 
   /** The next input answers an `ask_user` question (the view shows the question). */
@@ -1031,6 +1052,27 @@
             {/if}
           </div>
         </details>
+
+      {:else if msg.type === "changes"}
+        {@const files = msg.files ?? []}
+        <!-- What the answer changed, with Undo (while Obsidian runs) -->
+        <div class="chatting-minus-changes" class:is-undone={msg.changesState === "undone"}>
+          <svg class="chatting-minus-tool-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path></svg>
+          <span class="chatting-minus-changes-label" title={files.join("\n")}>
+            {msg.changesState === "undone" ? "Undid the changes to" : "Changed"}
+            {#each files as path, i (path)}{i ? ", " : " "}<button type="button" class="chatting-minus-changes-file" onclick={() => openChanged(path)}>{fileLabel(path)}</button>{/each}
+          </span>
+          {#if msg.changesState === "undoable" && msg.turnId}
+            {@const turnId = msg.turnId}
+            <button
+              class="chatting-minus-changes-undo"
+              type="button"
+              disabled={busy}
+              onclick={() => onUndo(turnId)}
+              title="Put these files back as they were before this answer"
+            >Undo</button>
+          {/if}
+        </div>
 
       {:else if msg.type === "error" && msg.errorKind === "stopped"}
         <!-- Stop before any of the answer arrived: a quiet note, not an error -->
@@ -1746,6 +1788,56 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* ─── Changes of an answer (undo) ───────────────────────────────────── */
+  .chatting-minus-changes {
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 4px 4px 4px 6px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+  }
+
+  .chatting-minus-changes-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chatting-minus-changes.is-undone .chatting-minus-changes-label {
+    color: var(--text-faint);
+  }
+
+  /* File names look like links */
+  .chatting-minus-changes-file {
+    all: unset;
+    color: var(--text-accent);
+    cursor: pointer;
+  }
+
+  .chatting-minus-changes-file:hover {
+    text-decoration: underline;
+  }
+
+  .chatting-minus-changes.is-undone .chatting-minus-changes-file {
+    color: inherit;
+    text-decoration: line-through;
+  }
+
+  .chatting-minus-changes-undo {
+    flex-shrink: 0;
+    padding: 0 8px;
+    height: auto;
+    font-size: var(--font-ui-smaller);
+    box-shadow: none;
   }
 
   .chatting-minus-stopped-note {

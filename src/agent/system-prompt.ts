@@ -83,6 +83,8 @@ export function buildContextMessage(context: ConversationContext): string {
     parts.push(voiceTranscriptText(context.voiceTranscript));
   }
 
+  for (const note of context.notes ?? []) parts.push(note);
+
   parts.push("]");
 
   return parts.join(" ");

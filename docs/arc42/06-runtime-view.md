@@ -132,7 +132,8 @@ result.
   finds no response to chain to for the new array and replays in full,
   without `previous_response_id`; chaining resumes with the next turn.
 - **Not undone:** notes the AI created or changed after that point stay as
-  they are. The removed continuation is gone; there are no branches.
+  they are (Undo on an answer's changes row takes them back, see below).
+  The removed continuation is gone; there are no branches.
 - **Saved without IDs:** each turn added one user entry and one turn
   start, so the migration to version 2 (`assignLegacyTurnIds()`) pairs
   them from the end. Where one
@@ -141,6 +142,30 @@ result.
 **Copy:** the action under each finished answer copies its Markdown
 source (the text as received, before math conversion) and shows
 "Copied". Answers still streaming have no actions.
+
+## Undoing an answer's changes (`tools/undo.ts`)
+
+1. **Record:** each turn gets a `ChangeLog` (in the agent callbacks). The
+   tools add each successful change: `edit_document`, `set_properties`
+   and `edit_canvas` the text before and after; `create_file` the new
+   file; `rename_file` both paths; `delete_file` first reads the file's
+   bytes (a folder's files and subfolders too).
+2. **Show:** a turn with changes (also a stopped one) ends in a changes
+   entry, `{ type: "changes", turnId, files }`, saved with the chat:
+   "Changed Plan, Ideas" with **Undo**. It goes before a later turn that
+   started meanwhile. The log itself is kept in `plugin.changeLogs` (in
+   memory): after Obsidian restarts the row shows without Undo.
+3. **Undo** (not while a turn runs): files whose state differs from what
+   the answer left (the user or a later answer changed them) are named in
+   a dialog first; *Cancel* changes nothing. Then the steps are taken back,
+   last first: text written back, created files to the trash, renames
+   renamed back (links in other notes follow), deleted files created again
+   with their folders. What fails is named in a notice.
+4. **Tell the model:** the row shows "Undid the changes to …"; the
+   conversation keeps a note (`notes`, saved) that goes into the context
+   prefix of the next turn only.
+
+Undo applies to the vault only; the answer stays in the chat.
 
 ## Conversations
 

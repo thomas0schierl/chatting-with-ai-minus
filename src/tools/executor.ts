@@ -4,6 +4,7 @@ import { changedRange, showInView } from "../ui/show-in-view";
 import { isRecord } from "../json";
 import { applyCanvasOperations, canvasSearchTexts, describeCanvas, isCanvasPath, parseCanvas, serializeCanvas } from "./canvas";
 import { renderCanvas, shortIds } from "./canvas-render";
+import type { ChangeLog } from "./undo";
 import { createCanvasElement, decodeImage, encodeCanvas, extensionOf, fitImage, formatBytes, imageMediaType, isImagePath } from "../images";
 
 /** Files read_file refuses because their text would be useless to the model. */
@@ -23,13 +24,15 @@ type AskUserCallback = (question: string) => Promise<string>;
  * - vault.process() for atomic edits
  * - fileManager.renameFile() for link-aware renames
  * - fileManager.trashFile() for safe deletes
+ * Changes to the vault are recorded in `changes` (undo per answer).
  */
 export async function executeTool(
   app: App,
   toolName: string,
   input: Record<string, unknown>,
   onAskUser: AskUserCallback,
-  scope?: SelectionScope
+  scope?: SelectionScope,
+  changes?: ChangeLog
 ): Promise<ToolResult> {
   if (Object.prototype.hasOwnProperty.call(input, "_raw")) {
     return { result: "Invalid tool arguments: provide a valid JSON object and retry.", isError: true };
@@ -41,7 +44,7 @@ export async function executeTool(
       case "read_document":
         return await readDocument(app, input);
       case "edit_document":
-        return await editDocument(app, input, scope);
+        return await editDocument(app, input, scope, changes);
       case "search_vault":
         return await searchVault(app, input);
       case "read_file":
@@ -53,19 +56,19 @@ export async function executeTool(
       case "view_canvas":
         return await viewCanvas(app, input);
       case "edit_canvas":
-        return await editCanvas(app, input);
+        return await editCanvas(app, input, changes);
       case "create_file":
-        return await createFile(app, input);
+        return await createFile(app, input, changes);
       case "list_files":
         return await listFiles(app, input);
       case "rename_file":
-        return await renameFile(app, input);
+        return await renameFile(app, input, changes);
       case "delete_file":
-        return await deleteFile(app, input);
+        return await deleteFile(app, input, changes);
       case "get_properties":
         return await getProperties(app, input);
       case "set_properties":
-        return await setProperties(app, input);
+        return await setProperties(app, input, changes);
       case "get_backlinks":
         return await getBacklinks(app, input);
       case "get_current_datetime":
@@ -220,7 +223,8 @@ async function readDocument(
 async function editDocument(
   app: App,
   input: Record<string, unknown>,
-  scope?: SelectionScope
+  scope: SelectionScope | undefined,
+  changes: ChangeLog | undefined
 ): Promise<ToolResult> {
   const operation = requiredString(input.operation);
   // A missing `content` must not become "": replace_all would blank the
@@ -242,20 +246,23 @@ async function editDocument(
   if (scope && file.path === scope.filePath) {
     if (operation !== "find_replace") return scopeRefusal(file.path);
     if (!find) return { result: "'find' parameter is required for find_replace.", isError: true };
-    return await withChange(app, file, () => editInScope(app, file, scope, find, content));
+    return await withChange(app, file, changes, () => editInScope(app, file, scope, find, content));
   }
-  return await withChange(app, file, () => applyEdit(app, file, operation, content, find, position));
+  return await withChange(app, file, changes, () => applyEdit(app, file, operation, content, find, position));
 }
 
 /**
- * Runs a change to `file` and adds what changed (`focus`) to its result,
- * for showing it to the user (`ui/show-in-view.ts`).
+ * Runs a change to `file`, records it for undo and adds what changed
+ * (`focus`, unless the change set its own) to its result, for showing it
+ * to the user (`ui/show-in-view.ts`).
  */
-async function withChange(app: App, file: TFile, change: () => Promise<ToolResult>): Promise<ToolResult> {
+async function withChange(app: App, file: TFile, changes: ChangeLog | undefined, change: () => Promise<ToolResult>): Promise<ToolResult> {
   const before = await app.vault.cachedRead(file);
   const result = await change();
   if (result.isError) return result;
-  const range = changedRange(before, await app.vault.cachedRead(file));
+  const after = await app.vault.cachedRead(file);
+  changes?.edited(file.path, before, after);
+  const range = result.focus ? null : changedRange(before, after);
   return range ? { ...result, focus: { path: file.path, ...range } } : result;
 }
 
@@ -522,7 +529,8 @@ async function viewCanvas(
 
 async function editCanvas(
   app: App,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  changes: ChangeLog | undefined
 ): Promise<ToolResult> {
   const file = resolveCanvas(app, requiredString(input.path));
   if ("isError" in file) return file;
@@ -530,6 +538,10 @@ async function editCanvas(
   if (!Array.isArray(operations) || operations.length === 0) {
     return { result: "'operations' must be a non-empty array.", isError: true };
   }
+  return await withChange(app, file, changes, () => applyCanvasEdit(app, file, operations));
+}
+
+async function applyCanvasEdit(app: App, file: TFile, operations: unknown[]): Promise<ToolResult> {
 
   const fileExists = (path: string) => app.vault.getFileByPath(normalizePath(path)) !== null;
   let summary: string[] = [];
@@ -562,7 +574,8 @@ async function editCanvas(
 
 async function createFile(
   app: App,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  changes: ChangeLog | undefined
 ): Promise<ToolResult> {
   const path = normalizePath(requiredString(input.path));
   const content = requiredString(input.content);
@@ -577,6 +590,7 @@ async function createFile(
 
   await ensureParentFolder(app, path);
   await app.vault.create(path, content || "");
+  changes?.created(path, content || "");
   return { result: `Created ${path}.`, isError: false, focus: { path, from: 0, to: (content || "").length } };
 }
 
@@ -617,7 +631,8 @@ async function listFiles(
 
 async function renameFile(
   app: App,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  changes: ChangeLog | undefined
 ): Promise<ToolResult> {
   const path = requiredString(input.path);
   const newPath = requiredString(input.new_path);
@@ -640,13 +655,16 @@ async function renameFile(
   await ensureParentFolder(app, normalizedNew);
 
   // fileManager.renameFile() updates all internal links automatically
+  const from = file.path;
   await app.fileManager.renameFile(file, normalizedNew);
+  changes?.renamed(from, normalizedNew);
   return { result: `Renamed ${path} to ${normalizedNew}.`, isError: false };
 }
 
 async function deleteFile(
   app: App,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  changes: ChangeLog | undefined
 ): Promise<ToolResult> {
   const path = requiredString(input.path);
   if (!path) {
@@ -658,7 +676,8 @@ async function deleteFile(
     return { result: `File not found: ${path}`, isError: true };
   }
 
-  // fileManager.trashFile() respects the user's file deletion preference.
+  // Kept for undo first; trashFile() respects the user's deletion preference.
+  await changes?.deleting(app, file);
   await app.fileManager.trashFile(file);
   return { result: `Moved ${path} to trash.`, isError: false };
 }
@@ -689,7 +708,8 @@ async function getProperties(
 
 async function setProperties(
   app: App,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  changes: ChangeLog | undefined
 ): Promise<ToolResult> {
   const props = requiredRecord(input.properties);
   if (!props) {
@@ -702,7 +722,7 @@ async function setProperties(
     return { result: path ? `File not found: ${path}` : "No active document open.", isError: true };
   }
 
-  return await withChange(app, file, async () => {
+  return await withChange(app, file, changes, async () => {
     // Use Obsidian's built-in processFrontMatter for safe YAML handling
     await app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
       for (const [key, value] of Object.entries(props)) {

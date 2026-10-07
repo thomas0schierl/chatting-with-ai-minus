@@ -4,6 +4,8 @@ import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
 import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry, VoiceTurn, ViewTarget } from "../types";
 import { showInView } from "./show-in-view";
+import { confirmUndo } from "./undo-confirm";
+import { ChangeLog } from "../tools/undo";
 import { voiceTranscriptText } from "../agent/system-prompt";
 import { newTurnId } from "../agent/history";
 import { savedToolInput } from "../chat-state";
@@ -51,7 +53,12 @@ interface ChatContainerApi extends Record<string, unknown> {
   setFollowEdits(on: boolean): void;
   /** Offer Continue for a turn that was cut off (ADR-15). */
   setContinue(show: boolean): void;
+  /** The row of files a turn changed; "kept": its undo was lost when Obsidian closed. */
+  addChanges(turnId: string, files: string[], state: ChangesState): void;
+  setChangesUndone(turnId: string): void;
 }
+
+export type ChangesState = "undoable" | "undone" | "kept";
 
 /**
  * Chat view for Chatting with AI Minus.
@@ -167,6 +174,7 @@ export class ObsidianChatView extends ItemView {
         onVoice: (action: VoiceAction) => this.handleVoice(action),
         onContinue: () => void this.continueTurn(),
         onToggleFollow: () => void this.toggleFollow(),
+        onUndo: (turnId: string) => void this.undoChanges(turnId),
       },
     }) as ChatContainerApi;
     this.chatContainer = chat;
@@ -218,6 +226,12 @@ export class ObsidianChatView extends ItemView {
         break;
       case "error":
         chat.addError(entry.text ?? "", entry.errorKind);
+        break;
+      case "changes":
+        if (entry.turnId) {
+          const state = entry.undone ? "undone" : this.plugin.changeLogs.has(entry.turnId) ? "undoable" : "kept";
+          chat.addChanges(entry.turnId, entry.files ?? [], state);
+        }
         break;
     }
   }
@@ -502,9 +516,13 @@ export class ObsidianChatView extends ItemView {
     }
     this.append(this.plugin.chatHistory, { type: "user", text, images, turnId, ...(selection ? { selection } : {}) });
     this.plugin.touchConversation();
-    chat.setTitle(this.plugin.activeConversation.title);
+    const conversation = this.plugin.activeConversation;
+    chat.setTitle(conversation.title);
+    // Told once, with this turn.
+    const notes = conversation.notes ?? [];
+    delete conversation.notes;
     await this.runTurn(turnId, (callbacks) =>
-      this.plugin.agent.run(text, callbacks, selection, images, turnId, { voice: !!voice, voiceTranscript: voiceContext }), voice);
+      this.plugin.agent.run(text, callbacks, selection, images, turnId, { voice: !!voice, voiceTranscript: voiceContext, notes }), voice);
   }
 
   /**
@@ -547,9 +565,11 @@ export class ObsidianChatView extends ItemView {
 
     const toolCalls = new Map<string, { id: number; input: Record<string, unknown> }>();
     this.streaming = null;
+    const changes = new ChangeLog();
 
     try {
       await start({
+        changes,
         onThinking: () => {
           this.endStream(false);
           chat.showThinking();
@@ -633,6 +653,7 @@ export class ObsidianChatView extends ItemView {
     } finally {
       releaseScreen();
       if (conversation.pendingTurn?.turnId === turnId) delete conversation.pendingTurn;
+      if (!changes.isEmpty()) this.addChanges(history, turnId, changes);
       // A stopped turn can end after a newer one has started (edit, or Stop
       // and send again); only the latest turn ends the running state.
       if (turn === this.turnCount) {
@@ -700,6 +721,53 @@ export class ObsidianChatView extends ItemView {
     this.chatContainer?.setQueued([]);
   }
 
+  // ─── Undo per answer ────────────────────────────────────────────────
+  // A turn that changed the vault ends in a row listing its files, with
+  // Undo while Obsidian runs (the snapshots are kept in memory only).
+
+  /**
+   * Add turn `turnId`'s changes row at the end of its turn: at the end of
+   * `history`, or before a later turn that started meanwhile (Stop, then
+   * send again).
+   */
+  private addChanges(history: ChatHistoryEntry[], turnId: string, changes: ChangeLog): void {
+    this.plugin.changeLogs.set(turnId, changes);
+    const entry: ChatHistoryEntry = { type: "changes", turnId, files: changes.files() };
+    const start = history.findIndex((item) => item.type === "user" && item.turnId === turnId);
+    const later = history.findIndex((item, i) => i > start && item.type === "user" && !!item.turnId && item.turnId !== turnId);
+    const shown = history === this.plugin.chatHistory;
+    if (later === -1) {
+      history.push(entry);
+      if (shown) this.render(entry);
+    } else {
+      history.splice(later, 0, entry);
+      if (shown) this.renderHistory();
+    }
+  }
+
+  /**
+   * Undo the vault changes of turn `turnId`. Files changed since (by the
+   * user or a later answer) are named first and change back only if the
+   * user agrees. The model is told with the next turn.
+   */
+  async undoChanges(turnId: string): Promise<void> {
+    const log = this.plugin.changeLogs.get(turnId);
+    const entry = this.plugin.chatHistory.find((item) => item.type === "changes" && item.turnId === turnId);
+    if (!log || !entry || entry.undone || this.running) return;
+    const app = this.plugin.app;
+    const changed = await log.conflicts(app);
+    if (changed.length && !await confirmUndo(app, changed)) return;
+    const failed = await log.undo(app);
+    this.plugin.changeLogs.delete(turnId);
+    entry.undone = true;
+    const conversation = this.plugin.activeConversation;
+    const files = (entry.files ?? []).join(", ");
+    conversation.notes = [...conversation.notes ?? [], `The user undid the changes of one of your earlier answers in this chat: ${files} are back as they were before that answer.`];
+    this.chatContainer?.setChangesUndone(turnId);
+    if (failed.length) new Notice(`Couldn't undo all changes:\n${failed.join("\n")}`);
+    void this.plugin.saveChatHistory();
+  }
+
   /** Edits shown one after another, in the order the AI made them. */
   private following: Promise<unknown> = Promise.resolve();
 
@@ -740,6 +808,7 @@ export class ObsidianChatView extends ItemView {
     this.plugin.agent.clear();
     this.streaming = null;
     this.plugin.chatHistory = [];
+    delete this.plugin.activeConversation.notes;
     this.plugin.touchConversation();
     this.chatContainer?.setTitle(this.plugin.activeConversation.title);
     this.chatContainer?.clearMessages();

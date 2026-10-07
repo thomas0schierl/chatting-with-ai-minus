@@ -43,6 +43,11 @@ messages and the notes the AI reads go to that provider (see
   own tab stays as it is; that tab closes with Obsidian. On by default; switch it with the eye button in the chat
   header or in the settings. Ask "show me …" and the AI opens a note at a
   passage or a canvas at a card for you.
+- **Undo an answer's changes:** an answer that changed files ends in a
+  row naming them; **Undo** puts them back as they were before it
+  (created files go to the trash, renamed ones get their name back,
+  deleted ones return). If a file changed since, you're asked first.
+  Available until Obsidian closes.
 - **Enter sends message:** on by default (Shift+Enter starts a new line).
   Turn it off in the settings to make Enter start a new line; then send
   with the send button or Ctrl+Enter (Cmd+Enter on a Mac).

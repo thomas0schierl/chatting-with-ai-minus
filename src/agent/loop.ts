@@ -246,7 +246,8 @@ export class AgentLoop {
   /**
    * Run one user turn through the agentic loop; `turnId` marks where it
    * starts. `voice`: the turn comes from a voice conversation (its context
-   * asks for a short, speakable answer).
+   * asks for a short, speakable answer). `notes`: what the user did since
+   * the last turn (e.g. undid an answer's changes), for the model.
    */
   async run(
     userMessage: string,
@@ -254,7 +255,7 @@ export class AgentLoop {
     selection?: SelectionScope | null,
     images: ImageAttachment[] = [],
     turnId: string = newTurnId(),
-    { voice = false, voiceTranscript = [] }: { voice?: boolean; voiceTranscript?: VoiceTurn[] } = {}
+    { voice = false, voiceTranscript = [], notes = [] }: { voice?: boolean; voiceTranscript?: VoiceTurn[]; notes?: string[] } = {}
   ): Promise<void> {
     const version = ++this.runVersion;
     this.voiceTurn = voice;
@@ -263,7 +264,7 @@ export class AgentLoop {
     const turnSettings = { ...this.settings };
 
     // Build context once per user turn and prepend to the user message
-    const context = buildContext(this.app, voice, voiceTranscript);
+    const context = { ...buildContext(this.app, voice, voiceTranscript), ...(notes.length ? { notes } : {}) };
     const contextPrefix = buildContextMessage(context);
 
     // If there's a selection, inject it as scoped context
@@ -442,7 +443,8 @@ export class AgentLoop {
             tc.name!,
             tc.input!,
             callbacks.onAskUser,
-            this.scope ?? undefined
+            this.scope ?? undefined,
+            callbacks.changes
           );
 
         if (isStopped()) return;

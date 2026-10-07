@@ -8,7 +8,9 @@ import { build } from 'esbuild';
 export const bundled = await build({
   stdin: { contents: `
     export { ChatSettingTab, getModelHeaderLabel, connectionTest } from './src/settings';
-    export { Setting, Platform } from 'obsidian';
+    export { Setting, Platform, TFile, TFolder } from 'obsidian';
+    export { ChangeLog } from './src/tools/undo';
+    export { UndoConfirmModal } from './src/ui/undo-confirm';
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';
     export { AgentLoop, RESUME } from './src/agent/loop';
@@ -73,7 +75,9 @@ export const bundled = await build({
       // Shown notices are recorded in globalThis.__notices.
       export class Notice { constructor(message) { (globalThis.__notices ??= []).push(message); } }
       export const Platform = { isDesktopApp: true, isMobile: false, isMobileApp: false, isIosApp: false, isAndroidApp: false };
-      export class TFile { constructor(path) { this.path = path; this.extension = 'md'; } }
+      export class TAbstractFile {}
+      export class TFile extends TAbstractFile { constructor(path) { super(); this.path = path; this.extension = path.split('.').pop(); } }
+      export class TFolder extends TAbstractFile { constructor(path, children = []) { super(); this.path = path; this.children = children; } }
       export const normalizePath = path => path;
       // GitHub (Codex version lookup) is answered here so provider mocks only
       // see provider requests; a test may set __githubRequest.
@@ -223,6 +227,8 @@ export function fakeChat() {
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle(value) { chat.title = value; }, setSelection() {}, getSelection: () => null,
     voice: null, voiceAvailable: false, continueShown: false,
     setContinue(value) { chat.continueShown = value; },
+    addChanges(turnId, files, state) { chat.shown.push({ id: nextId++, type: 'changes', turnId, files, changesState: state }); },
+    setChangesUndone(turnId) { const row = chat.shown.find(m => m.type === 'changes' && m.turnId === turnId); if (row) row.changesState = 'undone'; },
     setVoice(state) { chat.voice = state; }, setVoiceAvailable(value) { chat.voiceAvailable = value; }, setEnterSends(value) { chat.enterSends = value; }, setFollowEdits(value) { chat.followEdits = value; }, setQueued(texts) { chat.queued = texts; },
   };
   return chat;

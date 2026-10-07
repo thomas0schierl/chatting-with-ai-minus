@@ -37,6 +37,8 @@ export interface ConversationRecord {
    * (ADR-15).
    */
   pendingTurn?: PendingTurn;
+  /** For the model with the next turn: what the user did meanwhile (e.g. undid an answer's changes). */
+  notes?: string[];
 }
 
 /** The turn a conversation was running. */
@@ -101,6 +103,7 @@ export function migrateChatState(value: unknown): ChatState | null {
       const pendingTurn = isRecord(pending) && typeof pending.turnId === "string" && typeof pending.startedAt === "number"
         ? { turnId: pending.turnId, startedAt: pending.startedAt }
         : undefined;
+      const notes = arrayOf<unknown>(item.notes).filter((note): note is string => typeof note === "string");
       return {
         id: item.id as string,
         title: customTitle ? item.title as string : conversationTitle(chatHistory),
@@ -110,6 +113,7 @@ export function migrateChatState(value: unknown): ChatState | null {
         chatHistory,
         agentMessages: arrayOf<UnifiedMessage>(item.agentMessages),
         ...(pendingTurn ? { pendingTurn } : {}),
+        ...(notes.length ? { notes } : {}),
       };
     });
   if (conversations.length === 0) conversations.push(newConversation());

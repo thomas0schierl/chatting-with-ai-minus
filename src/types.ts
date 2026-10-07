@@ -151,6 +151,8 @@ export interface ConversationContext {
   voice?: boolean;
   /** What was said in the voice conversation since the last request (context for this one). */
   voiceTranscript?: VoiceTurn[];
+  /** What the user did since the last turn that the model should know (e.g. undid an answer's changes). */
+  notes?: string[];
 }
 
 /** One turn of a voice conversation: what the user or the voice said. */
@@ -174,10 +176,10 @@ export interface SelectionScope {
 
 /** One entry of the visible chat history (`plugin.chatHistory`). */
 export interface ChatHistoryEntry {
-  type: "user" | "assistant" | "tool-result" | "error";
+  type: "user" | "assistant" | "tool-result" | "error" | "changes";
   text?: string;
   images?: ImageAttachment[];
-  /** User entries: the turn's ID, shared with the agent history. */
+  /** User entries: the turn's ID, shared with the agent history; changes entries: their turn. */
   turnId?: string;
   /** User entries: the selection scope the turn ran with. */
   selection?: SelectionScope;
@@ -186,6 +188,10 @@ export interface ChatHistoryEntry {
   toolResult?: { result: string; isError: boolean };
   /** Error entries shown in their own way. */
   errorKind?: ChatErrorKind;
+  /** Changes entries (at the end of a turn): the files the turn changed. */
+  files?: string[];
+  /** Changes entries: the user undid them. */
+  undone?: boolean;
 }
 
 /** Errors the chat shows with their own message and actions. */
@@ -244,4 +250,6 @@ export interface AgentCallbacks {
    * is to be dropped.
    */
   onResuming?: () => void;
+  /** Where the turn's tools record their vault changes (undo per answer). */
+  changes?: import("./tools/undo").ChangeLog;
 }
