@@ -156,8 +156,9 @@
     conversation switch, a new chat, Clear or closing the view.
   - Android app (Obsidian 1.13.8, 2026-10-06, *Check device
     capabilities*): microphone and a WebRTC offer work; `fetch` to OpenAI
-    and Anthropic is allowed (CORS). A live call on the phone and the iOS
-    app are not verified yet.
+    and Anthropic is allowed (CORS). Live calls work on Android
+    (2026-10-06, incl. Bluetooth), and the official route with an OpenAI
+    API key was tested live on 2026-10-07. The iOS app is not verified yet.
 
 ## ADR-12: Stream chat answers with `fetch`, `requestUrl()` as fallback
 

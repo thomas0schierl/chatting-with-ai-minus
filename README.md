@@ -134,8 +134,8 @@ answers are billed as usual.
 - **Ending:** the **✕**, switching or starting a chat, Clear, or closing
   the chat panel.
 
-On Android the microphone and the voice connection work; a full voice
-conversation on a phone and iOS are not verified yet.
+Voice conversations are tested on desktop and Android (including a
+Bluetooth headset); iOS isn't verified yet.
 
 ## On a phone
 
