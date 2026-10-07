@@ -6,6 +6,7 @@
 import type { ContentBlock, ImageAttachment, Provider, ProviderReplay, StreamOptions, UnifiedMessage, UnifiedResponse, UnifiedToolDef } from "../types";
 import { withoutOldToolImages } from "../agent/history";
 import { streamSSE, type StreamResult } from "./stream";
+import { StreamCutError } from "./errors";
 import { isRecord } from "../json";
 
 /** The ChatGPT route takes function tools only inside a namespace; this is ours. */
@@ -74,7 +75,7 @@ export async function sendResponsesRequest(
   if (response.status < 200 || response.status >= 300) throw errors.http(response);
   const { data, failure } = collected.finish();
   if (failure) throw errors.stream(failure);
-  if (!data) throw new Error(`${name} stream ended without a completed response.`);
+  if (!data) throw new StreamCutError(name);
   return data;
 }
 

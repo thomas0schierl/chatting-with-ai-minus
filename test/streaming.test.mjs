@@ -188,8 +188,34 @@ test('A URL marked fetch-blocked tries fetch again after 10 minutes', async (t) 
 test('An incomplete stream is an error, not a partial answer', async () => {
   const events = streamEvents('anthropic', [text('Half an answer')]).filter(event => event.type !== 'message_stop');
   fakeFetch(() => streamedResponse(sseText(events)));
-  await assert.rejects(api.sendAnthropicMessage(settings('anthropic'), [{ role: 'user', content: 'Hi' }], [], 'System'), /ended before the message was complete/);
+  await assert.rejects(api.sendAnthropicMessage(settings('anthropic'), [{ role: 'user', content: 'Hi' }], [], 'System'), /ended before the answer was complete/);
 });
+
+for (const provider of ['anthropic', 'openai']) {
+  test(`${provider}: a stream cut off in the foreground is sent again ("Resuming…"), at most twice per turn`, async () => {
+    const { app } = vaultApp();
+    const whole = streamEvents(provider, [text('All good.')]);
+    const cut = whole.slice(0, whole.findIndex(event => event.type === 'response.completed' || event.type === 'message_stop'));
+    let requests = 0;
+    fakeFetch(() => streamedResponse(sseText(++requests === 1 ? cut : whole)));
+    const agent = new api.AgentLoop(app, settings(provider));
+    let resumed = 0;
+    const cb = callbacks({ onResuming() { resumed++; } });
+    await agent.run('Hi', cb);
+    assert.equal(requests, 2);
+    assert.equal(resumed, 1);
+    assert.deepEqual(cb.errors, []);
+    assert.deepEqual(cb.texts, ['All good.']);
+
+    // Cut every time: two resends, then the error.
+    requests = 0;
+    fakeFetch(() => { requests++; return streamedResponse(sseText(cut)); });
+    const failing = callbacks({ onResuming() {} });
+    await new api.AgentLoop(app, settings(provider)).run('Hi', failing);
+    assert.equal(requests, 3);
+    assert.match(failing.errors[0], /ended before the answer was complete/);
+  });
+}
 
 // ─── Stop ───────────────────────────────────────────────────────────────────
 

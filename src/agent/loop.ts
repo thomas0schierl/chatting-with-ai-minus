@@ -12,6 +12,7 @@ import type {
 } from "../types";
 import { errorKind, resetProviderState, sendMessage } from "../api/client";
 import { lastChunkAt } from "../api/stream";
+import { StreamCutError } from "../api/errors";
 import { appLifecycle } from "../platform/lifecycle";
 import { TOOL_DEFINITIONS } from "../tools/registry";
 import { executeTool } from "../tools/executor";
@@ -353,12 +354,14 @@ export class AgentLoop {
         } catch (e) {
           if (isStopped()) return;
           const msg = e instanceof Error ? e.message : String(e);
-          // Failed or given up while Obsidian was in the background: send
-          // the same request again once it's back (ADR-15). The history
-          // holds every completed step, so nothing runs twice.
-          if (resumes < RESUME.perTurn && appLifecycle.hiddenSince(startedAt)) {
+          // Failed or given up while Obsidian was in the background, or the
+          // stream was cut off (a dropped connection, no provider error):
+          // send the same request again, once Obsidian is visible (ADR-15).
+          // The history holds every completed step, so nothing runs twice.
+          const cut = e instanceof StreamCutError;
+          if (resumes < RESUME.perTurn && (cut || appLifecycle.hiddenSince(startedAt))) {
             resumes++;
-            debugLog(this.app, "API_RESUME", { error: msg, resume: resumes });
+            debugLog(this.app, "API_RESUME", { error: msg, resume: resumes, cut });
             await appLifecycle.whenVisible();
             if (isStopped()) return;
             callbacks.onResuming?.();

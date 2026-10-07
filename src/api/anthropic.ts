@@ -9,7 +9,7 @@ import type {
   StreamOptions,
 } from "../types";
 import { streamSSE } from "./stream";
-import { ProviderError } from "./errors";
+import { ProviderError, StreamCutError } from "./errors";
 import { canReplay } from "./responses-format";
 import { asRecord, getNestedString, isRecord } from "../json";
 import { withoutOldToolImages } from "../agent/history";
@@ -200,7 +200,7 @@ function collectAnthropicStream(onTextDelta?: (text: string) => void): {
     },
     finish: () => {
       if (failure) throw failure;
-      if (!message || !stopped) throw new Error("Anthropic stream ended before the message was complete.");
+      if (!message || !stopped) throw new StreamCutError("Anthropic");
       return { ...message, content: blocks.filter(Boolean) };
     },
   };

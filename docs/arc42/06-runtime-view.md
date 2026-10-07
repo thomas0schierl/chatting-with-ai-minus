@@ -319,7 +319,10 @@ is back and for how long. Leaving saves the chats.
 **A turn that was running** (`AgentLoop.loop()`):
 
 1. A request fails, and the app was in the background at some time since
-   it started (`hiddenSince(start)`); the turn wasn't stopped. In
+   it started (`hiddenSince(start)`), or its stream was cut off (it ended
+   before the provider said the answer was complete, with no provider
+   error: `StreamCutError`, e.g. a dropped connection, also in the
+   foreground); the turn wasn't stopped. In
    `api/stream.ts` a `fetch` that failed that way neither falls back to
    `requestUrl()` nor marks the URL fetch-blocked; it just fails.
 2. The loop waits for the app to return (`whenVisible()`), then calls
@@ -328,8 +331,7 @@ is back and for how long. Leaving saves the chats.
 3. It sends the same request again: same messages (the history holds every
    completed step, tool results included), no new user message, the same
    turn ID. At most 2 resumes per turn; after that the error shows as
-   usual. A request that fails while the app is in the foreground is an
-   error as before.
+   usual. Any other failure in the foreground is an error as before.
 4. **Stall** (mobile only): each request has its own abort controller.
    When the app returns while a request is open, the loop aborts that
    request if no data arrives for 10 s (from the return, or from its last

@@ -37,7 +37,7 @@ needed. They don't prove live-service or mobile behaviour.
 | `message-actions.test.mjs` | Edit, regenerate and copy through the chat view; Stop and Clear while `ask_user` waits. |
 | `provider-history.test.mjs` | History encoding and replay per provider (one replay rule), tool pairs, thinking parameters, model catalogs and caching, Anthropic web search. |
 | `stream-desktop.test.mjs` | Desktop streams through Node's `https` (errors, Stop); on mobile a blocked `fetch` switches only that URL. |
-| `streaming.test.mjs` | SSE parsing, rebuilt responses, the `requestUrl()` fallback and when `fetch` is skipped, Stop, the rate-limit retry. |
+| `streaming.test.mjs` | SSE parsing, rebuilt responses, the `requestUrl()` fallback and when `fetch` is skipped, Stop, the rate-limit retry, a cut-off stream sent again. |
 | `tools.test.mjs` | Every offered tool has a handler; `set_properties`; local date; selection quoting; saved settings checked on load. |
 | `view-tools.test.mjs` | `view_image`, `view_canvas` drawing, older tool images left out of requests. |
 | `voice-build.test.mjs` | The real build config: both voice routes in the bundle; all CSS in `styles.css`. |
