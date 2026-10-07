@@ -24,7 +24,9 @@ messages and the notes the AI reads go to that provider (see
 - **Three providers:** Anthropic (API key), OpenAI (API key), or sign in
   with your ChatGPT account.
 - **Works with your vault:** the AI can read, search, list, create, edit,
-  rename and trash notes, change frontmatter, find backlinks, read and edit
+  rename and trash notes, change frontmatter, find notes by tags and
+  properties ("my #project notes that are active, by due date"), find
+  backlinks, read and edit
   canvases, look at images and canvases, and ask you when something is
   unclear.
 - **Streaming:** answers appear as they're written; **Stop** ends one

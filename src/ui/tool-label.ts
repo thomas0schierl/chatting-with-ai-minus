@@ -22,6 +22,8 @@ const VERBS: Record<string, [string, string]> = {
   get_backlinks: ["Finding links to", "Found links to"],
   search_vault: ["Searching for", "Searched for"],
   list_files: ["Listing", "Listed"],
+  query_notes: ["Finding notes", "Found notes"],
+  list_metadata: ["Listing the tags and properties of", "Listed the tags and properties of"],
   rename_file: ["Renaming", "Renamed"],
   delete_file: ["Moving to the trash:", "Moved to the trash:"],
   get_current_datetime: ["Checking", "Checked"],
@@ -34,6 +36,18 @@ export function fileLabel(path: unknown): string {
   return name.replace(/\.md$/i, "");
 }
 
+/** query_notes' filters in words: "tagged #project, status active in Work". */
+function noteFilter(input: Record<string, unknown>): string {
+  const tags = Array.isArray(input.tags) ? input.tags.filter((tag): tag is string => typeof tag === "string") : [];
+  const properties = input.properties && typeof input.properties === "object" ? Object.entries(input.properties) : [];
+  const parts = [
+    ...(tags.length ? [`tagged ${tags.map((tag) => (tag.startsWith("#") ? tag : `#${tag}`)).join(input.match === "any" ? " or " : " ")}`] : []),
+    ...properties.map(([key, value]) => (value === null ? `with ${key}` : `${key} ${typeof value === "string" ? value : JSON.stringify(value)}`)),
+  ];
+  const folder = typeof input.folder === "string" && input.folder.trim() ? ` in ${fileLabel(input.folder)}` : "";
+  return `${parts.join(", ")}${folder}`;
+}
+
 /** What the tool works on, as the label names it. */
 function subject(name: string, input: Record<string, unknown>): string {
   switch (name) {
@@ -41,6 +55,10 @@ function subject(name: string, input: Record<string, unknown>): string {
       return `"${typeof input.query === "string" ? input.query : ""}"`;
     case "list_files":
       return typeof input.path === "string" && input.path.trim() ? fileLabel(input.path) : "the vault";
+    case "query_notes":
+      return noteFilter(input);
+    case "list_metadata":
+      return typeof input.folder === "string" && input.folder.trim() ? fileLabel(input.folder) : "the vault";
     case "rename_file":
       return `${fileLabel(input.path)} to ${fileLabel(input.new_path)}`;
     case "get_current_datetime":
@@ -58,7 +76,8 @@ export function toolLabel(name: string, input: Record<string, unknown> = {}, sta
   }
   const [present, past] = verbs;
   const what = subject(name, input);
-  if (state === "running") return `${present} ${what}…`;
-  if (state === "error") return `${present} ${what} failed`;
-  return `${past} ${what}`;
+  const [doing, done] = what ? [`${present} ${what}`, `${past} ${what}`] : [present, past];
+  if (state === "running") return `${doing}…`;
+  if (state === "error") return `${doing} failed`;
+  return done;
 }

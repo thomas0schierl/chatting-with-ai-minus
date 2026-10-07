@@ -304,6 +304,58 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
     },
   },
   {
+    name: "query_notes",
+    description:
+      "Find notes by tags and properties (frontmatter), e.g. all notes tagged #project with status 'active', sorted by due date. Uses Obsidian's metadata cache, so it is fast and reads no note. Returns paths with each note's tags and the properties asked about. Use list_metadata first if you don't know which tags or properties exist.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Tags the notes must have, with or without '#'. A tag also matches its nested tags (#project matches #project/alpha).",
+        },
+        match: {
+          type: "string",
+          enum: ["all", "any"],
+          description: "Whether notes need all of the tags (default) or any of them.",
+        },
+        properties: {
+          type: "object",
+          description: "Property filters: name → value. A note matches when the property equals the value (case-insensitive; for list properties, when the list contains it; links match their note name). Use null to require only that the property is set.",
+        },
+        folder: {
+          type: "string",
+          description: "Only notes in this folder (and its subfolders).",
+        },
+        sort_by: {
+          type: "string",
+          description: "'path' (default), 'modified' (newest first), or a property name (ascending; notes without it last).",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum notes listed (default 50, max 200).",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "list_metadata",
+    description:
+      "List the tags and property names used in the vault (or a folder), with how many notes use each and an example value per property. Use it to learn the vault's tags and properties before query_notes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        folder: {
+          type: "string",
+          description: "Only notes in this folder (and its subfolders).",
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: "get_backlinks",
     description:
       "Find all notes in the vault that link to a given document. Uses Obsidian's metadata cache for fast lookups.",

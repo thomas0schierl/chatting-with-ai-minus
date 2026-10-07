@@ -71,8 +71,9 @@ components' scoped ones).
 | `voice/openai-live.ts` | The official route: `POST /v1/live/sessions` with the OpenAI API key; the voice list; the access check. |
 | `voice/codex.ts` | The unofficial route (ADR-14): the Codex sign-in for voice (device code; while the user signs in in the browser it waits for Obsidian to be in front again and retries network errors; refresh, SecretStorage), the call on Codex's route, its voices, settings rows, sign-in dialog and the risk warning to confirm (`CodexRiskModal`). |
 | `diagnostics/capability-check.ts` | The *Check device capabilities* command: platform, microphone, a local WebRTC offer, streaming `fetch` to OpenAI and Anthropic (with a key: a short streamed answer, then an aborted one), and live voice (with an OpenAI key: `gpt-live-1` in the model list, then one GPT-Live session through the voice code, closed as soon as it has started). Results in a modal to copy, without keys. |
-| `tools/registry.ts` | The 18 tool definitions (JSON Schema) offered to the model. |
+| `tools/registry.ts` | The 20 tool definitions (JSON Schema) offered to the model. |
 | `tools/executor.ts` | Runs a tool call against the Obsidian vault and returns a result (text, and images for `view_image` and `view_canvas`) or an error for the model. Enforces a turn's selection scope (only the selected text of that note changes). Editing tools add what they changed (`focus`: a range, or canvas card IDs) for following the edits; it never reaches the model or the saved chat. Tools that change the vault record it in the turn's `ChangeLog` (undo per answer). |
+| `tools/metadata-query.ts` | `query_notes` and `list_metadata`: notes by tags and properties, from the metadata cache only (no note is read). |
 | `tools/undo.ts` | `ChangeLog`: the vault changes of one answer in order (an edit with the text before and after, a created file, a rename, a deleted file or folder with its files' bytes), the files they concern, which of them changed since (`conflicts()`), and undo, last change first. In memory only. |
 | `ui/undo-confirm.ts` | The dialog before undoing an answer whose files changed since: names them; *Undo anyway* or *Cancel*. |
 | `tools/canvas.ts` | JSON Canvas 1.0 without vault access: parse, write in Obsidian's format, the outline for `read_canvas`, the `edit_canvas` operations (IDs, placement without overlap, validation) and the searchable canvas text. |
@@ -106,6 +107,8 @@ components' scoped ones).
 | `open_document` | `ui/show-in-view.ts` (`openFile()` / `setEphemeralState()`) | Optional `text` (scrolled to and highlighted) or canvas `node_id` (selected); only when the user asks |
 | `get_properties` | `metadataCache.getFileCache()` | Frontmatter |
 | `set_properties` | `fileManager.processFrontMatter()` | Merge or remove keys |
+| `query_notes` | `metadataCache.getFileCache()`, `getAllTags()` | Tags (nested tags match, all or any), property values (any case, list items, links by name) or set, folder; sorted by path, modification or a property; up to 200 |
+| `list_metadata` | `metadataCache.getFileCache()`, `getAllTags()` | The vault's (or a folder's) tags and property names, with counts and an example value |
 | `get_backlinks` | `metadataCache.resolvedLinks` | |
 | `get_current_datetime` | `Date` | User's locale and time zone |
 | `ask_user` | UI callback | Pauses the loop until the user answers |

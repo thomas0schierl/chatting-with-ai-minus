@@ -5,6 +5,7 @@ import { isRecord } from "../json";
 import { applyCanvasOperations, canvasSearchTexts, describeCanvas, isCanvasPath, parseCanvas, serializeCanvas } from "./canvas";
 import { renderCanvas, shortIds } from "./canvas-render";
 import type { ChangeLog } from "./undo";
+import { listMetadata, queryNotes } from "./metadata-query";
 import { createCanvasElement, decodeImage, encodeCanvas, extensionOf, fitImage, formatBytes, imageMediaType, isImagePath } from "../images";
 
 /** Files read_file refuses because their text would be useless to the model. */
@@ -69,6 +70,10 @@ export async function executeTool(
         return await getProperties(app, input);
       case "set_properties":
         return await setProperties(app, input, changes);
+      case "query_notes":
+        return queryNotes(app, input);
+      case "list_metadata":
+        return listMetadata(app, input);
       case "get_backlinks":
         return await getBacklinks(app, input);
       case "get_current_datetime":

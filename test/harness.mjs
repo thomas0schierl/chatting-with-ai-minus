@@ -79,6 +79,12 @@ export const bundled = await build({
       export class TFile extends TAbstractFile { constructor(path) { super(); this.path = path; this.extension = path.split('.').pop(); } }
       export class TFolder extends TAbstractFile { constructor(path, children = []) { super(); this.path = path; this.children = children; } }
       export const normalizePath = path => path;
+      // As Obsidian: body tags, then the frontmatter's tags (a list or a comma/space separated text), each with '#'.
+      export const getAllTags = cache => {
+        const fm = cache.frontmatter?.tags ?? cache.frontmatter?.tag;
+        const listed = Array.isArray(fm) ? fm : typeof fm === 'string' ? fm.split(/[,\\s]+/) : [];
+        return [...(cache.tags ?? []).map(t => t.tag), ...listed.filter(Boolean).map(t => t.startsWith('#') ? t : '#' + t)];
+      };
       // GitHub (Codex version lookup) is answered here so provider mocks only
       // see provider requests; a test may set __githubRequest.
       export const requestUrl = request => request.url.startsWith('https://api.github.com/')

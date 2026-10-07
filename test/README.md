@@ -32,6 +32,7 @@ needed. They don't prove live-service or mobile behaviour.
 | `edit-document.test.mjs` | `edit_document` without content, and where it inserts. |
 | `tool-label.test.mjs` | The one-line labels of tool steps per state, file names without `.md`, searches, renames, unknown tools. |
 | `follow-edits.test.mjs` | Following the AI's edits: the changed range or cards, the reused follow tab and Obsidian's match state, canvas cards selected and centered (zoom out only), the follow tab closed on unload and at the next start, the setting on/off, `open_document` with a text. |
+| `metadata-query.test.mjs` | `query_notes` (tags with nested ones, all or any; property values, lists, links, set; folder; sorting; limit) and `list_metadata`; their labels. |
 | `undo.test.mjs` | Undo per answer: edits, new files, renames and deletes (folders too) taken back last first; files changed since named and asked about; the changes row, the note for the model with the next turn only, the row without Undo after a restart. |
 | `images-once.test.mjs` | Each image saved once; the migration of older saved chats. |
 | `math-markdown.test.mjs` | Math delimiters converted, code untouched. |
