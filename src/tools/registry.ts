@@ -304,6 +304,25 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
     },
   },
   {
+    name: "read_web_page",
+    description:
+      "Read a web page at a URL: returns its main content as Markdown (navigation, scripts and the like left out), or the text of a plain-text, Markdown or JSON address. Use it for links the user gives or pages a web search found. Long pages come in parts: call again with 'start' to continue. Pages that need JavaScript to show their content come back empty.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "The full http(s) address.",
+        },
+        start: {
+          type: "number",
+          description: "Character to start at, for the next part of a long page (default 0).",
+        },
+      },
+      required: ["url"],
+    },
+  },
+  {
     name: "query_notes",
     description:
       "Find notes by tags and properties (frontmatter), e.g. all notes tagged #project with status 'active', sorted by due date. Uses Obsidian's metadata cache, so it is fast and reads no note. Returns paths with each note's tags and the properties asked about. Use list_metadata first if you don't know which tags or properties exist.",

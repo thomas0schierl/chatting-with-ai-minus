@@ -45,7 +45,7 @@ function propertiesVault(properties = {}) {
 test('Every tool offered to the model has a handler in the executor', async () => {
   const names = api.TOOL_DEFINITIONS.map(tool => tool.name);
   assert.equal(new Set(names).size, names.length);
-  assert.equal(names.length, 20); // the count in arc42 section 5
+  assert.equal(names.length, 21); // the count in arc42 section 5
   // A fake vault without files: each tool fails its own way, never as unknown.
   const app = { workspace: { getActiveFile: () => null }, vault: { getFileByPath: () => null, getAbstractFileByPath: () => null } };
   for (const name of names) {

@@ -26,7 +26,7 @@ messages and the notes the AI reads go to that provider (see
 - **Works with your vault:** the AI can read, search, list, create, edit,
   rename and trash notes, change frontmatter, find notes by tags and
   properties ("my #project notes that are active, by due date"), find
-  backlinks, read and edit
+  backlinks, read web pages, read and edit
   canvases, look at images and canvases, and ask you when something is
   unclear.
 - **Streaming:** answers appear as they're written; **Stop** ends one
@@ -207,6 +207,7 @@ The plugin connects only to these services, and only for what you use:
 | `auth.openai.com` | Signing in with ChatGPT and renewing that sign-in; the separate Codex sign-in for voice with the ChatGPT plan. |
 | `chatgpt.com` | Only if you chose voice with the ChatGPT plan (unofficial, see [Voice](#voice)): starting a voice call. |
 | `api.github.com` | With the ChatGPT sign-in or voice on the ChatGPT plan, at most once a day: the latest Codex CLI version number, which OpenAI's model list and that voice route need. Nothing about you is sent. |
+| Web pages the AI reads | When the AI reads a web page (a link you gave, or one its web search found), your device loads that address, as a browser would. |
 
 Web search, when turned on, runs at the provider; the plugin itself
 doesn't contact search engines. There is no telemetry and no tracking.

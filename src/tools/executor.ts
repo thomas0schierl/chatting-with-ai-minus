@@ -6,6 +6,7 @@ import { applyCanvasOperations, canvasSearchTexts, describeCanvas, isCanvasPath,
 import { renderCanvas, shortIds } from "./canvas-render";
 import type { ChangeLog } from "./undo";
 import { listMetadata, queryNotes } from "./metadata-query";
+import { readWebPage } from "./web-page";
 import { createCanvasElement, decodeImage, encodeCanvas, extensionOf, fitImage, formatBytes, imageMediaType, isImagePath } from "../images";
 
 /** Files read_file refuses because their text would be useless to the model. */
@@ -70,6 +71,8 @@ export async function executeTool(
         return await getProperties(app, input);
       case "set_properties":
         return await setProperties(app, input, changes);
+      case "read_web_page":
+        return await readWebPage(input);
       case "query_notes":
         return queryNotes(app, input);
       case "list_metadata":

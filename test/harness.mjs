@@ -10,6 +10,7 @@ export const bundled = await build({
     export { ChatSettingTab, getModelHeaderLabel, connectionTest } from './src/settings';
     export { Setting, Platform, TFile, TFolder } from 'obsidian';
     export { ChangeLog } from './src/tools/undo';
+    export { WEB_PAGE_CHARS } from './src/tools/web-page';
     export { UndoConfirmModal } from './src/ui/undo-confirm';
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';
@@ -79,6 +80,8 @@ export const bundled = await build({
       export class TFile extends TAbstractFile { constructor(path) { super(); this.path = path; this.extension = path.split('.').pop(); } }
       export class TFolder extends TAbstractFile { constructor(path, children = []) { super(); this.path = path; this.children = children; } }
       export const normalizePath = path => path;
+      // Tags dropped, paragraphs kept: enough to see which content got through.
+      export const htmlToMarkdown = node => (typeof node === 'string' ? node : node.innerHTML).replace(/<\\/p>/g, '\\n\\n').replace(/<[^>]+>/g, '').trim();
       // As Obsidian: body tags, then the frontmatter's tags (a list or a comma/space separated text), each with '#'.
       export const getAllTags = cache => {
         const fm = cache.frontmatter?.tags ?? cache.frontmatter?.tag;

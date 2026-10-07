@@ -23,6 +23,7 @@ const VERBS: Record<string, [string, string]> = {
   search_vault: ["Searching for", "Searched for"],
   list_files: ["Listing", "Listed"],
   query_notes: ["Finding notes", "Found notes"],
+  read_web_page: ["Reading", "Read"],
   list_metadata: ["Listing the tags and properties of", "Listed the tags and properties of"],
   rename_file: ["Renaming", "Renamed"],
   delete_file: ["Moving to the trash:", "Moved to the trash:"],
@@ -34,6 +35,18 @@ export function fileLabel(path: unknown): string {
   if (typeof path !== "string" || !path.trim()) return "the current note";
   const name = path.replace(/\/+$/, "").split("/").pop() ?? path;
   return name.replace(/\.md$/i, "");
+}
+
+/** A web address as short as it reads well: "example.com/docs/intro". */
+function pageLabel(url: unknown): string {
+  if (typeof url !== "string") return "a web page";
+  try {
+    const { hostname, pathname } = new URL(url);
+    const path = pathname.replace(/\/+$/, "");
+    return `${hostname.replace(/^www\./, "")}${path.length > 30 ? `${path.slice(0, 29)}…` : path}`;
+  } catch {
+    return "a web page";
+  }
 }
 
 /** query_notes' filters in words: "tagged #project, status active in Work". */
@@ -57,6 +70,8 @@ function subject(name: string, input: Record<string, unknown>): string {
       return typeof input.path === "string" && input.path.trim() ? fileLabel(input.path) : "the vault";
     case "query_notes":
       return noteFilter(input);
+    case "read_web_page":
+      return pageLabel(input.url);
     case "list_metadata":
       return typeof input.folder === "string" && input.folder.trim() ? fileLabel(input.folder) : "the vault";
     case "rename_file":
