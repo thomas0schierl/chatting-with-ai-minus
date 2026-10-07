@@ -13,6 +13,7 @@ import type { ChatSettings, SelectionScope, ChatHistoryEntry, ConversationSummar
 import { DEFAULT_SETTINGS, DEFAULT_PROVIDER_MODELS } from "./types";
 import { ChatSettingTab, getModelHeaderLabel } from "./settings";
 import { ObsidianChatView, VIEW_TYPE_CHAT } from "./ui/chat-view";
+import { closeFollowTab, closeLeftoverFollowTab } from "./ui/show-in-view";
 import { AgentLoop } from "./agent/loop";
 import {
   CHAT_STATE_VERSION,
@@ -91,6 +92,8 @@ export default class ChatPlugin extends Plugin {
     // Restore persisted chat history
     await this.loadChatHistory();
     this.watchLifecycle();
+    // A follow tab saved with the layout when Obsidian last closed goes.
+    this.app.workspace.onLayoutReady(() => closeLeftoverFollowTab(this.app));
 
     this.addSettingTab(new ChatSettingTab(this.app, this));
 
@@ -228,6 +231,8 @@ export default class ChatPlugin extends Plugin {
   onunload(): void {
     this.getChatView()?.endVoice();
     screenAwake.reset();
+    // The tab that showed the AI's edits closes with the plugin (and Obsidian).
+    closeFollowTab(this.app);
     void this.saveChatHistory();
   }
 

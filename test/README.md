@@ -31,7 +31,7 @@ needed. They don't prove live-service or mobile behaviour.
 | `enter-sends.test.mjs` | The *Enter sends message* setting: default, kept in `data.json`, passed to the chat. |
 | `edit-document.test.mjs` | `edit_document` without content, and where it inserts. |
 | `tool-label.test.mjs` | The one-line labels of tool steps per state, file names without `.md`, searches, renames, unknown tools. |
-| `follow-edits.test.mjs` | Following the AI's edits: the changed range or cards, the reused follow tab and Obsidian's match state, the setting on/off, `open_document` with a text. |
+| `follow-edits.test.mjs` | Following the AI's edits: the changed range or cards, the reused follow tab and Obsidian's match state, canvas cards selected and centered (zoom out only), the follow tab closed on unload and at the next start, the setting on/off, `open_document` with a text. |
 | `images-once.test.mjs` | Each image saved once; the migration of older saved chats. |
 | `math-markdown.test.mjs` | Math delimiters converted, code untouched. |
 | `message-actions.test.mjs` | Edit, regenerate and copy through the chat view; Stop and Clear while `ask_user` waits. |

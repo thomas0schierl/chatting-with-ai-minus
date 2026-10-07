@@ -39,8 +39,8 @@ messages and the notes the AI reads go to that provider (see
   box is empty.
 - **Follow the AI's edits:** when the AI changes a note or canvas, it
   opens next to the chat at the changed spot (changed text highlighted,
-  changed canvas cards selected), in one reused tab so your own tab stays
-  as it is. On by default; switch it with the eye button in the chat
+  changed canvas cards selected and centered), in one reused tab so your
+  own tab stays as it is; that tab closes with Obsidian. On by default; switch it with the eye button in the chat
   header or in the settings. Ask "show me …" and the AI opens a note at a
   passage or a canvas at a card for you.
 - **Enter sends message:** on by default (Shift+Enter starts a new line).

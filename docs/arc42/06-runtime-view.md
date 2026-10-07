@@ -208,13 +208,22 @@ queue.
      taken over for another note);
    - Obsidian's search-match ephemeral state: in edit view the range is
      highlighted until the user clicks into the note, in reading view the
-     line is scrolled to and flashes; a deletion shows its line; on a
-     canvas the first card is selected and panned into view;
+     line is scrolled to and flashes; a deletion shows its line;
+   - on a canvas the match state selects the first card and pans it into
+     view; then all changed cards are selected and centered, zooming out
+     (never in) only when they don't fit with a 10 % margin
+     (`viewportFor()`). That uses the canvas view's internal API
+     (`nodes`, `selection`, `updateSelection`, `tx`/`ty`/`tZoom`), checked
+     first, so without it the match state's select-and-pan stays;
    - an open note takes in the change a moment after the file is written,
      so the highlight waits until the view shows the new text (at most
      about 1 s);
    - on a phone the chat covers the note, so the tab isn't brought
-     forward (that would close the chat).
+     forward (that would close the chat);
+   - the follow tab closes when the plugin unloads (also when Obsidian
+     closes). Its ID is kept per vault (`saveLocalStorage`): if Obsidian
+     saved the layout with the tab, it is closed at the next start
+     (`closeLeftoverFollowTab`, on layout ready).
 3. **On request:** `open_document` shows a `text` or canvas `node_id` the
    same way and brings it forward (also on a phone). Its description
    limits it to when the user asks to open, show or go to something.
