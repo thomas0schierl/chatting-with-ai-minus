@@ -1,5 +1,6 @@
 import { App, TFile, normalizePath } from "obsidian";
-import type { SelectionScope, ToolResult } from "../types";
+import type { SelectionScope, ToolResult, ViewTarget } from "../types";
+import { changedRange, showInView } from "../ui/show-in-view";
 import { isRecord } from "../json";
 import { applyCanvasOperations, canvasSearchTexts, describeCanvas, isCanvasPath, parseCanvas, serializeCanvas } from "./canvas";
 import { renderCanvas, shortIds } from "./canvas-render";
@@ -241,9 +242,31 @@ async function editDocument(
   if (scope && file.path === scope.filePath) {
     if (operation !== "find_replace") return scopeRefusal(file.path);
     if (!find) return { result: "'find' parameter is required for find_replace.", isError: true };
-    return await editInScope(app, file, scope, find, content);
+    return await withChange(app, file, () => editInScope(app, file, scope, find, content));
   }
+  return await withChange(app, file, () => applyEdit(app, file, operation, content, find, position));
+}
 
+/**
+ * Runs a change to `file` and adds what changed (`focus`) to its result,
+ * for showing it to the user (`ui/show-in-view.ts`).
+ */
+async function withChange(app: App, file: TFile, change: () => Promise<ToolResult>): Promise<ToolResult> {
+  const before = await app.vault.cachedRead(file);
+  const result = await change();
+  if (result.isError) return result;
+  const range = changedRange(before, await app.vault.cachedRead(file));
+  return range ? { ...result, focus: { path: file.path, ...range } } : result;
+}
+
+async function applyEdit(
+  app: App,
+  file: TFile,
+  operation: string,
+  content: string,
+  find: string | undefined,
+  position: string | undefined
+): Promise<ToolResult> {
   switch (operation) {
     case "replace_all":
       await app.vault.process(file, () => content);
@@ -511,11 +534,15 @@ async function editCanvas(
   const fileExists = (path: string) => app.vault.getFileByPath(normalizePath(path)) !== null;
   let summary: string[] = [];
   let error = "";
+  let changed: string[] = [];
   // All operations apply, or none: on any error the file is left unchanged.
   await app.vault.process(file, (data) => {
     try {
       const canvas = parseCanvas(data);
+      const before = new Map(canvas.nodes.map((node) => [node.id, JSON.stringify(node)]));
       summary = applyCanvasOperations(canvas, operations, fileExists);
+      // Cards added or changed, for showing them (`focus`).
+      changed = canvas.nodes.filter((node) => before.get(node.id) !== JSON.stringify(node)).map((node) => node.id);
       return serializeCanvas(canvas);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -526,7 +553,11 @@ async function editCanvas(
   if (error) {
     return { result: `No changes made to ${file.path}. ${error}`, isError: true };
   }
-  return { result: `Updated ${file.path}:\n${summary.map((line) => `- ${line}`).join("\n")}`, isError: false };
+  return {
+    result: `Updated ${file.path}:\n${summary.map((line) => `- ${line}`).join("\n")}`,
+    isError: false,
+    ...(changed.length ? { focus: { path: file.path, nodes: changed } } : {}),
+  };
 }
 
 async function createFile(
@@ -546,7 +577,7 @@ async function createFile(
 
   await ensureParentFolder(app, path);
   await app.vault.create(path, content || "");
-  return { result: `Created ${path}.`, isError: false };
+  return { result: `Created ${path}.`, isError: false, focus: { path, from: 0, to: (content || "").length } };
 }
 
 async function listFiles(
@@ -671,24 +702,26 @@ async function setProperties(
     return { result: path ? `File not found: ${path}` : "No active document open.", isError: true };
   }
 
-  // Use Obsidian's built-in processFrontMatter for safe YAML handling
-  await app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
-    for (const [key, value] of Object.entries(props)) {
-      if (value === null) {
-        delete frontmatter[key];
-      } else {
-        frontmatter[key] = value;
+  return await withChange(app, file, async () => {
+    // Use Obsidian's built-in processFrontMatter for safe YAML handling
+    await app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
+      for (const [key, value] of Object.entries(props)) {
+        if (value === null) {
+          delete frontmatter[key];
+        } else {
+          frontmatter[key] = value;
+        }
       }
-    }
+    });
+
+    const setKeys = Object.entries(props).filter(([, v]) => v !== null).map(([k]) => k);
+    const removedKeys = Object.entries(props).filter(([, v]) => v === null).map(([k]) => k);
+    const parts: string[] = [];
+    if (setKeys.length > 0) parts.push(`Set: ${setKeys.join(", ")}`);
+    if (removedKeys.length > 0) parts.push(`Removed: ${removedKeys.join(", ")}`);
+
+    return { result: `Updated properties in ${file.path}. ${parts.join(". ")}.`, isError: false };
   });
-
-  const setKeys = Object.entries(props).filter(([, v]) => v !== null).map(([k]) => k);
-  const removedKeys = Object.entries(props).filter(([, v]) => v === null).map(([k]) => k);
-  const parts: string[] = [];
-  if (setKeys.length > 0) parts.push(`Set: ${setKeys.join(", ")}`);
-  if (removedKeys.length > 0) parts.push(`Removed: ${removedKeys.join(", ")}`);
-
-  return { result: `Updated properties in ${file.path}. ${parts.join(". ")}.`, isError: false };
 }
 
 async function getBacklinks(
@@ -759,10 +792,28 @@ async function openDocument(
     return { result: `File not found: ${path}`, isError: true };
   }
 
-  // Open in the most recent non-chat leaf so it doesn't replace the sidebar
-  const leaf = app.workspace.getLeaf(false);
-  await leaf.openFile(file);
-  return { result: `Opened ${file.path}.`, isError: false };
+  // The spot to show: a text in a note, or a canvas card.
+  const text = optionalString(input.text);
+  const node = optionalString(input.node_id);
+  let found = "";
+  let target: ViewTarget = { path: file.path };
+  if (node && file.extension === "canvas") {
+    target = { path: file.path, nodes: [node] };
+    found = ` at card ${node}`;
+  } else if (text && file.extension === "md") {
+    const content = await app.vault.cachedRead(file);
+    let at = content.indexOf(text);
+    if (at === -1) at = content.toLowerCase().indexOf(text.toLowerCase());
+    if (at !== -1) {
+      target = { path: file.path, from: at, to: at + text.length };
+      found = " at the text";
+    } else {
+      found = "; the text wasn't found, so it opened at the top";
+    }
+  }
+  // The user asked to see it: bring it forward, also on a phone.
+  await showInView(app, target, { reveal: true });
+  return { result: `Showed ${file.path}${found}.`, isError: false };
 }
 
 async function askUser(

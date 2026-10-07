@@ -16,6 +16,8 @@ export interface ChatSettings {
   enableWebSearch: boolean;
   /** Enter sends (Shift+Enter: new line); off: Enter is a new line, Ctrl/Cmd+Enter sends. */
   enterSends: boolean;
+  /** Show each edit the AI makes: its note or canvas opens at the changed spot (`ui/show-in-view.ts`). */
+  followEdits: boolean;
   /** The one-time "You're using your ChatGPT plan" welcome was shown. */
   chatgptPlanWelcomeShown: boolean;
   /** Write `debug.log` in the plugin folder (troubleshooting; logs messages, never keys). */
@@ -58,6 +60,7 @@ export const DEFAULT_SETTINGS: Omit<ChatSettings, "modelCatalog"> = {
   maxIterations: 20,
   enableWebSearch: true,
   enterSends: true,
+  followEdits: true,
   chatgptPlanWelcomeShown: false,
   debugLog: false,
   voiceRoute: "openai",
@@ -208,6 +211,18 @@ export interface ToolResult {
    * chat view gets the text with a marker instead (`AgentLoop`).
    */
   images?: ImageAttachment[];
+  /** What a tool changed, for showing it to the user; never sent to the model or saved. */
+  focus?: ViewTarget;
+}
+
+/** A spot to show in a note (character range) or canvas (card IDs). */
+export interface ViewTarget {
+  path: string;
+  /** Range in the note's text after the change. */
+  from?: number;
+  to?: number;
+  /** Canvas cards. */
+  nodes?: string[];
 }
 
 // ─── Agent Loop Callbacks ───────────────────────────────────────────────────

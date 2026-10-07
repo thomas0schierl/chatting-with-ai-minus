@@ -694,6 +694,7 @@ function normalizeSettings(value: unknown): Partial<ChatSettings> & Pick<ChatSet
   }
   if (typeof value.enableWebSearch === "boolean") settings.enableWebSearch = value.enableWebSearch;
   if (typeof value.enterSends === "boolean") settings.enterSends = value.enterSends;
+  if (typeof value.followEdits === "boolean") settings.followEdits = value.followEdits;
   if (typeof value.chatgptPlanWelcomeShown === "boolean") settings.chatgptPlanWelcomeShown = value.chatgptPlanWelcomeShown;
   if (typeof value.debugLog === "boolean") settings.debugLog = value.debugLog;
   if (value.voiceRoute === "openai" || value.voiceRoute === "codex") settings.voiceRoute = value.voiceRoute;

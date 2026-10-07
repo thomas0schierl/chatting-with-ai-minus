@@ -25,6 +25,7 @@ export const bundled = await build({
     export { default as ChatPlugin } from './src/main';
     export { ObsidianChatView } from './src/ui/chat-view';
     export { executeTool } from './src/tools/executor';
+    export * as showInView from './src/ui/show-in-view';
     export { TOOL_DEFINITIONS } from './src/tools/registry';
     export * as canvasRender from './src/tools/canvas-render';
     export * as auth from './src/auth/chatgptOAuth';
@@ -221,7 +222,7 @@ export function fakeChat() {
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle(value) { chat.title = value; }, setSelection() {}, getSelection: () => null,
     voice: null, voiceAvailable: false, continueShown: false,
     setContinue(value) { chat.continueShown = value; },
-    setVoice(state) { chat.voice = state; }, setVoiceAvailable(value) { chat.voiceAvailable = value; }, setEnterSends(value) { chat.enterSends = value; }, setQueued(texts) { chat.queued = texts; },
+    setVoice(state) { chat.voice = state; }, setVoiceAvailable(value) { chat.voiceAvailable = value; }, setEnterSends(value) { chat.enterSends = value; }, setFollowEdits(value) { chat.followEdits = value; }, setQueued(texts) { chat.queued = texts; },
   };
   return chat;
 }

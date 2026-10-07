@@ -103,6 +103,7 @@ export class ChatSettingTab extends PluginSettingTab {
       { name: "Thinking level", visible: () => !!this.thinkingOptions(), render: setting => this.renderThinkingLevel(setting) },
       { name: "Web search", render: setting => this.renderWebSearch(setting) },
       { name: "Enter sends message", aliases: ["Keyboard", "New line"], render: setting => this.renderEnterSends(setting) },
+      { name: "Follow the AI's edits", aliases: ["Show edits", "Highlight"], render: setting => this.renderFollowEdits(setting) },
       { name: "Max tool iterations", render: setting => this.renderMaxIterations(setting) },
       { type: "group", heading: "Voice", items: [
         // The unofficial Codex route, off unless chosen and confirmed (ADR-14).
@@ -173,6 +174,19 @@ export class ChatSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(s.enterSends).onChange(async (value) => {
           s.enterSends = value;
+          await this.plugin.saveSettings();
+        })
+      );
+  }
+
+  private renderFollowEdits(setting: Setting): void {
+    const s = this.plugin.settings;
+    setting
+      .setName("Follow the AI's edits")
+      .setDesc("When the AI changes a note or canvas, it opens next to the chat at the changed spot: changed text is highlighted, changed canvas cards are selected. Also the eye button in the chat header.")
+      .addToggle((toggle) =>
+        toggle.setValue(s.followEdits).onChange(async (value) => {
+          s.followEdits = value;
           await this.plugin.saveSettings();
         })
       );

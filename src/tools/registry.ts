@@ -331,13 +331,21 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
   {
     name: "open_document",
     description:
-      "Open a document in the Obsidian editor. Use this when the user wants to navigate to, view, or open a specific file.",
+      "Show the user a note or canvas: opens it in the main area and, with `text`, scrolls to and highlights that text; with `node_id`, selects that canvas card. Use this only when the user explicitly asks to open, show or go to something; never to show your own work (the user's view follows your edits by itself when they want that).",
     inputSchema: {
       type: "object",
       properties: {
         path: {
           type: "string",
           description: "Path to the file relative to vault root.",
+        },
+        text: {
+          type: "string",
+          description: "Optional: exact text in the note to scroll to and highlight (a heading or a passage).",
+        },
+        node_id: {
+          type: "string",
+          description: "Optional: ID of the canvas card to select and pan to (from read_canvas).",
         },
       },
       required: ["path"],

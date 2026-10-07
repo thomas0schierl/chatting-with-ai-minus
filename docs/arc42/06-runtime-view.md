@@ -193,6 +193,32 @@ on phones) this works the same: steps are separate requests. Images and
 the selection wait for the next turn; Stop, Clear and switching drop the
 queue.
 
+## Following the AI's edits (`ui/show-in-view.ts`)
+
+1. **What changed:** `edit_document`, `set_properties` and `create_file`
+   compare the note before and after (`changedRange()`: the text between
+   the unchanged start and end) and add it to their result as `focus`;
+   `edit_canvas` adds the cards it added or changed. `focus` goes to the
+   chat view only, not to the model, and isn't saved.
+2. **Show:** with *Follow the AI's edits* on (the default; also the eye
+   button in the chat header), `ChatView` shows each `focus` in turn
+   (`showInView()`), without taking the focus from the chat input:
+   - the tab that already shows the file, else the follow tab, else a new
+     tab that becomes the follow tab (a tab the user opened is never
+     taken over for another note);
+   - Obsidian's search-match ephemeral state: in edit view the range is
+     highlighted until the user clicks into the note, in reading view the
+     line is scrolled to and flashes; a deletion shows its line; on a
+     canvas the first card is selected and panned into view;
+   - an open note takes in the change a moment after the file is written,
+     so the highlight waits until the view shows the new text (at most
+     about 1 s);
+   - on a phone the chat covers the note, so the tab isn't brought
+     forward (that would close the chat).
+3. **On request:** `open_document` shows a `text` or canvas `node_id` the
+   same way and brings it forward (also on a phone). Its description
+   limits it to when the user asks to open, show or go to something.
+
 ## Voice conversation (`voice/`, ADR-11)
 
 1. **Start:** the voice button sits in the input's one action slot. It

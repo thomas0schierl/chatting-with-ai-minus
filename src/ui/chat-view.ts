@@ -2,7 +2,8 @@ import { ItemView, WorkspaceLeaf, Notice, Platform } from "obsidian";
 import { mount, unmount } from "svelte";
 import type ChatPlugin from "../main";
 import ChatContainer from "./ChatContainer.svelte";
-import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry, VoiceTurn } from "../types";
+import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry, VoiceTurn, ViewTarget } from "../types";
+import { showInView } from "./show-in-view";
 import { voiceTranscriptText } from "../agent/system-prompt";
 import { newTurnId } from "../agent/history";
 import { savedToolInput } from "../chat-state";
@@ -47,6 +48,7 @@ interface ChatContainerApi extends Record<string, unknown> {
   setVoice(state: VoiceViewState | null): void;
   setVoiceAvailable(available: boolean): void;
   setEnterSends(on: boolean): void;
+  setFollowEdits(on: boolean): void;
   /** Offer Continue for a turn that was cut off (ADR-15). */
   setContinue(show: boolean): void;
 }
@@ -164,6 +166,7 @@ export class ObsidianChatView extends ItemView {
         onDeleteConversation: (id: string) => this.deleteConversation(id),
         onVoice: (action: VoiceAction) => this.handleVoice(action),
         onContinue: () => void this.continueTurn(),
+        onToggleFollow: () => void this.toggleFollow(),
       },
     }) as ChatContainerApi;
     this.chatContainer = chat;
@@ -272,6 +275,13 @@ export class ObsidianChatView extends ItemView {
   /** Enter sends, or starts a new line (the "Enter sends message" setting). */
   updateEnterSends(): void {
     this.chatContainer?.setEnterSends(this.plugin.settings.enterSends);
+    this.chatContainer?.setFollowEdits(this.plugin.settings.followEdits);
+  }
+
+  /** The eye button: the "Follow the AI's edits" setting, on or off. */
+  private async toggleFollow(): Promise<void> {
+    this.plugin.settings.followEdits = !this.plugin.settings.followEdits;
+    await this.plugin.saveSettings();
   }
 
   /** Show or hide the microphone button (a voice route is set up or not). */
@@ -568,11 +578,12 @@ export class ObsidianChatView extends ItemView {
           voice?.onToolCall(name);
           toolCalls.set(name, { id: chat.addToolCall(name, input), input });
         },
-        onToolResult: (name, result: ToolResult) => {
+        onToolResult: (name, { focus, ...result }: ToolResult) => {
           if (name === "ask_user") return;
           const call = toolCalls.get(name);
           if (call) chat.updateToolResult(call.id, name, result);
           history.push({ type: "tool-result", toolName: name, toolInput: savedToolInput(call?.input ?? {}), toolResult: result });
+          if (focus && !result.isError && this.plugin.settings.followEdits) this.follow(focus);
         },
         onResponse: (text) => {
           this.answerShown = true;
@@ -687,6 +698,14 @@ export class ObsidianChatView extends ItemView {
     this.queued = [];
     this.unsteered = [];
     this.chatContainer?.setQueued([]);
+  }
+
+  /** Edits shown one after another, in the order the AI made them. */
+  private following: Promise<unknown> = Promise.resolve();
+
+  /** Show an edit the AI just made (setting "Follow the AI's edits"). */
+  private follow(target: ViewTarget): void {
+    this.following = this.following.then(() => showInView(this.plugin.app, target)).catch(() => undefined);
   }
 
   private stopTurn(): void {

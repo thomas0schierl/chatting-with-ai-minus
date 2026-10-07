@@ -9,7 +9,7 @@
 
 | Store | Content | Limits |
 |---|---|---|
-| `data.json` (`saveData`) | Provider, model, thinking level, iteration limit, web search, Enter sends message, whether the ChatGPT plan welcome was shown, voice route, voice per route, microphone mode, debug log on/off, model catalogs (hashed account key, models with their capabilities, fetch time) | API key always saved as `""`; at most 3 catalog entries |
+| `data.json` (`saveData`) | Provider, model, thinking level, iteration limit, web search, Enter sends message, Follow the AI's edits, whether the ChatGPT plan welcome was shown, voice route, voice per route, microphone mode, debug log on/off, model catalogs (hashed account key, models with their capabilities, fetch time) | API key always saved as `""`; at most 3 catalog entries |
 | SecretStorage `chatting-with-ai-minus-api-key-<provider>` | API key per provider | The OpenAI key is also the voice key |
 | SecretStorage `chatting-with-ai-minus-codex-voice` | Unofficial route (ADR-14): the Codex voice credential (JSON): access, refresh and ID token, expiry, ChatGPT account ID, email | Cleared by writing `""` on sign-out |
 | SecretStorage `chatting-with-ai-minus-chatgpt-oauth` | ChatGPT credential (JSON): access, refresh and ID token, expiry, granted scopes, account `sub` and email | Cleared by writing `""` on disconnect or an unusable refresh token. A refresh writes or clears only while the stored credential is still the one it started from (likewise for the Codex voice credential). A record without `scopes` (former Codex sign-in) is erased on its first read |

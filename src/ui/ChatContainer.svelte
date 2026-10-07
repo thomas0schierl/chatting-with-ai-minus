@@ -52,12 +52,14 @@
     onDeleteConversation: (id: string) => void;
     onVoice: (action: VoiceAction) => void;
     onContinue: () => void;
+    /** The eye button: follow the AI's edits on or off. */
+    onToggleFollow: () => void;
   }
 
   let {
     app, component, onSend, onClear, onStop, onEdit, onRegenerate, onCopy,
     onNewChat, listConversations, onOpenConversation, onRenameConversation, onDeleteConversation,
-    onVoice, onContinue,
+    onVoice, onContinue, onToggleFollow,
   }: Props = $props();
 
   /** A turn was cut off when Obsidian was ended (ADR-15): offer Continue. */
@@ -125,6 +127,13 @@
 
   export function setEnterSends(on: boolean): void {
     enterSends = on;
+  }
+
+  /** "Follow the AI's edits": the eye button shows the setting. */
+  let followEdits = $state(true);
+
+  export function setFollowEdits(on: boolean): void {
+    followEdits = on;
   }
 
   /** The key that sends (or saves an edit) under the setting; never while an IME composes. */
@@ -803,6 +812,21 @@
       <span class="chatting-minus-header-title" title={displayTitle}>{displayTitle || "New chat"}</span>
       <span class="chatting-minus-header-model">{displayModel || "No model"}</span>
     </div>
+    <button
+      class="chatting-minus-icon-btn"
+      class:is-active={followEdits}
+      type="button"
+      onclick={onToggleFollow}
+      aria-label="Follow the AI's edits"
+      aria-pressed={followEdits}
+      title={followEdits ? "Following the AI's edits (click to stop)" : "Follow the AI's edits"}
+    >
+      {#if followEdits}
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      {:else}
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"></path><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"></path><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"></path><path d="m2 2 20 20"></path></svg>
+      {/if}
+    </button>
     <!-- Nothing to clear in an empty chat: the trash folds away until there is -->
     <button
       class="chatting-minus-icon-btn chatting-minus-clear-btn"

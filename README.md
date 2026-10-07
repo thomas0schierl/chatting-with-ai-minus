@@ -37,6 +37,12 @@ messages and the notes the AI reads go to that provider (see
   working: your message joins the running task (shown as *Queued* until
   the AI takes it in) instead of waiting. Stop is the button while the
   box is empty.
+- **Follow the AI's edits:** when the AI changes a note or canvas, it
+  opens next to the chat at the changed spot (changed text highlighted,
+  changed canvas cards selected), in one reused tab so your own tab stays
+  as it is. On by default; switch it with the eye button in the chat
+  header or in the settings. Ask "show me …" and the AI opens a note at a
+  passage or a canvas at a card for you.
 - **Enter sends message:** on by default (Shift+Enter starts a new line).
   Turn it off in the settings to make Enter start a new line; then send
   with the send button or Ctrl+Enter (Cmd+Enter on a Mac).

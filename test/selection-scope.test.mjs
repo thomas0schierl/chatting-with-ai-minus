@@ -14,6 +14,7 @@ function vault(notes) {
     vault: {
       getFileByPath: path => files.has(path) ? { path } : null,
       getAbstractFileByPath: path => files.has(path) ? { path } : null,
+      cachedRead: async file => files.get(file.path),
       process: async (file, fn) => { files.set(file.path, fn(files.get(file.path))); },
       modify: async (file, content) => { files.set(file.path, content); },
     },
