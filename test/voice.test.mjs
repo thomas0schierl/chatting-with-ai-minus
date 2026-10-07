@@ -419,6 +419,29 @@ test('As in Codex: what was said since the last request goes with the next one (
   view.endVoice();
 });
 
+test('A short reply after a request is kept as context, not taken for the request reported late', async () => {
+  const { view, chat } = await voiceSetup({ codex: true });
+  const log = serve({
+    live: () => ({ status: 201, text: 'answer-sdp', headers: { Location: '/v1/live/rtc_1' } }),
+    chat: () => response('anthropic', [text('OK.')]),
+  });
+  await startListening(view, chat, { started: false });
+  const ch = channel();
+  ch.receive({ type: 'input_transcript.added', item: { text: 'Create a note about cats.' } });
+  ch.receive({ type: 'delegation.created', item: { id: 'it_1', type: 'delegation', target: 'client', content: [{ type: 'input_text', text: 'Create a note about cats' }] } });
+  await until(() => ch.sent.some((e) => e.channel === 'speakable'));
+  // "No." contains no word of the request in order: a new user turn.
+  ch.receive({ type: 'input_transcript.added', item: { text: 'No.' } });
+  ch.receive({ type: 'turn.done', turn: { role: 'user', transcript: 'No.' } });
+  ch.receive({ type: 'output_transcript.added', item: { text: 'Should I stop?' } });
+  ch.receive({ type: 'turn.done', turn: { role: 'assistant', transcript: 'Should I stop?' } });
+  ch.receive({ type: 'input_transcript.added', item: { text: 'Yes, delete it.' } });
+  ch.receive({ type: 'delegation.created', item: { id: 'it_2', type: 'delegation', target: 'client', content: [{ type: 'input_text', text: 'Delete the cats note' }] } });
+  await until(() => log.chat.length === 2);
+  assert.match(userText(log.chat[1]), /\(context\): User: "No\." Voice: "Should I stop\?" User: "Yes, delete it\."\./);
+  view.endVoice();
+});
+
 test('A new request while the voice turn runs steers it with what was said before it', async () => {
   const { view, chat } = await voiceSetup({ codex: true });
   let releaseFirst;

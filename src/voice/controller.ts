@@ -426,10 +426,14 @@ export class VoiceController {
   }
 }
 
-/** The same words, ignoring case and punctuation; or one inside the other (a transcript cut short). */
+/**
+ * The same words, ignoring case and punctuation; or, for three words or
+ * more, one starting with the other (a transcript cut short).
+ */
 function sameWords(a: string, b: string): boolean {
-  const words = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  const x = words(a);
-  const y = words(b);
-  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+  const words = (value: string) => value.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const [shorter, longer] = [words(a), words(b)].sort((x, y) => x.length - y.length);
+  if (!shorter.length) return false;
+  const starts = shorter.every((word, i) => word === longer[i]);
+  return starts && (shorter.length === longer.length || shorter.length >= 3);
 }
