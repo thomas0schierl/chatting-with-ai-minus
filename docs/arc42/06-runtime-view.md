@@ -21,10 +21,10 @@
    image no longer there keeps only its name and is shown as a chip. Make
    the saved active conversation active again and import its API messages
    into the agent loop (as saved: at most 80). Until this has finished, `saveChatHistory()` does
-   nothing, so an early unload can't overwrite the saved chat. If
-   `chat-state.json` is missing or can't be read but its copy
-   `chat-state.next.json` holds a whole saved state, a save was cut off
-   while writing it (see §8): the copy is used. No file
+   nothing, so an early unload can't overwrite the saved chat. Both
+   `chat-state.json` and its copy `chat-state.next.json` are read; the
+   newer whole one is used (see §8), so a save cut off while writing
+   either file loses nothing. No file
    (first run) starts a new chat silently. A file that can't be read or
    isn't a saved chat is renamed to `chat-state.corrupt-<time>.json` and a
    notice says so; if renaming fails too, nothing is saved until the next

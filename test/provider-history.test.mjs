@@ -757,7 +757,7 @@ test('Chat history is not saved before the saved chat has been read', async () =
   const { app } = vaultApp();
   const writes = [];
   let finishRead;
-  app.vault.adapter = { read: () => new Promise(resolve => { finishRead = resolve; }), write: async (path, data) => { if (!path.endsWith('.next.json')) writes.push(JSON.parse(data)); } };
+  app.vault.adapter = { read: path => path.endsWith('.next.json') ? Promise.reject(new Error('ENOENT')) : new Promise(resolve => { finishRead = resolve; }), write: async (path, data) => { if (!path.endsWith('.next.json')) writes.push(JSON.parse(data)); } };
   const plugin = new api.ChatPlugin();
   plugin.app = app;
   plugin.agent = new api.AgentLoop(app, settings('openai'));

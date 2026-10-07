@@ -498,6 +498,8 @@ export default class ChatPlugin extends Plugin {
       this.storeActiveMessages();
       const state: ChatState = {
         version: CHAT_STATE_VERSION,
+        // Which of the two copies is newer when both are whole (readChatState).
+        savedAt: Date.now(),
         activeConversationId: this.activeConversationId,
         // Per conversation: the last 100 UI entries and 80 API messages
         // (complete turns); image data only in the API history.
@@ -545,19 +547,23 @@ export default class ChatPlugin extends Plugin {
       return state;
     };
     let exists = true;
+    let main: ChatState | null = null;
     try {
-      const state = await read(path);
-      if (state) return state;
+      main = await read(path);
     } catch {
       exists = await adapter.exists(path).catch(() => true);
     }
-    // Cut off while chat-state.json was written: the copy written just before.
+    // The copy: whole when chat-state.json was cut off while written, and
+    // newer when Obsidian ended between the two writes, or writing
+    // chat-state.json failed (another program had it open).
+    let copy: ChatState | null = null;
     try {
-      const state = await read(this.nextChatStatePath);
-      if (state) return state;
+      copy = await read(this.nextChatStatePath);
     } catch {
       // None, or cut off while it was written
     }
+    if (main && copy) return (copy.savedAt ?? 0) > (main.savedAt ?? 0) ? copy : main;
+    if (main ?? copy) return main ?? copy;
     if (!exists) return null;
     const name = `chat-state.corrupt-${Date.now()}.json`;
     try {

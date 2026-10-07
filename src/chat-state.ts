@@ -48,6 +48,8 @@ export interface PendingTurn {
 /** `chat-state.json` as written by this version. */
 export interface ChatState {
   version: number;
+  /** When it was written (ms); optional, so no new format version. */
+  savedAt?: number;
   activeConversationId: string;
   conversations: ConversationRecord[];
 }
@@ -113,7 +115,8 @@ export function migrateChatState(value: unknown): ChatState | null {
   if (conversations.length === 0) conversations.push(newConversation());
   const active = conversations.find((conversation) => conversation.id === state.activeConversationId)
     ?? newestFirst(conversations)[0];
-  return { version, activeConversationId: active.id, conversations };
+  const savedAt = typeof state.savedAt === "number" ? state.savedAt : undefined;
+  return { version, ...(savedAt !== undefined ? { savedAt } : {}), activeConversationId: active.id, conversations };
 }
 
 /** A new, empty conversation. */

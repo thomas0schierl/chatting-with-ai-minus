@@ -397,7 +397,7 @@ test('Nothing is saved before the saved conversations have been read', async () 
   const { app } = vaultApp();
   const writes = [];
   let finishRead;
-  app.vault.adapter = { read: () => new Promise(resolve => { finishRead = resolve; }), write: async (path, data) => { if (!path.endsWith('.next.json')) writes.push(JSON.parse(data)); } };
+  app.vault.adapter = { read: path => path.endsWith('.next.json') ? Promise.reject(new Error('ENOENT')) : new Promise(resolve => { finishRead = resolve; }), write: async (path, data) => { if (!path.endsWith('.next.json')) writes.push(JSON.parse(data)); } };
   const plugin = new api.ChatPlugin();
   plugin.app = app;
   plugin.agent = new api.AgentLoop(app, settings('anthropic'));
@@ -475,8 +475,8 @@ async function loadFrom(content, { renameFails = false, next } = {}) {
   return { plugin, writes, renames, files };
 }
 
-const savedState = (text) => JSON.stringify({
-  version: 3, activeConversationId: 'c1',
+const savedState = (text, savedAt) => JSON.stringify({
+  version: 3, ...(savedAt ? { savedAt } : {}), activeConversationId: 'c1',
   conversations: [{ id: 'c1', title: text, customTitle: false, createdAt: 1, updatedAt: 1, chatHistory: [{ type: 'user', text, turnId: 't1' }], agentMessages: [] }],
 });
 
@@ -491,6 +491,19 @@ test('A save writes the state twice: chat-state.next.json, then chat-state.json;
   assert.equal(files.get(NEXT), files.get(STATE));
   assert.deepEqual(JSON.parse(files.get(STATE)).conversations[0].chatHistory.map((e) => e.text), ['Old', 'New']);
   assert.deepEqual(renames, []);
+});
+
+test('Both copies whole: the newer one loads (ended between the two writes, or chat-state.json couldn\'t be written)', async () => {
+  const newerCopy = await loadFrom(savedState('Old', 1000), { next: savedState('New', 2000) });
+  assert.deepEqual(newerCopy.plugin.chatHistory.map((e) => e.text), ['New']);
+  const newerMain = await loadFrom(savedState('Main', 3000), { next: savedState('Copy', 2000) });
+  assert.deepEqual(newerMain.plugin.chatHistory.map((e) => e.text), ['Main']);
+  // Saved before savedAt existed: chat-state.json wins.
+  const legacy = await loadFrom(savedState('Main'), { next: savedState('Copy') });
+  assert.deepEqual(legacy.plugin.chatHistory.map((e) => e.text), ['Main']);
+  // A save records when it was written.
+  await newerCopy.plugin.saveChatHistory();
+  assert.ok(JSON.parse(newerCopy.files.get(STATE)).savedAt > 2000);
 });
 
 test('Obsidian ended in the middle of a save (reload, quit): the chats load from the whole copy', async () => {
