@@ -273,13 +273,16 @@
   // While the user is at the bottom, new messages and a streaming answer
   // keep the view there. Scrolling up stops that; back at the bottom it
   // follows again. Sending a question always brings the view down. While
-  // scrolled up, a button jumps back to the bottom.
+  // scrolled up, a button jumps back to the bottom. Only scrolling up stops
+  // following: the browser also scrolls by itself (content above changing
+  // height, a shorter list), which mustn't leave the answer half hidden.
   /** Pixels from the bottom that still count as "at the bottom". */
   const BOTTOM_SLACK = 32;
   let messageListEl: HTMLElement | undefined = $state();
   let stickToBottom = true;
   let showJump = $state(false);
   let lastQuestionId = -1;
+  let lastScrollTop = 0;
 
   function isAtBottom(el: HTMLElement): boolean {
     return el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK;
@@ -291,6 +294,7 @@
     if (!el) return;
     if (stickToBottom) {
       el.scrollTop = el.scrollHeight;
+      lastScrollTop = el.scrollTop;
       showJump = false;
     } else if (!isAtBottom(el)) {
       showJump = true;
@@ -321,10 +325,12 @@
     const observer = new ResizeObserver(() => followBottom());
     observer.observe(el, { box: "border-box" });
     observer.observe(messageListEl);
-    // Any scroll (wheel, touch, scrollbar, keys) decides whether to follow.
+    // Scrolling up (wheel, touch, scrollbar, keys) stops following; back at the bottom it follows.
     const onScroll = () => {
-      stickToBottom = isAtBottom(el);
-      showJump = !stickToBottom;
+      if (isAtBottom(el)) stickToBottom = true;
+      else if (el.scrollTop < lastScrollTop) stickToBottom = false;
+      lastScrollTop = el.scrollTop;
+      showJump = !stickToBottom && !isAtBottom(el);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => {
@@ -1443,6 +1449,8 @@
     flex: 1 1 0;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* The view follows the bottom itself (followBottom); no anchoring jumps */
+    overflow-anchor: none;
     padding: 12px;
     -webkit-user-select: text;
     user-select: text;
