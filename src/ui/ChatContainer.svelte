@@ -1002,7 +1002,9 @@
                 aria-current={conversation.active ? "true" : undefined}
               >
                 <span class="chatting-minus-history-title">{conversation.title}</span>
-                <span class="chatting-minus-history-date">{formatDate(conversation.updatedAt)}</span>
+                <span class="chatting-minus-history-date">
+                  {#if conversation.running}<span class="chatting-minus-spinner chatting-minus-history-running" aria-label="Answering"></span>{/if}{conversation.running ? "Answering…" : formatDate(conversation.updatedAt)}
+                </span>
               </button>
               <button
                 class="chatting-minus-icon-btn"
@@ -1577,6 +1579,16 @@
     text-align: left;
     cursor: pointer;
     height: auto;
+  }
+
+  /* A chat whose answer runs in the background */
+  .chatting-minus-history-running {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 4px;
+    border-width: 1.5px;
+    vertical-align: -1px;
   }
 
   .chatting-minus-history-title {

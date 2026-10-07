@@ -43,8 +43,7 @@ only its open questions are listed here.
 - All conversations, image data included, live in one `chat-state.json`
   that is rewritten after every turn; check size and save time with many
   chats with images (saving attachments as separate files would fix it).
-- Switching conversations stops a running turn; it can't finish in the
-  background. The conversation list has no search.
+- The conversation list has no search.
 - `view_canvas` shows note file nodes by name only, and very large canvases
   are hard to read when fitted.
 - ChatGPT: whether `function_call_output` may contain `input_image` is

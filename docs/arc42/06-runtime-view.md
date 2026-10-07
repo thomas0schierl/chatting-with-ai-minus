@@ -192,35 +192,50 @@ Undo applies to the vault only; the answer stays in the chat.
 
 `plugin.conversations` holds every conversation (`ConversationRecord`:
 ID, title, `customTitle`, times, visible and API history).
-`plugin.chatHistory` is the active one's visible history. Its API history
-lives in the `AgentLoop` and is copied into the record when saving,
+`plugin.chatHistory` is the active one's visible history. Each open or
+running conversation has its own `AgentLoop` (`plugin.agentFor()`), which
+holds its API history; it is copied into the record when saving,
 switching or listing.
 
 1. **New chat** (header button, history list, command, ribbon menu):
-   `ObsidianChatView.newChat()` stops a running turn (as **Stop**: the text
-   shown so far stays in that conversation), then
+   `ObsidianChatView.newChat()` ends a voice conversation, then
    `startNewConversation()` adds an empty conversation and activates it. If
    the current one is still empty, it stays instead. *Chat about this
    note* and *Send selection to chat* (commands, context menus) start a
    new chat the same way before sending or showing the selection.
-2. **Switch** (a row of the history list): the same stop, then
-   `openConversation(id)`. **Activating** aborts the loop and imports the
-   conversation's API history (`importMessages()`): a different array, and
-   the OpenAI chaining state is cleared, so the first request replays that
-   conversation in full and never chains to another conversation's
-   response. An empty conversation left behind is dropped. The view shows
-   the new history and title; then save.
-3. **Title:** each turn start (and Clear) sets `updatedAt` and, unless
+2. **Switch** (a row of the history list): `openConversation(id)`.
+   **Activating** keeps the loop of a conversation whose turn runs (a turn
+   holds its loop, `AgentLoop.hold()`) and drops the idle ones; the next
+   conversation gets a loop made from its saved API history
+   (`importMessages()`): a different array, and the OpenAI chaining state
+   is cleared, so the first request replays that conversation in full and
+   never chains to another conversation's response. An empty conversation
+   left behind is dropped. The view shows the new history and title; then
+   save.
+3. **A turn in the background:** a running turn goes on when the user
+   switches. The view keeps one `RunningTurn` per conversation: it writes
+   to its conversation's history and to the chat only while that
+   conversation is shown. What arrives meanwhile (the streamed text,
+   running tool steps, the thinking dots) is kept with it, so switching
+   back shows the turn as far as it got, with the input adding to it. A
+   question (`ask_user`) waits for the return: switching away cancels the
+   input, not the question, and a notice names the chat; an answer that
+   ends in the background says so in a notice too. The history list shows
+   "Answering…" for such a chat. Messages typed after its last step run
+   when it is shown again. Following the AI's edits goes on (it concerns
+   notes, not the chat). Deleting the conversation stops its turn; closing
+   the view stops all turns.
+4. **Title:** each turn start (and Clear) sets `updatedAt` and, unless
    renamed, the title from the first user message (one line, at most 40
    characters, or the first image's name). Editing the first message
    changes it.
-4. **Rename** (pencil in the list): inline field; Enter or leaving it
+5. **Rename** (pencil in the list): inline field; Enter or leaving it
    saves, Esc cancels. An empty name returns to the automatic title.
-5. **Delete** (bin in the list, then *Delete* to confirm): removes the
-   record. For the current conversation, the running turn stops first and
+6. **Delete** (bin in the list, then *Delete* to confirm): removes the
+   record and stops its running turn. For the current conversation,
    the most recently used other one opens, or a new empty one if none is
    left.
-6. **List:** conversations with content, most recently used first; an
+7. **List:** conversations with content, most recently used first; an
    empty new chat isn't listed. Escape or the history button closes it.
 
 **Clear** (the header's red trash icon, command) empties the current conversation's histories;

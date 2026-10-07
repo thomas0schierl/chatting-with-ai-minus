@@ -24,7 +24,7 @@ needed. They don't prove live-service or mobile behaviour.
 | `chatgpt-signin.test.mjs` | ChatGPT sign-in, ID token check, refresh, sign-out, another account, retry after a 401, the request shape. |
 | `chatgpt-usage.test.mjs` | Usage limit: not retried, its own message; the one-time plan welcome. |
 | `client-version.test.mjs` | The Codex CLI version sent as `client_version`: cached, stable releases only, fallback. |
-| `conversations.test.mjs` | New chat, switch, rename, delete, restore, titles, caps, saves one at a time, an unreadable saved file kept aside, history isolation and OpenAI chaining. |
+| `conversations.test.mjs` | New chat, switch, rename, delete, restore, titles, caps, saves one at a time, an unreadable saved file kept aside, history isolation and OpenAI chaining; a turn going on in the background (its question answered after the return, its streamed answer landing in its chat with a notice), deleting a chat stops its turn. |
 | `typed-steering.test.mjs` | Typing while an answer runs: queued, taken in with the next step, or run next; Stop drops it. |
 | `screen-awake.test.mjs` | The screen lock: held while anyone needs it, asked for again after the background, a turn holds it; the "Stopped." note. |
 | `debug-log.test.mjs` | The *Debug log* setting: nothing written while off; Copy and Clear. |

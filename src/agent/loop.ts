@@ -116,6 +116,8 @@ export class AgentLoop {
   private voiceTurn = false;
   /** The running turn's selection: the tools change only that text of its note (its text follows the edits). */
   private scope: SelectionScope | null = null;
+  /** Turns holding this loop (`hold()`). */
+  private holds = 0;
   /** The vault root's AGENTS.md as the last turn read it (in the system prompt). */
   private vaultInstructions: string | null = null;
 
@@ -177,6 +179,24 @@ export class AgentLoop {
   importMessages(messages: UnifiedMessage[]): void {
     this.messages = [...messages];
     resetProviderState();
+  }
+
+  /**
+   * Marks a turn as running from before it starts to after it ends (the
+   * chat view holds it): the plugin keeps a running conversation's loop
+   * when the user switches away. Returns the release.
+   */
+  hold(): () => void {
+    this.holds++;
+    let released = false;
+    return () => {
+      if (!released) this.holds--;
+      released = true;
+    };
+  }
+
+  isRunning(): boolean {
+    return this.holds > 0;
   }
 
   /** Nothing in the API history yet. */

@@ -269,7 +269,9 @@ export async function chatSetup(provider, saved) {
   };
   const plugin = new api.ChatPlugin();
   plugin.app = app;
-  plugin.agent = new api.AgentLoop(app, settings(provider));
+  // New conversations' agent loops use the plugin's settings.
+  plugin.settings = { ...plugin.settings, ...settings(provider) };
+  plugin.agent = new api.AgentLoop(app, plugin.settings);
   await plugin.loadChatHistory();
   const view = new api.ObsidianChatView({}, plugin);
   const chat = fakeChat();

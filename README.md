@@ -63,7 +63,8 @@ messages and the notes the AI reads go to that provider (see
   with the send button or Ctrl+Enter (Cmd+Enter on a Mac).
 - **Conversations:** start a new chat at any time; switch, rename and
   delete earlier chats from the history list. The chat that was open comes
-  back after a restart.
+  back after a restart. An answer keeps running when you switch to another
+  chat; a notice says when it is ready or has a question for you.
 - **Selection scope:** select text in a note and choose *Send selection to
   chat*; in that note the AI can change only the selected text, and the
   message shows the selection it worked on.

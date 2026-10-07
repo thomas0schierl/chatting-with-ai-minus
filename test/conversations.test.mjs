@@ -15,6 +15,8 @@ beforeEach(() => {
 const { CHAT_STATE_VERSION, migrateChatState, NEW_CHAT_TITLE } = api.chatState;
 // Answers each request with "A<n>" (n counts requests).
 const answering = provider => transport((body, index) => response(provider, [text(`A${index + 1}`)], 'end_turn', index));
+// Anthropic request: the tool results' texts.
+const toolResultsOf = body => body.messages.flatMap(m => Array.isArray(m.content) ? m.content.filter(b => b.type === 'tool_result').map(b => b.content) : []);
 // Anthropic request: the user turns' texts, without the context prefix.
 const userTurns = body => body.messages.filter(m => m.role === 'user' && (typeof m.content === 'string' || m.content.some(b => b.type === 'text')))
   .map(m => (typeof m.content === 'string' ? m.content : m.content.find(b => b.type === 'text').text).split('\n').at(-1));
@@ -300,11 +302,11 @@ test('Commands act on the chat view as soon as its UI is mounted, not after a fi
   assert.deepEqual(selected, [{ text: 'Words', filePath: 'Plan.md' }]);
 });
 
-test('Switching stops a running turn; it ends in its own conversation', async () => {
+test('A turn goes on when switching: its question waits for the return and is answered there', async () => {
   const { plugin, view, chat } = await chatSetup('anthropic');
   const requests = transport((body, index) => index === 0
     ? response('anthropic', [call('ask', 'ask_user', { question: 'Which note?' })], 'tool_use')
-    : response('anthropic', [text(`A${index + 1}`)]));
+    : response('anthropic', [text(`A${index + 1}`)], 'end_turn', index));
   const asking = view.handleUserMessage('Waiting question', null);
   while (!chat.askUser) await tick();
   const a = plugin.activeConversationId;
@@ -312,19 +314,71 @@ test('Switching stops a running turn; it ends in its own conversation', async ()
   view.newChat();
   assert.equal(view.running, false);
   assert.deepEqual(chat.shown, []);
-  await asking;
-  assert.deepEqual(plugin.chatHistory, []);
-  assert.equal(plugin.agent.exportMessages().length, 0);
+  // The input no longer answers the other chat's question.
+  assert.equal(chat.askUser, null);
 
   await view.handleUserMessage('Other topic', null);
   assert.equal(requests.length, 2);
   assert.deepEqual(userTurns(requests[1]), ['Other topic']);
+  const b = plugin.activeConversationId;
 
   view.openConversation(a);
-  assert.deepEqual(plugin.chatHistory.map(e => e.text), ['Waiting question', 'Which note?']);
-  // The stopped tool call keeps its (cancelled) result, so the conversation goes on.
-  await view.handleUserMessage('Go on', null);
-  assert.deepEqual(userTurns(requests[2]), ['Waiting question', 'Go on']);
+  assert.equal(view.running, true);
+  assert.equal(chat.busy, true);
+  assert.deepEqual(chat.shown.map(m => m.text), ['Waiting question', 'Which note?']);
+  assert.ok(chat.answerAskUser('Plan'));
+  await asking;
+  assert.equal(view.running, false);
+  assert.deepEqual(plugin.chatHistory.map(e => e.text), ['Waiting question', 'Which note?', 'Plan', 'A3']);
+  assert.deepEqual(toolResultsOf(requests[2]), ['Plan']);
+
+  view.openConversation(b);
+  assert.deepEqual(plugin.chatHistory.map(e => e.text), ['Other topic', 'A2']);
+});
+
+test('A turn streams on in the background: the other chat stays as it is, the return shows the text so far, the end lands in its chat', async () => {
+  const { plugin, view, chat } = await chatSetup('anthropic');
+  let finish;
+  const gate = new Promise(resolve => { finish = resolve; });
+  transport(async (body, index) => {
+    if (index === 0) {
+      // Streams a first part, then waits.
+      await gate;
+      return response('anthropic', [text('Long answer')]);
+    }
+    return response('anthropic', [text(`B${index}`)], 'end_turn', index);
+  });
+  const running = view.handleUserMessage('Write a lot', null);
+  await tick();
+  const a = plugin.activeConversationId;
+
+  view.newChat();
+  await view.handleUserMessage('Quick one', null);
+  assert.deepEqual(chat.shown.map(m => m.text), ['Quick one', 'B1']);
+
+  finish();
+  await running;
+  // Not shown here; it is in its own chat, and a notice says so.
+  assert.equal(globalThis.__notices.at(-1), 'Answer ready in "Write a lot".');
+  assert.deepEqual(chat.shown.map(m => m.text), ['Quick one', 'B1']);
+  view.openConversation(a);
+  assert.deepEqual(chat.shown.map(m => m.text), ['Write a lot', 'Long answer']);
+  assert.equal(view.running, false);
+});
+
+test('Deleting a chat stops its background turn', async () => {
+  const { plugin, view, chat } = await chatSetup('anthropic');
+  transport((body, index) => index === 0
+    ? response('anthropic', [call('ask', 'ask_user', { question: 'Which note?' })], 'tool_use')
+    : response('anthropic', [text('never')], 'end_turn', index));
+  const asking = view.handleUserMessage('Waiting question', null);
+  while (!chat.askUser) await tick();
+  const a = plugin.activeConversationId;
+  view.newChat();
+  await view.handleUserMessage('Other', null);
+  view.deleteConversation(a);
+  await asking;
+  assert.equal(plugin.listConversations().some(c => c.id === a), false);
 });
 
 test('Edit and regenerate work within the conversation they belong to', async () => {
