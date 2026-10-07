@@ -1,6 +1,7 @@
 // Rewrites the math delimiters models often use into the ones Obsidian
-// renders ($...$ and $$...$$). Applied at render time only; stored messages
-// stay unchanged. Adapted from src/ui/math-markdown.ts in
+// renders ($...$ and $$...$$), and escapes the pipe of a [[link|alias]] in a
+// table row (Obsidian needs [[link\|alias]] there; models rarely write it).
+// Applied at render time only; stored messages stay unchanged. Adapted from src/ui/math-markdown.ts in
 // nagisa525/obsidian-chatting-plus (MIT).
 
 const FENCE_OPEN = /^( {0,3})(`{3,}|~{3,})(.*)$/;
@@ -11,6 +12,9 @@ const CODE_SPAN = /(`+)[^\n]*?\1(?!`)/g;
 // line break like `\\[2pt]`) is never taken for an opening delimiter.
 const DISPLAY = /\\\\|\\\[([\s\S]*?)\\\]/g;
 const INLINE = /\\\\|\\\(([^\n]*?)\\\)/g;
+// A table row, and the unescaped alias pipe of a wiki link in it.
+const TABLE_ROW = /^[ \t]*\|.*$/gm;
+const LINK_ALIAS = /(\[\[[^\]|\n]*[^\]|\\\n])\|([^\]\n]*\]\])/g;
 
 export function normalizeMathMarkdown(source: string): string {
   // Line endings are unified, so a CRLF fence is still recognized.
@@ -67,6 +71,7 @@ function normalizeProse(text: string): string {
 
 function normalizeDelimiters(text: string): string {
   return text
+    .replace(TABLE_ROW, (row) => row.replace(LINK_ALIAS, "$1\\|$2"))
     // Display math keeps its own spacing and line breaks, so a block written
     // on its own lines stays a block (also inside list items).
     .replace(DISPLAY, (match, expression: string | undefined) =>

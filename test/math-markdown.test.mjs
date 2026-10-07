@@ -54,3 +54,12 @@ test('math, latex and tex fences become $$ blocks', () => {
   assert.equal(normalize('```math\r\nx\r\n```\r\n'), '$$\nx\n$$\n');
   assert.equal(normalize('```math\n\n```'), '```math\n\n```');
 });
+
+test('a [[link|alias]] in a table row gets its pipe escaped; elsewhere, escaped or in code it stays', () => {
+  assert.equal(normalize('| Mira | [[2026-10-05 Kickoff|Kickoff]] |'), '| Mira | [[2026-10-05 Kickoff\\|Kickoff]] |');
+  assert.equal(normalize('| [[A|a]] and [[B|b]] |'), '| [[A\\|a]] and [[B\\|b]] |');
+  assert.equal(normalize('| [[A\\|a]] | [[Plain]] |'), '| [[A\\|a]] | [[Plain]] |');
+  assert.equal(normalize('See [[A|a]] here.'), 'See [[A|a]] here.');
+  assert.equal(normalize('| `[[A|a]]` |'), '| `[[A|a]]` |');
+  assert.equal(normalize('```\n| [[A|a]] |\n```'), '```\n| [[A|a]] |\n```');
+});
