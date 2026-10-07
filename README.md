@@ -79,17 +79,20 @@ Chat about active note and Copy transcript.
 
 ## Install
 
-The plugin isn't in Obsidian's community plugins yet, and there is no
-GitHub release yet. Build it from source (Obsidian 1.13.0 or later):
+The plugin isn't in Obsidian's community plugins yet. It needs Obsidian
+1.13.0 or later; install it in one of these ways:
 
-1. `npm install`, then `npm run build`.
-2. Copy `main.js`, `manifest.json` and `styles.css` (the build creates
-   it) into `<vault>/.obsidian/plugins/chatting-with-ai-minus/`.
-3. In Obsidian, enable **Chatting with AI Minus** under **Settings →
-   Community plugins**.
+- **With BRAT** (updates itself; desktop and phone): install the
+  community plugin **BRAT**, run its command *Add a beta plugin for
+  testing* and enter `thomas0schierl/chatting-with-ai-minus`.
+- **By hand:** download `main.js`, `manifest.json` and `styles.css` from
+  the [latest release](https://github.com/thomas0schierl/chatting-with-ai-minus/releases/latest)
+  into `<vault>/.obsidian/plugins/chatting-with-ai-minus/`.
+- **From source:** `npm install`, then `npm run build`, and copy the same
+  three files.
 
-Once there are releases, download the same three files from the latest
-GitHub release instead of building them.
+Then enable **Chatting with AI Minus** under **Settings → Community
+plugins**.
 
 ## Set up
 
@@ -139,10 +142,10 @@ Bluetooth headset); iOS isn't verified yet.
 
 ## On a phone
 
-- **Getting the plugin there:** build on a computer (see
-  [Install](#install)) and let a sync copy the plugin folder, e.g.
-  Obsidian Sync with **Installed community plugins** on, or another sync
-  of the `.obsidian` folder. Then enable the plugin on the phone.
+- **Getting the plugin there:** with BRAT on the phone (see
+  [Install](#install)), or let a sync copy the plugin folder, e.g.
+  Obsidian Sync with **Installed community plugins** on. Then enable the
+  plugin on the phone.
 - **Per device:** API keys and sign-ins are kept in the device's
   keychain, so enter them on each device. Chats (`chat-state.json`) stay
   on the device; the plugin doesn't sync them.
