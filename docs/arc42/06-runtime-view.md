@@ -417,7 +417,11 @@ OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
      the entry has them.
    - **Anthropic, OpenAI:** fetch `/v1/models`. For Anthropic, read each
      model's thinking type (`capabilities.thinking.types`) and effort
-     levels (`capabilities.effort`).
+     levels (`capabilities.effort`). OpenAI's list has only IDs and
+     creation dates, in no order, and every model of the account (speech,
+     images, embeddings, voice): keep the chat families, newest first
+     (`created`), and drop a dated snapshot (`gpt-5.4-2026-03-05`) when its
+     model (`gpt-5.4`) is listed too.
 4. **Result:** the new list is saved to `data.json`. On failure the last
    list is kept, and there are no retries for 5 minutes.
 
