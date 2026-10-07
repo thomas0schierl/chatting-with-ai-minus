@@ -30,7 +30,7 @@ import {
 } from "./chat-state";
 import { ChatGPTOAuthStore } from "./auth/chatgptOAuthStore";
 import { ChatGPTOAuthService } from "./auth/chatgptOAuth";
-import { cachedCatalog, catalogIdentity, codexClientVersion, normalizeCatalogState, secretIdentity } from "./api/model-catalog";
+import { CATALOG_TTL, cachedCatalog, catalogIdentity, codexClientVersion, normalizeCatalogState, refreshCatalog, secretIdentity } from "./api/model-catalog";
 import { setChatGPTOAuthService } from "./api/chatgpt-oauth";
 import { PLUGIN_ID } from "./plugin-id";
 import { runCapabilityCheck } from "./diagnostics/capability-check";
@@ -685,7 +685,18 @@ export default class ChatPlugin extends Plugin {
     const { provider, modelCatalog } = this.settings;
     const account = this.secretIdentity();
     if (!account) return;
-    cachedCatalog(modelCatalog, provider, await catalogIdentity(provider, account));
+    const identity = await catalogIdentity(provider, account);
+    const entry = cachedCatalog(modelCatalog, provider, identity);
+    // A list older than a day is loaded again in the background (the
+    // context ring needs the model's window), once Obsidian has started.
+    if (!entry || Date.now() - entry.fetchedAt >= CATALOG_TTL) {
+      this.app.workspace.onLayoutReady(() => {
+        refreshCatalog(modelCatalog, provider, identity, this.settings.apiKey, this.chatgptOAuth)
+          // Saving updates the chat header and the ring.
+          .then(() => this.saveSettings())
+          .catch(() => undefined);
+      });
+    }
   }
 
   /** Load the correct API key when provider changes */

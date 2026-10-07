@@ -14,6 +14,8 @@ import type {
 } from "../types";
 import { errorKind, resetProviderState, sendMessage } from "../api/client";
 import { lastChunkAt } from "../api/stream";
+import { catalogModel, loadModelDetails } from "../api/model-catalog";
+import { chatgptCompacts } from "../api/chatgpt-oauth";
 import { StreamCutError } from "../api/errors";
 import { appLifecycle } from "../platform/lifecycle";
 import { TOOL_DEFINITIONS } from "../tools/registry";
@@ -23,6 +25,13 @@ import { folderInstructions, instructionsGiven, rootInstructions, toolPaths } fr
 import { buildSystemPrompt, buildContextMessage } from "./system-prompt";
 import { trimHistory, cutBeforeTurn, newTurnId, HISTORY_MESSAGES } from "./history";
 import { debugLog } from "../debug";
+import { compactThreshold, summaryMessage } from "./compaction";
+import { SUMMARY_SYSTEM_PROMPT, isContextOverflow, summaryRequest } from "./summary";
+
+/** The turn ID of a summary message (it starts its own turn, with no visible entry). */
+function summaryTurnId(): string {
+  return `summary-${newTurnId()}`;
+}
 
 /**
  * What the chat view shows and saves for a tool result: the text and a
@@ -199,6 +208,101 @@ export class AgentLoop {
     return this.holds > 0;
   }
 
+  // ─── Compaction (ADR-18) ──────────────────────────────────────────────
+
+  /**
+   * Summarize the whole history now (*Compact now*): it becomes one
+   * message with the summary. False when nothing was done (empty, a turn
+   * runs, stopped). Throws when the summary request fails.
+   */
+  async compact(): Promise<boolean> {
+    if (this.messages.length === 0 || this.loopVersion) return false;
+    const version = ++this.runVersion;
+    const isStopped = () => version !== this.runVersion;
+    const summary = await this.summarize({ ...this.settings }, this.messages, isStopped);
+    if (isStopped()) return false;
+    this.messages = [summaryMessage(summary, summaryTurnId())];
+    debugLog(this.app, "COMPACTED", { reason: "user", chars: summary.length });
+    return true;
+  }
+
+  /**
+   * Before a turn: a summary where the provider can't help.
+   * - The last compaction is another provider's or model's and has no
+   *   readable summary (OpenAI's is encrypted): it gets one now.
+   * - The provider doesn't compact (unsupported, refused or the window
+   *   unknown to it) and the last request (`contextTokens`) passed the
+   *   compaction point: the history is summarized now.
+   * A failed summary doesn't stop the turn.
+   */
+  private async prepareContext(settings: ChatSettings, contextTokens: number, callbacks: AgentCallbacks, isStopped: () => boolean): Promise<void> {
+    try {
+      const index = this.messages.map((message) => !!message.compaction).lastIndexOf(true);
+      const marker = this.messages[index];
+      const replay = marker?.replay;
+      const replayable = replay?.provider === settings.provider && (!replay.model || replay.model === settings.model);
+      if (marker?.compaction && !marker.compaction.summary && !replayable && index > 0) {
+        marker.compaction = { summary: await this.summarize(settings, this.messages.slice(0, index), isStopped) };
+        debugLog(this.app, "COMPACTED", { reason: "provider switch" });
+      }
+      const option = catalogModel(settings.provider, settings.model);
+      const threshold = compactThreshold(settings.provider, option);
+      if (!isStopped() && threshold && contextTokens >= threshold && !this.compactsNatively(settings, option) && this.messages.length) {
+        const summary = await this.summarize(settings, this.messages, isStopped);
+        if (isStopped()) return;
+        this.messages = [summaryMessage(summary, summaryTurnId())];
+        debugLog(this.app, "COMPACTED", { reason: "threshold", contextTokens, threshold });
+        callbacks.onCompacted?.();
+      }
+    } catch (e) {
+      debugLog(this.app, "COMPACTION_FAILED", { error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  /** The provider compacts this model's context on its side. */
+  private compactsNatively(settings: ChatSettings, option: ReturnType<typeof catalogModel>): boolean {
+    if (settings.provider === "anthropic") return option?.compaction === true;
+    if (settings.provider === "chatgpt-oauth") return chatgptCompacts();
+    return true;
+  }
+
+  /**
+   * The request didn't fit: summarize what came before the running turn,
+   * once per turn, and send again. False when there is nothing before it
+   * or the summary failed.
+   */
+  private async compactForOverflow(settings: ChatSettings, callbacks: AgentCallbacks, isStopped: () => boolean): Promise<boolean> {
+    const start = this.messages.map((message) => !!message.turnId).lastIndexOf(true);
+    if (start <= 0) return false;
+    try {
+      const summary = await this.summarize(settings, this.messages.slice(0, start), isStopped);
+      if (isStopped()) return false;
+      this.messages = [summaryMessage(summary, summaryTurnId()), ...this.messages.slice(start)];
+      debugLog(this.app, "COMPACTED", { reason: "overflow" });
+      callbacks.onCompacted?.();
+      return true;
+    } catch (e) {
+      debugLog(this.app, "COMPACTION_FAILED", { error: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  }
+
+  /** A summary of `messages` by the provider (a transcript, no tools); Stop cancels it. */
+  private async summarize(settings: ChatSettings, messages: UnifiedMessage[], isStopped: () => boolean): Promise<string> {
+    const window = catalogModel(settings.provider, settings.model)?.contextWindow;
+    const request = new AbortController();
+    this.request = request;
+    try {
+      const response = await sendMessage({ ...settings, enableWebSearch: false },
+        [{ role: "user", content: summaryRequest(messages, window) }], [], SUMMARY_SYSTEM_PROMPT, isStopped, { signal: request.signal });
+      const text = response.content.filter((block) => block.type === "text").map((block) => block.text ?? "").join("").trim();
+      if (!text) throw new Error("The summary came back empty.");
+      return text;
+    } finally {
+      if (this.request === request) this.request = null;
+    }
+  }
+
   /** Nothing in the API history yet. */
   isEmpty(): boolean {
     return this.messages.length === 0;
@@ -285,8 +389,10 @@ export class AgentLoop {
     selection?: SelectionScope | null,
     images: ImageAttachment[] = [],
     turnId: string = newTurnId(),
-    { voice = false, voiceTranscript = [], notes = [], mentioned = null, files = [] }: {
+    { voice = false, voiceTranscript = [], notes = [], mentioned = null, files = [], contextTokens = 0 }: {
       voice?: boolean; voiceTranscript?: VoiceTurn[]; notes?: string[]; mentioned?: MentionContext | null; files?: FileAttachment[];
+      /** The conversation's context after its last request (for compacting first, ADR-18). */
+      contextTokens?: number;
     } = {}
   ): Promise<void> {
     const version = ++this.runVersion;
@@ -294,6 +400,9 @@ export class AgentLoop {
     this.scope = selection ? { ...selection } : null;
     // Keep one provider/model/credential configuration for this entire turn.
     const turnSettings = { ...this.settings };
+    // A summary first where the provider can't compact (ADR-18).
+    await this.prepareContext(turnSettings, contextTokens, callbacks, () => version !== this.runVersion);
+    if (version !== this.runVersion) return;
 
     // Build context once per user turn and prepend to the user message;
     // the files the message links to come next, the message itself last.
@@ -354,7 +463,10 @@ export class AgentLoop {
     this.scope = null;
     if (!this.owesAnswer()) return;
     debugLog(this.app, "CONTINUE_TURN", { messages: this.messages.length });
-    await this.loop(version, callbacks, { ...this.settings });
+    const turnSettings = { ...this.settings };
+    await this.prepareContext(turnSettings, 0, callbacks, () => version !== this.runVersion);
+    if (version !== this.runVersion) return;
+    await this.loop(version, callbacks, turnSettings);
   }
 
   /** The agentic loop on the current history, for run `version`. */
@@ -378,6 +490,8 @@ export class AgentLoop {
     const systemPrompt = buildSystemPrompt(this.vaultInstructions);
     const maxIterations = turnSettings.maxIterations || 20;
     let resumes = 0;
+    // A request too long for the model is summarized and sent again, once per turn (ADR-18).
+    let overflowCompacted = false;
 
     for (let i = 0; i < maxIterations; i++) {
       if (isStopped()) return;
@@ -392,6 +506,12 @@ export class AgentLoop {
           response = await this.send(turnSettings, systemPrompt, isStopped, onTextDelta);
         } catch (e) {
           if (isStopped()) return;
+          if (!overflowCompacted && isContextOverflow(e)) {
+            overflowCompacted = true;
+            callbacks.onThinking();
+            if (await this.compactForOverflow(turnSettings, callbacks, isStopped)) continue;
+            if (isStopped()) return;
+          }
           const msg = e instanceof Error ? e.message : String(e);
           // Failed or given up while Obsidian was in the background, or the
           // stream was cut off (a dropped connection, no provider error):
@@ -413,6 +533,11 @@ export class AgentLoop {
       }
 
       debugLog(this.app, "API_RESPONSE", { stopReason: response.stopReason, contentTypes: response.content.map(b => b.type), usage: response.usage });
+      if (response.usage) {
+        // The model's window and prices for the ring (OpenAI: its documentation page, once a day).
+        if (i === 0) await loadModelDetails(turnSettings.modelCatalog, turnSettings.provider, turnSettings.apiKey, turnSettings.model);
+        callbacks.onUsage?.(response.usage, { provider: turnSettings.provider, model: turnSettings.model, turnStart: i === 0 });
+      }
 
       if (isStopped()) return;
 
@@ -446,7 +571,11 @@ export class AgentLoop {
       if (isStopped()) return;
 
       // Append assistant message to history
-      this.messages.push({ role: "assistant", content: response.content, replay: response.replay });
+      this.messages.push({
+        role: "assistant", content: response.content, replay: response.replay,
+        ...(response.compaction ? { compaction: response.compaction } : {}),
+      });
+      if (response.compaction) callbacks.onCompacted?.();
 
       // If no tool calls, we're done
       if (toolCalls.length === 0) {

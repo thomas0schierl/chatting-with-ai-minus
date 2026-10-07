@@ -14,6 +14,9 @@ export const bundled = await build({
     export * as mentions from './src/ui/mentions';
     export * as instructions from './src/agent/instructions';
     export * as files from './src/files/attachments';
+    export * as usage from './src/agent/usage';
+    export * as summary from './src/agent/summary';
+    export { ProviderError } from './src/api/errors';
     export { UndoConfirmModal } from './src/ui/undo-confirm';
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';
@@ -251,6 +254,7 @@ export function fakeChat() {
     voice: null, voiceAvailable: false, continueShown: false,
     setContinue(value) { chat.continueShown = value; },
     addChanges(turnId, files, state) { chat.shown.push({ id: nextId++, type: 'changes', turnId, files, changesState: state }); },
+    usage: null, setUsage(value) { chat.usage = value; },
     setChangesUndone(turnId) { const row = chat.shown.find(m => m.type === 'changes' && m.turnId === turnId); if (row) row.changesState = 'undone'; },
     setVoice(state) { chat.voice = state; }, setVoiceAvailable(value) { chat.voiceAvailable = value; }, setEnterSends(value) { chat.enterSends = value; }, setFollowEdits(value) { chat.followEdits = value; }, setQueued(texts) { chat.queued = texts; },
   };

@@ -515,7 +515,7 @@ test('Model list: /v1/models with the bearer token, only visibility "list"', asy
   globalThis.__githubRequest = async () => ({ status: 200, json: { tag_name: 'rust-v0.161.0', prerelease: false, draft: false } });
   globalThis.__providerRequest = async request => {
     requests.push(request);
-    return { status: 200, json: { models: [{ slug: 'gpt-6.1-sol', display_name: 'GPT-6.1 Sol', visibility: 'list' }, { slug: 'internal', visibility: 'hide' }] } };
+    return { status: 200, json: { models: [{ slug: 'gpt-6.1-sol', display_name: 'GPT-6.1 Sol', visibility: 'list', context_window: 400000, effective_context_window_percent: 95, auto_compact_token_limit: 300000 }, { slug: 'internal', visibility: 'hide' }] } };
   };
   const identity = await api.catalogIdentity('chatgpt-oauth', 'fake-account');
   const state = { entries: [] };
@@ -526,7 +526,8 @@ test('Model list: /v1/models with the bearer token, only visibility "list"', asy
   assert.equal(state.clientVersion.value, '0.161.0');
   delete globalThis.__githubRequest;
   assert.deepEqual(requests[0].headers, { Authorization: 'Bearer fake-token' });
-  assert.deepEqual(models, [{ value: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', reasoningEfforts: undefined, defaultReasoningEffort: undefined, supportsReasoningSummary: undefined, supportsParallelTools: undefined }]);
+  // The window as Codex uses it: context_window times its effective percent.
+  assert.deepEqual(models, [{ value: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', reasoningEfforts: undefined, defaultReasoningEffort: undefined, supportsReasoningSummary: undefined, supportsParallelTools: undefined, contextWindow: 380000, autoCompactTokens: 300000 }]);
 });
 
 test('OpenAI model list (API key): chat models only, newest first, dated snapshots folded into their model', async () => {

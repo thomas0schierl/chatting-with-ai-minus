@@ -6,6 +6,7 @@
 import type { ChatHistoryEntry, FileAttachment, ImageAttachment, UnifiedMessage } from "./types";
 import { assignLegacyTurnIds, trimHistory, HISTORY_MESSAGES } from "./agent/history";
 import { isRecord } from "./json";
+import type { ConversationUsage } from "./agent/usage";
 
 /** Current format version of `chat-state.json`. */
 export const CHAT_STATE_VERSION = 3;
@@ -39,6 +40,8 @@ export interface ConversationRecord {
   pendingTurn?: PendingTurn;
   /** For the model with the next turn: what the user did meanwhile (e.g. undid an answer's changes). */
   notes?: string[];
+  /** Context of the last request and estimated cost (the ring in the chat header). */
+  usage?: ConversationUsage;
 }
 
 /** The turn a conversation was running. */
@@ -114,6 +117,7 @@ export function migrateChatState(value: unknown): ChatState | null {
         agentMessages: arrayOf<UnifiedMessage>(item.agentMessages),
         ...(pendingTurn ? { pendingTurn } : {}),
         ...(notes.length ? { notes } : {}),
+        ...(savedUsage(item.usage) ?? {}),
       };
     });
   if (conversations.length === 0) conversations.push(newConversation());
@@ -225,6 +229,23 @@ export function restoreImages(entries: ChatHistoryEntry[], messages: UnifiedMess
     if (entry.attachedFiles?.length) restored.attachedFiles = entry.attachedFiles.map((file) => files.get(file.id) ?? file);
     return restored;
   });
+}
+
+/** A saved usage record, checked field by field (`{ usage }`), or undefined. */
+function savedUsage(value: unknown): { usage: ConversationUsage } | undefined {
+  if (!isRecord(value)) return undefined;
+  const number = (field: unknown) => (typeof field === "number" && Number.isFinite(field) && field >= 0 ? field : undefined);
+  const contextTokens = number(value.contextTokens);
+  const costUsd = number(value.costUsd);
+  if (contextTokens === undefined || costUsd === undefined || typeof value.model !== "string" || typeof value.provider !== "string") return undefined;
+  const lastTurnCostUsd = number(value.lastTurnCostUsd);
+  return {
+    usage: {
+      contextTokens, costUsd, model: value.model, provider: value.provider,
+      unpricedRequests: number(value.unpricedRequests) ?? 0,
+      ...(lastTurnCostUsd !== undefined ? { lastTurnCostUsd } : {}),
+    },
+  };
 }
 
 function arrayOf<T>(value: unknown): T[] {

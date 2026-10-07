@@ -3,9 +3,10 @@
  * (tools, history as input items, sending and its errors) and the answer
  * (stream events, output items). Also the replay rule for all adapters.
  */
-import type { ContentBlock, FileAttachment, ImageAttachment, Provider, ProviderReplay, StreamOptions, UnifiedMessage, UnifiedResponse, UnifiedToolDef } from "../types";
+import type { ContentBlock, FileAttachment, ImageAttachment, Provider, ProviderReplay, StreamOptions, TokenUsage, UnifiedMessage, UnifiedResponse, UnifiedToolDef } from "../types";
 import { withoutOldToolImages } from "../agent/history";
 import { fileAsText, isSentAsFile } from "../files/attachments";
+import { afterCompaction } from "../agent/compaction";
 import { streamSSE, type StreamResult } from "./stream";
 import { StreamCutError } from "./errors";
 import { isRecord } from "../json";
@@ -88,9 +89,14 @@ export function buildResponsesInput(
   identity: string,
 ): Record<string, unknown>[] {
   const items: Record<string, unknown>[] = [];
-  for (const message of withoutOldToolImages(messages)) {
+  // After a compaction, from its message on (ADR-18).
+  const replayable = (message: UnifiedMessage) => canReplay(message, provider, model, identity);
+  for (const message of withoutOldToolImages(afterCompaction(messages, replayable))) {
     if (canReplay(message, provider, model, identity)) {
-      items.push(...message.replay.items);
+      // Items before the latest compaction item are covered by it.
+      const replayed = message.replay.items;
+      const last = replayed.map((item) => item.type).lastIndexOf("compaction");
+      items.push(...(last > 0 ? replayed.slice(last) : replayed));
       continue;
     }
     const content: Record<string, unknown>[] = [];
@@ -198,7 +204,28 @@ export function fromResponsesOutput(
     content,
     replay: { provider, model, identity, items: output },
     stopReason: data.status === "incomplete" ? "max_tokens" : content.some(block => block.type === "tool_use") ? "tool_use" : "end_turn",
-    usage: usage ? { inputTokens: numberValue(usage.input_tokens), outputTokens: numberValue(usage.output_tokens) } : undefined,
+    usage: usage ? responsesUsage(usage) : undefined,
+    // Server-side compaction: its item is encrypted, so no readable summary (ADR-18).
+    ...(output.some((item) => item.type === "compaction") ? { compaction: {} } : {}),
+  };
+}
+
+/**
+ * Server-side compaction (ADR-18): the server compacts when a request's
+ * context crosses `threshold` and returns an encrypted compaction item.
+ */
+export function compactionParameter(threshold: number | undefined): Record<string, unknown> {
+  return threshold ? { context_management: [{ type: "compaction", compact_threshold: threshold }] } : {};
+}
+
+/** Responses API usage: `input_tokens` includes the cached ones (`input_tokens_details.cached_tokens`). */
+function responsesUsage(usage: Record<string, unknown>): TokenUsage {
+  const details = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : {};
+  const cached = numberValue(details.cached_tokens);
+  return {
+    inputTokens: numberValue(usage.input_tokens),
+    outputTokens: numberValue(usage.output_tokens),
+    ...(cached ? { cachedInputTokens: cached } : {}),
   };
 }
 

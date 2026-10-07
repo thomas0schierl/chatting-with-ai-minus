@@ -10,7 +10,8 @@
   import { fileLabel, toolLabel } from "./tool-label";
   import { USAGE_URL } from "../auth/chatgptOAuth";
   import type { VoiceViewState } from "../voice/controller";
-  import type { ChangesState, VoiceAction } from "./chat-view";
+  import type { ChangesState, UsageView, VoiceAction } from "./chat-view";
+  import { formatCost, formatTokens } from "../agent/usage";
 
   const MAX_IMAGE_COUNT = 4;
   const MAX_FILE_COUNT = 4;
@@ -66,13 +67,30 @@
     onToggleFollow: () => void;
     /** Undo the vault changes of turn `turnId`. */
     onUndo: (turnId: string) => void;
+    /** Summarize the chat now (the ring's details). */
+    onCompact: () => void;
   }
 
   let {
     app, component, onSend, onClear, onStop, onEdit, onRegenerate, onCopy,
     onNewChat, listConversations, onOpenConversation, onRenameConversation, onDeleteConversation,
-    onVoice, onContinue, onToggleFollow, onUndo,
+    onVoice, onContinue, onToggleFollow, onUndo, onCompact,
   }: Props = $props();
+
+  // ─── Context ring (ADR-18) ────────────────────────────────────────────
+  let usage = $state<UsageView | null>(null);
+  let usageOpen = $state(false);
+  let usageEl: HTMLElement | undefined = $state();
+
+  export function setUsage(next: UsageView | null): void {
+    usage = next;
+    if (!next) usageOpen = false;
+  }
+
+  /** The details close on a click elsewhere or Escape. */
+  function closeUsageOutside(event: MouseEvent): void {
+    if (usageOpen && usageEl && event.target instanceof Node && !usageEl.contains(event.target)) usageOpen = false;
+  }
 
   /** A turn was cut off when Obsidian was ended (ADR-15): offer Continue. */
   let canContinue = $state(false);
@@ -898,6 +916,8 @@
   </div>
 {/snippet}
 
+<svelte:window onclick={closeUsageOutside} onkeydown={(e) => { if (e.key === "Escape") usageOpen = false; }} />
+
 {#snippet fileChips(files: FileAttachment[])}
   <div class="chatting-minus-user-images">
     {#each files as file (file.id)}
@@ -927,6 +947,69 @@
       <span class="chatting-minus-header-title" title={displayTitle}>{displayTitle || "New chat"}</span>
       <span class="chatting-minus-header-model">{displayModel || "No model"}</span>
     </div>
+    {#if usage}
+      {@const share = usage.contextWindow ? Math.min(1, usage.contextTokens / usage.contextWindow) : 0}
+      <!-- How full the context is; a click shows the details and the cost -->
+      <div class="chatting-minus-usage" bind:this={usageEl}>
+        <button
+          class="chatting-minus-icon-btn chatting-minus-usage-btn"
+          class:is-full={usage.compactAt !== undefined && usage.contextTokens >= usage.compactAt}
+          type="button"
+          onclick={() => usageOpen = !usageOpen}
+          aria-expanded={usageOpen}
+          aria-label="Context and cost"
+          title={usage.contextWindow ? `Context ${Math.round(share * 100)} % full` : `Context ${formatTokens(usage.contextTokens)} tokens`}
+        >
+          <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-opacity="0.25" stroke-width="2.5"></circle>
+            {#if usage.contextWindow}
+              <circle class="chatting-minus-usage-arc" cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-dasharray={`${(share * 47.12).toFixed(2)} 47.12`} transform="rotate(-90 10 10)"></circle>
+            {/if}
+          </svg>
+        </button>
+        {#if usageOpen}
+          <div class="chatting-minus-usage-pop" role="dialog" aria-label="Context and cost">
+            <div class="chatting-minus-usage-row">
+              <span>Context</span>
+              <span>{formatTokens(usage.contextTokens)}{usage.contextWindow ? ` of ${formatTokens(usage.contextWindow)} (${Math.round(share * 100)} %)` : " tokens"}</span>
+            </div>
+            {#if usage.contextWindow}
+              <div class="chatting-minus-usage-bar"><span style:width={`${(share * 100).toFixed(1)}%`}></span></div>
+            {/if}
+            <div class="chatting-minus-usage-note">
+              {#if usage.compactAt}
+                At {formatTokens(usage.compactAt)} the earlier part of the chat is summarized, so it can go on.
+              {:else}
+                The model's window is unknown.
+              {/if}
+            </div>
+            <div class="chatting-minus-usage-row">
+              <span>Cost</span>
+              <span>
+                {#if usage.plan}
+                  Included in your ChatGPT plan
+                {:else if usage.costUsd !== undefined}
+                  {formatCost(usage.costUsd)} this chat{usage.lastTurnCostUsd !== undefined ? `, ${formatCost(usage.lastTurnCostUsd)} last answer` : ""}
+                {:else}
+                  No prices known for this model
+                {/if}
+              </span>
+            </div>
+            {#if !usage.plan && usage.costUsd !== undefined}
+              <div class="chatting-minus-usage-note">Estimated from the provider's list prices{usage.partialCost ? "; some requests had no price" : ""}.</div>
+            {/if}
+            <button
+              class="chatting-minus-usage-compact"
+              type="button"
+              disabled={busy}
+              onclick={() => { usageOpen = false; onCompact(); }}
+              title="Replace the chat so far with a summary, written by the model"
+            >Compact now</button>
+          </div>
+        {/if}
+      </div>
+    {/if}
     <button
       class="chatting-minus-icon-btn"
       class:is-active={followEdits}
@@ -1179,7 +1262,7 @@
           {/if}
         </div>
 
-      {:else if msg.type === "error" && msg.errorKind === "stopped"}
+      {:else if msg.type === "error" && (msg.errorKind === "stopped" || msg.errorKind === "compacted")}
         <!-- Stop before any of the answer arrived: a quiet note, not an error -->
         <div class="chatting-minus-stopped-note">{msg.text}</div>
 
@@ -1448,6 +1531,78 @@
   }
 
   /* ─── Header ────────────────────────────────────────────────────────── */
+  /* ─── Context ring and its details ──────────────────────────────────── */
+  .chatting-minus-usage {
+    position: relative;
+  }
+
+  .chatting-minus-usage-btn {
+    color: var(--text-muted);
+  }
+
+  .chatting-minus-usage-btn.is-full {
+    color: var(--text-warning);
+  }
+
+  .chatting-minus-usage-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    width: min(280px, 80vw);
+    padding: 10px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background: var(--background-primary);
+    box-shadow: var(--shadow-s);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-normal);
+  }
+
+  .chatting-minus-usage-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 6px;
+  }
+
+  .chatting-minus-usage-row:first-child {
+    margin-top: 0;
+  }
+
+  .chatting-minus-usage-row span:first-child {
+    color: var(--text-muted);
+  }
+
+  .chatting-minus-usage-row span:last-child {
+    text-align: right;
+  }
+
+  .chatting-minus-usage-bar {
+    height: 4px;
+    margin: 6px 0;
+    border-radius: 2px;
+    background: var(--background-modifier-border);
+    overflow: hidden;
+  }
+
+  .chatting-minus-usage-bar span {
+    display: block;
+    height: 100%;
+    background: var(--interactive-accent);
+  }
+
+  .chatting-minus-usage-note {
+    color: var(--text-faint);
+    margin-top: 2px;
+  }
+
+  .chatting-minus-usage-compact {
+    width: 100%;
+    margin-top: 10px;
+    font-size: var(--font-ui-smaller);
+  }
+
   .chatting-minus-header {
     display: flex;
     align-items: center;

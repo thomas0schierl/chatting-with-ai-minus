@@ -17,8 +17,9 @@ import type {
   StreamOptions,
 } from "../types";
 
-import { buildResponsesInput, fromResponsesOutput, functionTools, sendResponsesRequest, CHATGPT_TOOL_NAMESPACE, type ResponsesFailure } from "./responses-format";
-import { oauthReasoning, oauthParallelTools, cachedCatalog, catalogIdentity, secretIdentity } from "./model-catalog";
+import { buildResponsesInput, compactionParameter, fromResponsesOutput, functionTools, sendResponsesRequest, CHATGPT_TOOL_NAMESPACE, type ResponsesFailure } from "./responses-format";
+import { compactThreshold } from "../agent/compaction";
+import { oauthReasoning, oauthParallelTools, cachedCatalog, catalogIdentity, catalogModel, secretIdentity } from "./model-catalog";
 import type { StreamResult } from "./stream";
 import { ProviderError } from "./errors";
 import { asRecord, getNestedString } from "../json";
@@ -33,6 +34,14 @@ export const CHATGPT_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const USAGE_LIMIT_CODE = "subscription_sharing_usage_limit_exceeded";
 /** Usage couldn't be checked; temporary. */
 const USAGE_UNAVAILABLE_CODE = "subscription_sharing_usage_unavailable";
+
+/** This route refused server-side compaction once (until Obsidian restarts). */
+let compactionRefused = false;
+
+/** Whether this route compacts on the server (else the plugin summarizes, ADR-18). */
+export function chatgptCompacts(): boolean {
+  return !compactionRefused;
+}
 
 /** Held by main.ts; injected via setChatGPTOAuthService(). */
 let oauthService: ChatGPTOAuthService | null = null;
@@ -76,6 +85,9 @@ export async function sendChatGPTOAuthMessage(
     store: false,
     stream: true,
     parallel_tool_calls: oauthParallelTools(model),
+    // Server-side compaction where the catalog names a point (ADR-18);
+    // not after this route refused it.
+    ...(compactionRefused ? {} : compactionParameter(compactThreshold("chatgpt-oauth", catalogModel("chatgpt-oauth", model)))),
   };
 
   const reasoning = oauthReasoning(model, settings.thinkingLevel);
@@ -107,6 +119,13 @@ export async function sendChatGPTOAuthMessage(
   try {
     return await send(credential.accessToken);
   } catch (e) {
+    // The route's documentation doesn't list `context_management`: if it
+    // refuses it, go on without (the plugin then summarizes itself).
+    if (e instanceof ProviderError && e.status === 400 && body.context_management && /context_management|compact/i.test(e.message)) {
+      compactionRefused = true;
+      delete body.context_management;
+      return send(credential.accessToken);
+    }
     // A rejected token (401 comes before any streamed text): refresh once
     // and retry once. A second 401 keeps its "sign in again" error.
     if (!(e instanceof ProviderError) || e.status !== 401) throw e;

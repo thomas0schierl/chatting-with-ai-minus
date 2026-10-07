@@ -32,6 +32,13 @@ check against the real services and note the result in the release notes:
   docx, xlsx and pptx, and ask about each; ask the AI to read a PDF from
   the vault (`read_file`). → Answers use the content (the chart from the
   PDF's page images); Anthropic answers from the Office text.
+- Context and compaction (ADR-18), for each provider: the ring shows the
+  window and (API keys) a cost close to the provider's usage page; lower
+  the compaction point by choosing a model with a small window or a long
+  chat, and check that the provider's compaction comes back (the note),
+  the next answer still knows the earlier topic, and on ChatGPT whether
+  the route accepts `context_management` (debug log). *Compact now*;
+  switch provider after a compaction and ask about the earlier topic.
 - Voice (OpenAI key): a question about a note is delegated, runs as a
   chat turn with tool cards, and the answer is spoken; End closes the
   session.

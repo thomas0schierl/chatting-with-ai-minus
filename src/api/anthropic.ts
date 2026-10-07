@@ -1,4 +1,5 @@
-import { ANTHROPIC_MAX_TOKENS, anthropicThinking, cachedCatalog, catalogIdentity } from "./model-catalog";
+import { ANTHROPIC_MAX_TOKENS, anthropicThinking, cachedCatalog, catalogIdentity, catalogModel } from "./model-catalog";
+import { afterCompaction, compactThreshold } from "../agent/compaction";
 import type {
   ChatSettings,
   UnifiedMessage,
@@ -7,6 +8,7 @@ import type {
   ContentBlock,
   ImageAttachment,
   FileAttachment,
+  TokenUsage,
   StreamOptions,
 } from "../types";
 import { streamSSE } from "./stream";
@@ -49,8 +51,19 @@ export async function sendAnthropicMessage(
         cache_control: { type: "ephemeral" },
       },
     ],
-    messages: withoutOldToolImages(messages).map(msg => toAnthropicMessage(msg, model, identity)),
+    // After a compaction, from its message on (ADR-18): the API ignores what came before.
+    messages: withoutOldToolImages(afterCompaction(messages, (message) => canReplay(message, "anthropic", model, identity)))
+      .map(msg => toAnthropicMessage(msg, model, identity)),
   };
+
+  // Threshold compaction where the model list says the model has it (ADR-18).
+  const option = catalogModel("anthropic", model);
+  const trigger = option?.compaction ? compactThreshold("anthropic", option) : undefined;
+  const betas: string[] = [];
+  if (trigger) {
+    body.context_management = { edits: [{ type: "compact_20260112", trigger: { type: "input_tokens", value: trigger } }] };
+    betas.push(ANTHROPIC_COMPACTION_BETA);
+  }
 
   // Thinking mode and effort come from the model catalog (`/v1/models`
   // capabilities). Models without catalog data run on their defaults.
@@ -93,6 +106,7 @@ export async function sendAnthropicMessage(
       accept: "text/event-stream",
       // Required for the CORS answer to `fetch` from Obsidian's origins.
       "anthropic-dangerous-direct-browser-access": "true",
+      ...(betas.length ? { "anthropic-beta": betas.join(",") } : {}),
     },
     body: JSON.stringify(body),
   }, collected.onEvent, stream.signal);
@@ -115,9 +129,42 @@ export async function sendAnthropicMessage(
     // must be returned unchanged. UI content is deliberately separate.
     replay: { provider: "anthropic", model, identity, items: data.content },
     stopReason: normalizeStopReason(data.stop_reason),
-    usage: data.usage
-      ? { inputTokens: data.usage.input_tokens ?? 0, outputTokens: data.usage.output_tokens ?? 0 }
-      : undefined,
+    usage: data.usage,
+    ...compactionOf(data.content),
+  };
+}
+
+/** The threshold compaction beta (ADR-18). */
+export const ANTHROPIC_COMPACTION_BETA = "compact-2026-01-12";
+
+/** A `compaction` block in the answer: the context was summarized, readably (ADR-18). */
+function compactionOf(blocks: AnthropicContentBlock[]): { compaction?: { summary?: string } } {
+  const block = [...blocks].reverse().find((item) => item.type === "compaction");
+  if (!block) return {};
+  return { compaction: typeof block.content === "string" && block.content ? { summary: block.content } : {} };
+}
+
+/**
+ * Anthropic usage: `input_tokens` counts only the uncached input, so the
+ * context is it plus `cache_read_input_tokens` and
+ * `cache_creation_input_tokens`. A compaction pass (`iterations` of type
+ * `compaction`) isn't in the top-level counts.
+ */
+function anthropicUsage(usage: Record<string, unknown>): TokenUsage {
+  const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+  const cached = number(usage.cache_read_input_tokens);
+  const written = number(usage.cache_creation_input_tokens);
+  const compaction = Array.isArray(usage.iterations)
+    ? usage.iterations.filter(isRecord).filter((item) => item.type === "compaction")
+    : [];
+  const compactionInput = compaction.reduce((sum, item) => sum + number(item.input_tokens), 0);
+  const compactionOutput = compaction.reduce((sum, item) => sum + number(item.output_tokens), 0);
+  return {
+    inputTokens: number(usage.input_tokens) + cached + written,
+    outputTokens: number(usage.output_tokens),
+    ...(cached ? { cachedInputTokens: cached } : {}),
+    ...(written ? { cacheWriteTokens: written } : {}),
+    ...(compactionInput || compactionOutput ? { compactionInputTokens: compactionInput, compactionOutputTokens: compactionOutput } : {}),
   };
 }
 
@@ -162,6 +209,9 @@ function collectAnthropicStream(onTextDelta?: (text: string) => void): {
             block.signature = (typeof block.signature === "string" ? block.signature : "") + delta.signature;
           } else if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
             inputJson.set(index, (inputJson.get(index) ?? "") + delta.partial_json);
+          } else if (delta.type === "compaction_delta" && typeof delta.content === "string") {
+            // The whole summary in one delta (ADR-18).
+            block.content = (typeof block.content === "string" ? block.content : "") + delta.content;
           } else if (delta.type === "citations_delta" && delta.citation !== undefined) {
             block.citations = [...(Array.isArray(block.citations) ? block.citations as unknown[] : []), delta.citation];
           }
@@ -222,10 +272,7 @@ interface AnthropicContentBlock extends Record<string, unknown> {
 interface AnthropicResponse {
   content: AnthropicContentBlock[];
   stop_reason?: string;
-  usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-  };
+  usage?: TokenUsage;
 }
 
 function parseAnthropicResponse(value: unknown): AnthropicResponse {
@@ -233,12 +280,7 @@ function parseAnthropicResponse(value: unknown): AnthropicResponse {
   const content = Array.isArray(value.content)
     ? value.content.filter(isAnthropicContentBlock)
     : [];
-  const usage = isRecord(value.usage)
-    ? {
-        input_tokens: typeof value.usage.input_tokens === "number" ? value.usage.input_tokens : 0,
-        output_tokens: typeof value.usage.output_tokens === "number" ? value.usage.output_tokens : 0,
-      }
-    : undefined;
+  const usage = isRecord(value.usage) ? anthropicUsage(value.usage) : undefined;
   return {
     content,
     stop_reason: typeof value.stop_reason === "string" ? value.stop_reason : undefined,

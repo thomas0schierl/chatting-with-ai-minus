@@ -44,6 +44,11 @@ only its open questions are listed here.
   that is rewritten after every turn; check size and save time with many
   chats with images (saving attachments as separate files would fix it).
 - The conversation list has no search.
+- Compaction (ADR-18): whether the ChatGPT route accepts
+  `context_management` (not in its documented fields; refused, the plugin
+  summarizes itself); Anthropic's threshold compaction is a beta; prices
+  and OpenAI's windows are read from documentation pages whose format may
+  change. Check live.
 - `view_canvas` shows note file nodes by name only, and very large canvases
   are hard to read when fitted.
 - ChatGPT: whether `function_call_output` may contain `input_image` is

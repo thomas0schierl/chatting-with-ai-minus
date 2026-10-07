@@ -1,4 +1,5 @@
-import { catalogIdentity } from "./model-catalog";
+import { cachedCatalog, catalogIdentity } from "./model-catalog";
+import { compactThreshold } from "../agent/compaction";
 import type {
   ChatSettings,
   UnifiedMessage,
@@ -8,7 +9,7 @@ import type {
   StreamOptions,
 } from "../types";
 
-import { buildResponsesInput, fromResponsesOutput, functionTools, sendResponsesRequest } from "./responses-format";
+import { buildResponsesInput, compactionParameter, fromResponsesOutput, functionTools, sendResponsesRequest } from "./responses-format";
 import { ProviderError } from "./errors";
 import { getNestedString } from "../json";
 
@@ -55,10 +56,13 @@ export async function sendOpenAIMessage(
   // Rebuilt/restored histories include native response items and tool pairs.
   const input = buildResponsesInput(canChain ? messages.slice(previous.messages.length + 1) : messages, "openai", model, identity);
 
+  // The model's window comes from its documentation page (ADR-18).
+  const option = cachedCatalog(settings.modelCatalog, "openai", identity)?.models.find((item) => item.value === model);
   const body: Record<string, unknown> = {
     model,
     input,
     stream: true,
+    ...compactionParameter(compactThreshold("openai", option)),
   };
 
   // Chain to previous response for multi-turn context

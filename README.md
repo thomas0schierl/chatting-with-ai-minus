@@ -37,6 +37,14 @@ messages and the notes the AI reads go to that provider (see
 - **Mention notes:** type `@` or `[[` and pick a note, canvas or image;
   it goes into your message as a link, and its current content goes to
   the AI with the message, so it doesn't have to look it up first.
+- **Context and cost:** a small ring in the chat header shows how full
+  the model's context is; click it for the tokens, the estimated cost of
+  the chat and of the last answer (from the provider's list prices; the
+  ChatGPT plan has none), and *Compact now*.
+- **Long chats:** before the context is full, the earlier part of the
+  chat is summarized so it can go on: by the provider where it offers
+  that (Anthropic, OpenAI, the ChatGPT plan), otherwise by the plugin
+  with the same model. A note in the chat shows where.
 - **Streaming:** answers appear as they're written; **Stop** ends one
   early.
 - **Edit, regenerate, copy:** edit an earlier message and run it again,
@@ -221,6 +229,7 @@ The plugin connects only to these services, and only for what you use:
 | `auth.openai.com` | Signing in with ChatGPT and renewing that sign-in; the separate Codex sign-in for voice with the ChatGPT plan. |
 | `chatgpt.com` | Only if you chose voice with the ChatGPT plan (unofficial, see [Voice](#voice)): starting a voice call. |
 | `api.github.com` | With the ChatGPT sign-in or voice on the ChatGPT plan, at most once a day: the latest Codex CLI version number, which OpenAI's model list and that voice route need. Nothing about you is sent. |
+| `platform.claude.com`, `developers.openai.com` | With an Anthropic or OpenAI API key, at most once a day: the providers' public documentation pages for model prices and (OpenAI) the selected model's context window. Nothing about you is sent. |
 | Web pages the AI reads | When the AI reads a web page (a link you gave, or one its web search found), your device loads that address, as a browser would. |
 
 Web search, when turned on, runs at the provider; the plugin itself

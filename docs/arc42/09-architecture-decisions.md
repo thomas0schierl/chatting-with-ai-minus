@@ -439,3 +439,62 @@
   - `DecompressionStream("deflate-raw")` needs Chromium 103 or iOS 16.4;
     older devices can't read Office text for Anthropic (the note is sent
     instead).
+
+## ADR-18: Compaction by the provider where it offers it, the plugin's own summary elsewhere
+
+- **Context:** a long chat outgrows the model's window, and quality drops
+  before that. How others do it (checked 2026-10-07):
+  - Codex compacts before the window is full (90 % of `context_window`, or
+    the catalog's `auto_compact_token_limit`): on the ChatGPT backend with
+    an encrypted compaction item, otherwise with its own summary turn.
+  - OpenAI's Responses API compacts on the server when a request crosses
+    `context_management: [{type: "compaction", compact_threshold}]` and
+    returns an encrypted compaction item; items before the latest one can
+    be dropped from a replayed history.
+  - Anthropic compacts at an input-token trigger
+    (`context_management.edits: [{type: "compact_20260112"}]`, beta
+    `compact-2026-01-12`; the model list says which models have it) and
+    returns a `compaction` block with a readable summary; the API ignores
+    what came before it.
+  - Claude Code compacts near the limit and summarizes after a "prompt too
+    long" error.
+  All compact before the window is full; reacting to the error alone
+  comes too late (the summary request itself has to fit).
+- **Decision:**
+  - The compaction point is 80 % of the selected model's window (the
+    ChatGPT catalog's own point where it names one; Anthropic at least
+    50,000). The window comes from the model list (Anthropic
+    `max_input_tokens`, ChatGPT `context_window` times its effective
+    percent) or, for OpenAI, from the model's documentation page.
+  - Each request asks the provider to compact at that point: Anthropic
+    where the model list has `compact_20260112`; OpenAI and the ChatGPT
+    plan with `context_management` (the ChatGPT route's documentation
+    doesn't list it: when it refuses it, the request goes again without,
+    and the plugin summarizes from then on). The answer's compaction marks
+    its message; requests send the history from there on.
+  - Where the provider can't, the plugin writes a summary with the same
+    model from a transcript of the chat (no tools, at most half the
+    window): before a turn when the last request passed the point; once
+    when another provider or model takes over a chat whose last
+    compaction it can't read (OpenAI's is encrypted; Anthropic's summary
+    is used as it is); once when a request is refused as too long; and on
+    *Compact now*. The summary stands in for the earlier history as the
+    first user message.
+  - A quiet note in the chat says where the earlier part was summarized;
+    the visible chat keeps all messages.
+  - The context ring in the chat header shows the last request's context
+    against the selected model's window, the compaction point and the
+    estimated cost (from the providers' published prices: Anthropic's
+    pricing page by the model's display name, OpenAI's model pages; the
+    ChatGPT plan has none).
+- **Consequences:**
+  - The provider's compaction keeps its reasoning state; the plugin's
+    summary is plain text and loses tool details.
+  - Editing a message from before a compaction cuts the history before it,
+    with the summary.
+  - Prices and OpenAI's windows come from documentation pages read once a
+    day; when their format changes, the ring shows no window or no cost,
+    and a chat with an OpenAI model is summarized only once a request is
+    refused as too long.
+  - Whether the ChatGPT route accepts `context_management` is checked live
+    (§11).

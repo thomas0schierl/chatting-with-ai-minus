@@ -509,22 +509,81 @@ OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
 
 1. **Trigger:** opening settings shows the cached list. If it is older than
    24 hours it refreshes in the background; the refresh button forces it.
+   At start, a list older than that (or none) loads in the background
+   once Obsidian's layout is ready (the context ring needs the window).
 2. **Cache key:** the hash of provider plus API key or ChatGPT account, so
    switching accounts never shows another account's list.
 3. **Fetch:**
    - **ChatGPT:** fetch `/v1/models` with the ChatGPT-plan token; the
      answer is `{models: [...]}`. Keep the models whose `visibility` is
      `list`, labelled with `display_name`; reasoning levels are read when
-     the entry has them.
+     the entry has them, the window as `context_window` times
+     `effective_context_window_percent`, and `auto_compact_token_limit`
+     (ADR-18).
    - **Anthropic, OpenAI:** fetch `/v1/models`. For Anthropic, read each
      model's thinking type (`capabilities.thinking.types`) and effort
-     levels (`capabilities.effort`). OpenAI's list has only IDs and
+     levels (`capabilities.effort`), its window (`max_input_tokens`),
+     answer limit (`max_tokens`) and threshold compaction
+     (`capabilities.context_management.compact_20260112`); prices come from
+     Anthropic's pricing page (`platform.claude.com/docs/…/pricing.md`,
+     the model table, matched by display name). OpenAI's list has only IDs and
      creation dates, in no order, and every model of the account (speech,
      images, embeddings, voice): keep the chat families, newest first
      (`created`), and drop a dated snapshot (`gpt-5.4-2026-03-05`) when its
      model (`gpt-5.4`) is listed too.
 4. **Result:** the new list is saved to `data.json`. On failure the last
    list is kept, and there are no retries for 5 minutes.
+5. **OpenAI model details:** after the first answer of a turn, the
+   selected model's documentation page
+   (`developers.openai.com/api/docs/models/<id>.md`; a dated snapshot
+   reads its model's page) gives the window (its maximum input, else the
+   context window less the answer limit), the answer limit and the price
+   table; read once a day, also when it fails.
+
+## Context, cost and compaction (ADR-18)
+
+1. **Usage:** each answer reports its tokens: all input (cached and cache
+   writes included), output, and a compaction pass apart (Anthropic
+   `usage.iterations`). The conversation keeps the last request's context
+   and the estimated cost (`agent/usage.ts`: list prices per million
+   tokens; cache reads and writes at their prices; long-context
+   surcharges left out), saved with it; Clear resets it.
+2. **Ring:** in the chat header, how full the context is against the
+   selected model's window, yellow past the compaction point; a click
+   shows tokens, the point, the cost of the chat and of the last answer
+   ("Included in your ChatGPT plan" for the plan), and *Compact now*.
+3. **Compaction point:** 80 % of the window (`agent/compaction.ts`); the
+   ChatGPT catalog's `auto_compact_token_limit` where given; Anthropic at
+   least 50,000.
+4. **On the provider's side:** each request asks for compaction at that
+   point: Anthropic with `context_management.edits` `compact_20260112`
+   and the `anthropic-beta: compact-2026-01-12` header (models whose list
+   entry has it); OpenAI and ChatGPT with `context_management:
+   [{type: "compaction", compact_threshold}]`. If the ChatGPT route
+   refuses the parameter (400 naming it), the request goes again without
+   it and the plugin summarizes from then on (until restart). An answer
+   with a compaction block or item marks its message (`compaction`,
+   with Anthropic's readable summary); the chat gets a quiet note.
+5. **What a request sends:** from the last compaction on
+   (`afterCompaction()`): the provider and model that wrote it replay it
+   natively (Responses: from the compaction item on); another one gets
+   its readable summary as the first user message.
+6. **The plugin's summary** (`agent/summary.ts`): a request with the
+   chat as a transcript (tool calls and results shortened, files by
+   name, at most about half the window, its end kept) and an instruction
+   to keep the goals, decisions, exact names, vault changes and next
+   steps; no tools, no web search. Written:
+   - before a turn whose last request passed the point when the provider
+     doesn't compact (unsupported, refused, or no window known to it);
+   - once, when another provider or model takes over a chat whose last
+     compaction has no readable summary (OpenAI's is encrypted): it is
+     kept on that message;
+   - when a request is refused as too long (once per turn): what came
+     before the turn is summarized, and the request goes again;
+   - on *Compact now*.
+   The summary replaces the earlier history as a user message of its own
+   (a turn without a visible entry); a failed summary doesn't stop the
+   turn.
 
 ## Thinking level (`settings.ts`, adapters)
 
