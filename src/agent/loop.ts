@@ -9,6 +9,7 @@ import type {
   ImageAttachment,
   ToolResult,
   VoiceTurn,
+  MentionContext,
 } from "../types";
 import { errorKind, resetProviderState, sendMessage } from "../api/client";
 import { lastChunkAt } from "../api/stream";
@@ -255,7 +256,9 @@ export class AgentLoop {
     selection?: SelectionScope | null,
     images: ImageAttachment[] = [],
     turnId: string = newTurnId(),
-    { voice = false, voiceTranscript = [], notes = [] }: { voice?: boolean; voiceTranscript?: VoiceTurn[]; notes?: string[] } = {}
+    { voice = false, voiceTranscript = [], notes = [], mentioned = null }: {
+      voice?: boolean; voiceTranscript?: VoiceTurn[]; notes?: string[]; mentioned?: MentionContext | null;
+    } = {}
   ): Promise<void> {
     const version = ++this.runVersion;
     this.voiceTurn = voice;
@@ -263,9 +266,11 @@ export class AgentLoop {
     // Keep one provider/model/credential configuration for this entire turn.
     const turnSettings = { ...this.settings };
 
-    // Build context once per user turn and prepend to the user message
+    // Build context once per user turn and prepend to the user message;
+    // the files the message links to come next, the message itself last.
     const context = { ...buildContext(this.app, voice, voiceTranscript), ...(notes.length ? { notes } : {}) };
-    const contextPrefix = buildContextMessage(context);
+    const contextPrefix = mentioned ? `${buildContextMessage(context)}\n\n${mentioned.text}` : buildContextMessage(context);
+    images = [...images, ...mentioned?.images ?? []];
 
     // If there's a selection, inject it as scoped context
     let fullMessage: string;

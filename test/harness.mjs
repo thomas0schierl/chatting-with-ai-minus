@@ -11,6 +11,7 @@ export const bundled = await build({
     export { Setting, Platform, TFile, TFolder } from 'obsidian';
     export { ChangeLog } from './src/tools/undo';
     export { WEB_PAGE_CHARS } from './src/tools/web-page';
+    export * as mentions from './src/ui/mentions';
     export { UndoConfirmModal } from './src/ui/undo-confirm';
     export * from './src/api/model-catalog';
     export { sendMessage } from './src/api/client';
@@ -80,6 +81,17 @@ export const bundled = await build({
       export class TFile extends TAbstractFile { constructor(path) { super(); this.path = path; this.extension = path.split('.').pop(); } }
       export class TFolder extends TAbstractFile { constructor(path, children = []) { super(); this.path = path; this.children = children; } }
       export const normalizePath = path => path;
+      // Letters in order, any case; fewer gaps score higher (like Obsidian's, roughly).
+      export const prepareFuzzySearch = query => text => {
+        let at = -1, gaps = 0;
+        for (const ch of query.toLowerCase()) {
+          const next = text.toLowerCase().indexOf(ch, at + 1);
+          if (next === -1) return null;
+          if (at !== -1 && next !== at + 1) gaps++;
+          at = next;
+        }
+        return { score: -gaps, matches: [] };
+      };
       // Tags dropped, paragraphs kept: enough to see which content got through.
       export const htmlToMarkdown = node => (typeof node === 'string' ? node : node.innerHTML).replace(/<\\/p>/g, '\\n\\n').replace(/<[^>]+>/g, '').trim();
       // As Obsidian: body tags, then the frontmatter's tags (a list or a comma/space separated text), each with '#'.

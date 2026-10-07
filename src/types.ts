@@ -155,6 +155,12 @@ export interface ConversationContext {
   notes?: string[];
 }
 
+/** The files a message links to, for the model (`ui/mentions.ts`): their text, and images as images. */
+export interface MentionContext {
+  text: string;
+  images: ImageAttachment[];
+}
+
 /** One turn of a voice conversation: what the user or the voice said. */
 export interface VoiceTurn {
   role: "user" | "assistant";

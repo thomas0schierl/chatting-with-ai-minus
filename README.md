@@ -29,6 +29,9 @@ messages and the notes the AI reads go to that provider (see
   backlinks, read web pages, read and edit
   canvases, look at images and canvases, and ask you when something is
   unclear.
+- **Mention notes:** type `@` or `[[` and pick a note, canvas or image;
+  it goes into your message as a link, and its current content goes to
+  the AI with the message, so it doesn't have to look it up first.
 - **Streaming:** answers appear as they're written; **Stop** ends one
   early.
 - **Edit, regenerate, copy:** edit an earlier message and run it again,

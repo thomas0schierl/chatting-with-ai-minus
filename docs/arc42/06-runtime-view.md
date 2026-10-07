@@ -41,6 +41,12 @@ No network requests happen at start.
    about this note*). `chat-view.ts` creates a turn ID, shows the message,
    saves it to the UI history (with the ID, images and selection scope) and
    calls `AgentLoop.run(text, callbacks, selection, images, turnId)`.
+   Files the message links to (`[[…]]`, also put in by the mention list,
+   see below) go along as they are now (`ui/mentions.ts`): up to 10, a
+   note's text (20,000 characters each, 60,000 together), a canvas's
+   outline, an image as an image; other files by name only. They come
+   after the context prefix, before the message; the chat shows only the
+   message.
 2. **Turn setup:** `run()` takes a snapshot of the settings, so provider
    and model stay fixed for the turn. It adds the context prefix (and the
    selection-scope instruction), appends the user message with the turn ID,
@@ -100,6 +106,13 @@ after a newer one has started leaves the newer one's state alone.
 result instead of a new message. Question and answer stay in the visible
 history (and are saved); the answer has no turn ID, so it is no turn of
 its own and can't be edited.
+
+**Mention list:** typing `@` (at the start or after a space) or `[[` in
+the input opens a list of vault files above it: recently opened ones
+first, else Obsidian's fuzzy match on the name (before the folder). Arrows
+move, Enter or Tab pick, Escape closes; a click picks too. The typed
+mention becomes the file's link (`[[Plan]]`, as Obsidian writes it, the
+shortest unique name).
 
 ## Editing a message / regenerating
 

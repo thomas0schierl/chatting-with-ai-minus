@@ -5,6 +5,7 @@ import ChatContainer from "./ChatContainer.svelte";
 import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, ChatErrorKind, ChatHistoryEntry, VoiceTurn, ViewTarget } from "../types";
 import { showInView } from "./show-in-view";
 import { confirmUndo } from "./undo-confirm";
+import { mentionContext, mentionedFiles } from "./mentions";
 import { ChangeLog } from "../tools/undo";
 import { voiceTranscriptText } from "../agent/system-prompt";
 import { newTurnId } from "../agent/history";
@@ -521,8 +522,13 @@ export class ObsidianChatView extends ItemView {
     // Told once, with this turn.
     const notes = conversation.notes ?? [];
     delete conversation.notes;
-    await this.runTurn(turnId, (callbacks) =>
-      this.plugin.agent.run(text, callbacks, selection, images, turnId, { voice: !!voice, voiceTranscript: voiceContext, notes }), voice);
+    await this.runTurn(turnId, async (callbacks) => {
+      // The files the message links to go along as they are now.
+      const app = this.plugin.app;
+      const source = app.workspace.getActiveFile()?.path ?? "";
+      const mentioned = await mentionContext(app, mentionedFiles(app, text, source));
+      await this.plugin.agent.run(text, callbacks, selection, images, turnId, { voice: !!voice, voiceTranscript: voiceContext, notes, mentioned });
+    }, voice);
   }
 
   /**
