@@ -442,23 +442,66 @@ test('Tool cards keep their (capped) input across a reload; old cards without in
   assert.deepEqual(cards.map(m => m.toolInput), [card.toolInput, {}]);
 });
 
-// A plugin whose chat-state.json holds `content` (undefined: no file), with a
-// fake adapter that records writes and renames.
-async function loadFrom(content, { renameFails = false } = {}) {
+const DIR = '.obsidian/plugins/chatting-with-ai-minus';
+const STATE = `${DIR}/chat-state.json`;
+const NEXT = `${DIR}/chat-state.next.json`;
+
+// A plugin whose chat-state.json holds `content` (undefined: no file), on an
+// in-memory adapter like Obsidian's: write replaces a file's content,
+// rename refuses an existing destination. Records writes and renames.
+async function loadFrom(content, { renameFails = false, next } = {}) {
   const { app } = vaultApp();
+  const files = new Map();
+  if (content !== undefined) files.set(STATE, content);
+  if (next !== undefined) files.set(NEXT, next);
   const writes = [], renames = [];
   app.vault.adapter = {
-    read: async () => { if (content === undefined) throw new Error('ENOENT'); return content; },
-    exists: async () => content !== undefined,
-    rename: async (from, to) => { if (renameFails) throw new Error('EBUSY'); renames.push([from, to]); },
-    write: async (path, data) => { writes.push(JSON.parse(data)); },
+    read: async (path) => { if (!files.has(path)) throw new Error('ENOENT'); return files.get(path); },
+    exists: async (path) => files.has(path),
+    write: async (path, data) => { writes.push(JSON.parse(data)); files.set(path, data); },
+    remove: async (path) => { files.delete(path); },
+    rename: async (from, to) => {
+      if (renameFails) throw new Error('EBUSY');
+      if (files.has(to)) throw new Error('Destination file already exists!');
+      renames.push([from, to]);
+      files.set(to, files.get(from));
+      files.delete(from);
+    },
   };
   const plugin = new api.ChatPlugin();
   plugin.app = app;
   plugin.agent = new api.AgentLoop(app, settings('anthropic'));
   await plugin.loadChatHistory();
-  return { plugin, writes, renames };
+  return { plugin, writes, renames, files };
 }
+
+const savedState = (text) => JSON.stringify({
+  version: 3, activeConversationId: 'c1',
+  conversations: [{ id: 'c1', title: text, customTitle: false, createdAt: 1, updatedAt: 1, chatHistory: [{ type: 'user', text, turnId: 't1' }], agentMessages: [] }],
+});
+
+test('A save writes chat-state.next.json first and then replaces chat-state.json with it', async () => {
+  const { plugin, files } = await loadFrom(savedState('Old'));
+  plugin.chatHistory.push({ type: 'user', text: 'New', turnId: 't2' });
+  await plugin.saveChatHistory();
+  assert.equal(files.has(NEXT), false);
+  assert.deepEqual(JSON.parse(files.get(STATE)).conversations[0].chatHistory.map((e) => e.text), ['Old', 'New']);
+});
+
+test('Obsidian ended in the middle of a save (reload, quit): the chats load from what was written', async () => {
+  globalThis.__notices = [];
+  // Ended after the new state was written but before it replaced the old file
+  // (the old one removed, or emptied by an older version's direct write).
+  for (const content of [undefined, '']) {
+    const { plugin, renames } = await loadFrom(content, { next: savedState('Kept') });
+    assert.deepEqual(plugin.chatHistory.map((e) => e.text), ['Kept']);
+    assert.deepEqual(renames, []);
+  }
+  // Ended while the new state was written: the old file is still whole.
+  const { plugin } = await loadFrom(savedState('Old'), { next: '{"version": 3, "conv' });
+  assert.deepEqual(plugin.chatHistory.map((e) => e.text), ['Old']);
+  assert.deepEqual(globalThis.__notices, []);
+});
 
 test('An unreadable chat-state.json is kept aside before starting fresh, with one notice', async () => {
   for (const content of ['{"version": 3, "conversations": [', '[]', 'null']) {

@@ -488,7 +488,13 @@ export default class ChatPlugin extends Plugin {
     return write;
   }
 
-  /** Writes the current state; it is taken before the first await. Never throws. */
+  /**
+   * Writes the current state; it is taken before the first await. Never
+   * throws. The adapter empties a file before writing it, and Obsidian may
+   * end mid-write (reload, quit: onunload saves too), so the state goes to
+   * `chat-state.next.json` first and replaces `chat-state.json` once
+   * complete; loading falls back to it (`readChatState`).
+   */
   private async writeChatState(): Promise<void> {
     try {
       this.storeActiveMessages();
@@ -501,10 +507,11 @@ export default class ChatPlugin extends Plugin {
           .filter((conversation) => conversation.id === this.activeConversationId || !isEmptyConversation(conversation))
           .map(savedConversation),
       };
-      await this.app.vault.adapter.write(
-        this.chatStatePath,
-        JSON.stringify(state)
-      );
+      const { adapter } = this.app.vault;
+      await adapter.write(this.nextChatStatePath, JSON.stringify(state));
+      // Obsidian's rename doesn't replace an existing file.
+      if (await adapter.exists(this.chatStatePath)) await adapter.remove(this.chatStatePath);
+      await adapter.rename(this.nextChatStatePath, this.chatStatePath);
     } catch {
       // Persistence is best-effort
     }
@@ -531,17 +538,30 @@ export default class ChatPlugin extends Plugin {
   private async readChatState(): Promise<ChatState | null | undefined> {
     const { adapter } = this.app.vault;
     const path = this.chatStatePath;
-    try {
-      const state = migrateChatState(JSON.parse(await adapter.read(path)));
+    const read = async (file: string): Promise<ChatState | null> => {
+      const state = migrateChatState(JSON.parse(await adapter.read(file)));
       if (state) {
         for (const conversation of state.conversations) {
           conversation.chatHistory = restoreImages(conversation.chatHistory, conversation.agentMessages);
         }
-        return state;
       }
+      return state;
+    };
+    let exists = true;
+    try {
+      const state = await read(path);
+      if (state) return state;
     } catch {
-      if (!(await adapter.exists(path).catch(() => true))) return null;
+      exists = await adapter.exists(path).catch(() => true);
     }
+    // A save that ended before replacing the file: its complete new state.
+    try {
+      const state = await read(this.nextChatStatePath);
+      if (state) return state;
+    } catch {
+      // None, or cut off while it was written
+    }
+    if (!exists) return null;
     const name = `chat-state.corrupt-${Date.now()}.json`;
     try {
       await adapter.rename(path, `${this.pluginDataDir}/${name}`);
@@ -640,6 +660,11 @@ export default class ChatPlugin extends Plugin {
 
   private get chatStatePath(): string {
     return `${this.pluginDataDir}/chat-state.json`;
+  }
+
+  /** Where a save writes before it replaces `chat-state.json`. */
+  private get nextChatStatePath(): string {
+    return `${this.pluginDataDir}/chat-state.next.json`;
   }
 }
 
