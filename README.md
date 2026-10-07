@@ -11,6 +11,8 @@ It works the same on desktop, iPhone, iPad and Android, with one
 difference: on phones, answers on the ChatGPT plan appear when complete
 instead of as they're written.
 
+![The chat in the right sidebar summarizes this week's meetings and lists the open action items, next to the vault's home note](docs/screenshots/summary.png)
+
 ## Features
 
 - **Three providers:** Anthropic (API key), OpenAI (API key), or sign in
@@ -35,8 +37,9 @@ instead of as they're written.
 - **Conversations:** start a new chat at any time; switch, rename and
   delete earlier chats from the history list. The chat that was open comes
   back after a restart.
-- **Selection scope:** select text in a note, choose *Send selection to
-  chat*, and the AI changes only that text.
+- **Selection scope:** select text in a note and choose *Send selection to
+  chat*; the AI is told to change only that text, and the message shows
+  the selection it worked on.
 - **Images:** attach or paste up to four images per message, for models
   that accept them.
 - **Current models:** model lists are loaded from each provider when you
@@ -45,6 +48,15 @@ instead of as they're written.
   answer (see [Voice](#voice)).
 - **Leaving the app on a phone:** an interrupted answer continues when
   you come back (see [On a phone](#on-a-phone)).
+
+## Screenshots
+
+| | |
+|---|---|
+| ![The AI adds a quote to a budget table, updates the total and ticks off the task](docs/screenshots/edit-note.png) | ![The AI creates a packing checklist from the trip plans, links it from the trip note and opens it](docs/screenshots/create-note.png) |
+| **Edit a note:** a new quote in the budget table, the total updated, the task ticked off. | **Create a note:** a packing checklist from the trip plans, linked and opened. |
+| ![Selected feedback in a meeting note rewritten as checkbox tasks; the message shows the selection](docs/screenshots/selection.png) | ![The AI reads a running log table and plans the next week, with a web source](docs/screenshots/analysis.png) |
+| **Selection scope:** only the selected feedback becomes tasks. | **Ask about your notes:** a running log read, with web search for the plan. |
 
 ## Commands
 
