@@ -21,16 +21,15 @@
    `package.json`, `package-lock.json` and `versions.json`, commits, tags
    and pushes to the branch the current one tracks (the repository is
    [thomas0schierl/chatting-with-ai-minus](https://github.com/thomas0schierl/chatting-with-ai-minus),
-   private for now, remote `origin`; the upstream is no remote, so
-   nothing can be pushed there by mistake).
+   a public GitHub fork of o1xhack/obsidian-chatting, remote `origin`;
+   the upstream is the remote `upstream`, fetch only: its push URL is
+   `NO_PUSH`, so nothing can be pushed there by mistake).
 4. The tag starts the Release workflow (`.github/workflows/release.yml`):
    - checks that the tag equals the `manifest.json` version and that
      `versions.json` lists it
    - runs lint, tests, type and Svelte checks, then builds
    - attests the three assets (build provenance, verifiable with
-     `gh attestation verify`), only while the repository is public:
-     GitHub's plans offer attestations for private repositories only on
-     Enterprise
+     `gh attestation verify`); GitHub offers this for public repositories
    - creates a draft GitHub release with them; a maintainer publishes it.
 5. Obsidian's community plugin directory installs and updates from those
    releases. `versions.json` maps each plugin version to the minimum
