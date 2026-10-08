@@ -26,7 +26,7 @@ messages and the notes the AI reads go to that provider (see
 - **Works with your vault:** the AI can read, search, list, create, edit,
   rename and trash notes, change frontmatter, find notes by tags and
   properties ("my #project notes that are active, by due date"), find
-  backlinks, read web pages, read and edit
+  backlinks, unlinked mentions and outgoing links, read web pages, read and edit
   canvases, look at images and canvases, and ask you when something is
   unclear.
 - **Your instructions in AGENTS.md:** put standing instructions for the AI
@@ -46,8 +46,8 @@ messages and the notes the AI reads go to that provider (see
 - **Context and cost:** a small ring in the chat header shows how full
   the model's context is; click it for the tokens the chat used, the
   estimated cost of the chat and of the last answer (from the provider's
-  list prices; on the ChatGPT plan, a link to your plan's usage instead),
-  and *Compact now*.
+  list prices; on the ChatGPT plan no cost, as the plan pays), and
+  *Compact now*.
 - **Long chats:** before the context is full, the earlier part of the
   chat is summarized so it can go on: by the provider where it offers
   that (Anthropic, OpenAI, the ChatGPT plan), otherwise by the plugin

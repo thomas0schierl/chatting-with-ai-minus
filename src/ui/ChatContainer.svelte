@@ -964,7 +964,7 @@
           type="button"
           onclick={() => usageOpen = !usageOpen}
           aria-expanded={usageOpen}
-          aria-label="Context and cost"
+          aria-label={usage.plan ? "Context" : "Context and cost"}
           title={usage.contextWindow ? `Context ${Math.round(share * 100)} % full` : `Context ${formatTokens(usage.contextTokens)} tokens`}
         >
           <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
@@ -976,7 +976,7 @@
           </svg>
         </button>
         {#if usageOpen}
-          <div class="chatting-minus-usage-pop" role="dialog" aria-label="Context and cost">
+          <div class="chatting-minus-usage-pop" role="dialog" aria-label={usage.plan ? "Context" : "Context and cost"}>
             <div class="chatting-minus-usage-row">
               <span>Context</span>
               <span>{formatTokens(usage.contextTokens)}{usage.contextWindow ? ` of ${formatTokens(usage.contextWindow)} (${Math.round(share * 100)} %)` : " tokens"}</span>
@@ -988,18 +988,19 @@
               <span>Tokens used</span>
               <span>{formatTokens(usage.inputTokens)} in · {formatTokens(usage.outputTokens)} out</span>
             </div>
-            <div class="chatting-minus-usage-row">
-              <span>Cost</span>
-              <span>
-                {#if usage.plan}
-                  Included in your ChatGPT plan · <button class="chatting-minus-link-btn" type="button" onclick={openUsage}>Manage usage</button>
-                {:else if usage.costUsd !== undefined}
-                  {formatCost(usage.costUsd)} this chat{usage.lastTurnCostUsd !== undefined ? `, ${formatCost(usage.lastTurnCostUsd)} last answer` : ""}
-                {:else}
-                  No prices known for this model
-                {/if}
-              </span>
-            </div>
+            <!-- On the ChatGPT plan the composer's "Using ChatGPT plan" row says it all. -->
+            {#if !usage.plan}
+              <div class="chatting-minus-usage-row">
+                <span>Cost</span>
+                <span>
+                  {#if usage.costUsd !== undefined}
+                    {formatCost(usage.costUsd)} this chat{usage.lastTurnCostUsd !== undefined ? `, ${formatCost(usage.lastTurnCostUsd)} last answer` : ""}
+                  {:else}
+                    No prices known for this model
+                  {/if}
+                </span>
+              </div>
+            {/if}
             {#if !usage.plan && usage.costUsd !== undefined}
               <div class="chatting-minus-usage-note">Estimated from the provider's list prices{usage.partialCost ? "; some requests had no price" : ""}.</div>
             {/if}

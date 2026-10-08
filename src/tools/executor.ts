@@ -6,6 +6,7 @@ import { applyCanvasOperations, canvasSearchTexts, describeCanvas, isCanvasPath,
 import { renderCanvas, shortIds } from "./canvas-render";
 import type { ChangeLog } from "./undo";
 import { listMetadata, queryNotes } from "./metadata-query";
+import { getLinks } from "./links";
 import { readWebPage } from "./web-page";
 import { fileAttachment, isDocumentFile } from "../files/attachments";
 import { createCanvasElement, decodeImage, encodeCanvas, extensionOf, fitImage, formatBytes, imageMediaType, isImagePath } from "../images";
@@ -78,8 +79,9 @@ export async function executeTool(
         return queryNotes(app, input);
       case "list_metadata":
         return listMetadata(app, input);
-      case "get_backlinks":
-        return await getBacklinks(app, input);
+      case "get_links":
+      case "get_backlinks": // its earlier name, in saved chats
+        return await getNoteLinks(app, input);
       case "get_current_datetime":
         return getCurrentDatetime();
       case "open_document":
@@ -763,7 +765,7 @@ async function setProperties(
   });
 }
 
-async function getBacklinks(
+async function getNoteLinks(
   app: App,
   input: Record<string, unknown>
 ): Promise<ToolResult> {
@@ -772,26 +774,7 @@ async function getBacklinks(
   if (!file) {
     return { result: path ? `File not found: ${path}` : "No active document open.", isError: true };
   }
-
-  // resolvedLinks maps: source path -> { target path -> link count }
-  const allLinks = app.metadataCache.resolvedLinks;
-  const backlinks: string[] = [];
-
-  for (const [sourcePath, targets] of Object.entries(allLinks)) {
-    if (targets[file.path]) {
-      backlinks.push(sourcePath);
-    }
-  }
-
-  if (backlinks.length === 0) {
-    return { result: `No backlinks found for ${file.path}.`, isError: false };
-  }
-
-  backlinks.sort();
-  return {
-    result: `${backlinks.length} note(s) link to ${file.path}:\n${backlinks.map((p) => `- ${p}`).join("\n")}`,
-    isError: false,
-  };
+  return getLinks(app, file);
 }
 
 function getCurrentDatetime(): ToolResult {

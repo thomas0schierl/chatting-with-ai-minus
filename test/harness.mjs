@@ -86,6 +86,8 @@ export const bundled = await build({
       export class TFile extends TAbstractFile { constructor(path) { super(); this.path = path; this.extension = path.split('.').pop(); } }
       export class TFolder extends TAbstractFile { constructor(path, children = []) { super(); this.path = path; this.children = children; } }
       export const normalizePath = path => path;
+      export const getLinkpath = link => link.split('#')[0];
+      export const parseFrontMatterAliases = fm => { const a = fm?.aliases ?? fm?.alias; return a == null ? null : (Array.isArray(a) ? a : [a]).map(String); };
       // Letters in order, any case; fewer gaps score higher (like Obsidian's, roughly).
       export const prepareFuzzySearch = query => text => {
         let at = -1, gaps = 0;

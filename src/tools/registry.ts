@@ -375,9 +375,9 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
     },
   },
   {
-    name: "get_backlinks",
+    name: "get_links",
     description:
-      "Find all notes in the vault that link to a given document. Uses Obsidian's metadata cache for fast lookups.",
+      "A note's links, like Obsidian's Backlinks and Outgoing links panes: linked mentions (notes that link to it, with the lines), unlinked mentions (notes whose text names it or an alias without a link, any case) and outgoing links (including links to notes that don't exist yet).",
     inputSchema: {
       type: "object",
       properties: {

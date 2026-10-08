@@ -67,7 +67,7 @@ export async function folderInstructions(app: App, paths: string[], given: Set<s
 }
 
 /** Tools whose `path` defaults to the active note. */
-const ACTIVE_NOTE_TOOLS = ["read_document", "edit_document", "get_properties", "set_properties", "get_backlinks"];
+const ACTIVE_NOTE_TOOLS = ["read_document", "edit_document", "get_properties", "set_properties", "get_links"];
 
 /** The files a tool call concerns (`path`, `new_path`, else the active note), for folder instructions. */
 export function toolPaths(app: App, name: string, input: Record<string, unknown>): string[] {

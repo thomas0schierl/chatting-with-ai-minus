@@ -27,7 +27,7 @@ It is a fork of [Chatting with AI](https://github.com/o1xhack/obsidian-chatting)
 - Streamed answers with Stop; edit a message, regenerate or copy an
   answer.
 - 18 vault tools: read, search, list, create, edit, rename, trash, open,
-  frontmatter, backlinks, canvas reading and editing, looking at images and
+  frontmatter, backlinks and unlinked mentions, canvas reading and editing, looking at images and
   canvases, date and time, and asking the user a question.
 - Selection scope: send selected text to the chat, and edits stay inside it.
 - Image attachments for models that accept images.
