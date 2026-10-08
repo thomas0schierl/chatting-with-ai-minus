@@ -638,7 +638,7 @@ test('Declarative settings stay searchable without fetching during indexing', ()
   const plugin={settings:settings('openai')}; const tab=new api.ChatSettingTab({},plugin);
   globalThis.__providerRequest=async()=>assert.fail('Indexing must not perform network I/O');
   const definitions=tab.getSettingDefinitions();
-  assert.deepEqual(definitions.map(d=>d.name ?? d.heading),['Provider','API key','ChatGPT account','Model','Custom model ID','Thinking level','Web search','Enter sends message',"Follow the AI's edits",'Max tool iterations','Voice','MCP servers',undefined,'Debug log']);
+  assert.deepEqual(definitions.map(d=>d.name ?? d.heading),['Provider','API key','ChatGPT account','Model','Custom model ID','Thinking level','Web search','Enter sends message',"Follow the AI's edits",'Vault instructions','Max tool iterations','Voice','MCP servers',undefined,'Debug log']);
   assert.equal(definitions[1].visible(),true); assert.equal(definitions[2].visible(),false);
   plugin.settings.provider='chatgpt-oauth'; assert.equal(definitions[1].visible(),false); assert.equal(definitions[2].visible(),true);
 });

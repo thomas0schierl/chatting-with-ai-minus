@@ -242,6 +242,9 @@ function savedUsage(value: unknown): { usage: ConversationUsage } | undefined {
   return {
     usage: {
       contextTokens, costUsd, model: value.model, provider: value.provider,
+      // Saved before the totals were kept: counted from now on.
+      inputTokens: number(value.inputTokens) ?? 0,
+      outputTokens: number(value.outputTokens) ?? 0,
       unpricedRequests: number(value.unpricedRequests) ?? 0,
       ...(lastTurnCostUsd !== undefined ? { lastTurnCostUsd } : {}),
     },

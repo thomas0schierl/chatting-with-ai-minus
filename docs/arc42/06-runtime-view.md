@@ -551,8 +551,10 @@ OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
    surcharges left out), saved with it; Clear resets it.
 2. **Ring:** in the chat header, how full the context is against the
    selected model's window, yellow past the compaction point; a click
-   shows tokens, the point, the cost of the chat and of the last answer
-   ("Included in your ChatGPT plan" for the plan), and *Compact now*.
+   shows the context, the tokens the chat used (in and out, compaction
+   passes included), the cost of the chat and of the last answer
+   ("Included in your ChatGPT plan" with **Manage usage** for the plan:
+   OpenAI offers apps no remaining-usage figure), and *Compact now*.
 3. **Compaction point:** 80 % of the window (`agent/compaction.ts`); the
    ChatGPT catalog's `auto_compact_token_limit` where given; Anthropic at
    least 50,000.

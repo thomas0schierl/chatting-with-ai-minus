@@ -145,7 +145,7 @@ test('The ring: context against the selected model\'s window, compaction point, 
   plugin.settings.modelCatalog = (await withCatalog('anthropic', [{ value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', contextWindow: 200000, pricing: { input: 3, output: 15 } }])).modelCatalog;
   transport(() => anthropicAnswer('ok', { input_tokens: 40000, output_tokens: 1 }, { output_tokens: 1000 }));
   await view.handleUserMessage('Hi', null);
-  assert.deepEqual(chat.usage, { contextTokens: 41000, contextWindow: 200000, compactAt: 160000, costUsd: (40000 * 3 + 1000 * 15) / 1e6, lastTurnCostUsd: (40000 * 3 + 1000 * 15) / 1e6, partialCost: false, plan: false });
+  assert.deepEqual(chat.usage, { contextTokens: 41000, inputTokens: 40000, outputTokens: 1000, contextWindow: 200000, compactAt: 160000, costUsd: (40000 * 3 + 1000 * 15) / 1e6, lastTurnCostUsd: (40000 * 3 + 1000 * 15) / 1e6, partialCost: false, plan: false });
 
   await new Promise(resolve => setTimeout(resolve, 0));
   const restored = await chatSetup('anthropic', writes.at(-1));
@@ -162,5 +162,5 @@ test('The ChatGPT plan has no per-token cost', async () => {
   plugin.settings.modelCatalog = (await withCatalog('chatgpt-oauth', [{ value: 'gpt-5.5', label: 'GPT-5.5', contextWindow: 380000, autoCompactTokens: 300000 }])).modelCatalog;
   transport(() => responsesAnswer('chatgpt-oauth', 'ok', { input_tokens: 5000, output_tokens: 100 }));
   await view.handleUserMessage('Hi', null);
-  assert.deepEqual(chat.usage, { contextTokens: 5100, contextWindow: 380000, compactAt: 300000, partialCost: true, plan: true });
+  assert.deepEqual(chat.usage, { contextTokens: 5100, inputTokens: 5000, outputTokens: 100, contextWindow: 380000, compactAt: 300000, partialCost: true, plan: true });
 });

@@ -9,6 +9,9 @@ import type { TokenUsage } from "../types";
 export interface ConversationUsage {
   /** Tokens of the last request: its input and its answer (the next request starts from there). */
   contextTokens: number;
+  /** All tokens of the chat's requests: input (cached included) and output (compaction passes included). */
+  inputTokens: number;
+  outputTokens: number;
   /** The model and provider of that request. */
   model: string;
   provider: string;
@@ -53,6 +56,8 @@ export function addRequest(
   const turnBefore = request.turnStart ? undefined : previous?.lastTurnCostUsd;
   return {
     contextTokens: usage.inputTokens + usage.outputTokens,
+    inputTokens: (previous?.inputTokens ?? 0) + usage.inputTokens + (usage.compactionInputTokens ?? 0),
+    outputTokens: (previous?.outputTokens ?? 0) + usage.outputTokens + (usage.compactionOutputTokens ?? 0),
     model: request.model,
     provider: request.provider,
     costUsd: (previous?.costUsd ?? 0) + (cost ?? 0),

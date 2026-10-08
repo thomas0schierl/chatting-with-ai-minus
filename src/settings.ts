@@ -16,9 +16,13 @@ import { LIVE_VOICES, hasLiveAccess } from "./voice/openai-live";
 import { CODEX_VOICES, codexAccountSetting, codexRouteSetting } from "./voice/codex";
 
 import { validServerName, validServerUrl } from "./api/mcp";
+import { INSTRUCTIONS_FILE } from "./agent/instructions";
 import { type ModelOption, secretIdentity, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
 
 const CUSTOM_MODEL_OPTION = "__custom__";
+
+/** A new AGENTS.md: a comment saying what goes in it (the AI reads it too, harmlessly). */
+const INSTRUCTIONS_TEMPLATE = "<!-- Instructions for AI assistants working in this vault (Chatting with AI Minus and other tools that read AGENTS.md). Write each instruction as a plain sentence below. -->\n\n";
 
 const FALLBACK_MODELS: Record<string, ModelOption[]> = {
   anthropic: [
@@ -33,7 +37,7 @@ const FALLBACK_MODELS: Record<string, ModelOption[]> = {
   ],
   // Shown until the account's own list has loaded.
   "chatgpt-oauth": [
-    { value: "gpt-5.5", label: "GPT-5.5 (recommended)" },
+    { value: "gpt-6.1-sol", label: "GPT-6.1 Sol" },
   ],
 };
 
@@ -107,6 +111,7 @@ export class ChatSettingTab extends PluginSettingTab {
       { name: "Web search", render: setting => this.renderWebSearch(setting) },
       { name: "Enter sends message", aliases: ["Keyboard", "New line"], render: setting => this.renderEnterSends(setting) },
       { name: "Follow the AI's edits", aliases: ["Show edits", "Highlight"], render: setting => this.renderFollowEdits(setting) },
+      { name: "Vault instructions", aliases: ["AGENTS.md", "Instructions"], render: setting => this.renderInstructions(setting) },
       { name: "Max tool iterations", render: setting => this.renderMaxIterations(setting) },
       { type: "group", heading: "Voice", items: [
         // The unofficial Codex route, off unless chosen and confirmed (ADR-14).
@@ -120,6 +125,21 @@ export class ChatSettingTab extends PluginSettingTab {
       this.mcpServerList(),
       { name: "Debug log", aliases: ["Troubleshooting"], render: setting => this.renderDebugLog(setting) },
     ];
+  }
+
+  // ─── Vault instructions (ADR-16) ──────────────────────────────────────────
+
+  /** AGENTS.md at the vault root: open it, or create it first. */
+  private renderInstructions(setting: Setting): void {
+    const exists = !!this.app.vault.getFileByPath(INSTRUCTIONS_FILE);
+    setting
+      .setDesc(`Standing instructions for the AI, in ${INSTRUCTIONS_FILE} at the vault root; every chat follows them. A folder can have its own ${INSTRUCTIONS_FILE} for its notes.${exists ? "" : " There is none yet."}`)
+      .addButton((button) => button.setButtonText(exists ? "Open" : "Create").onClick(async () => {
+        const file = this.app.vault.getFileByPath(INSTRUCTIONS_FILE)
+          ?? await this.app.vault.create(INSTRUCTIONS_FILE, INSTRUCTIONS_TEMPLATE);
+        await this.app.workspace.getLeaf("tab").openFile(file);
+        this.update();
+      }));
   }
 
   // ─── MCP servers (ADR-19) ─────────────────────────────────────────────────

@@ -44,6 +44,8 @@
     /** Changes rows: the files a turn changed, and whether it can be undone. */
     files?: string[];
     changesState?: ChangesState;
+    /** Changes rows: opened into the list of files. */
+    changesOpen?: boolean;
   }
 
   /** Header, title and voice button are set through setModel, setTitle and setVoiceAvailable. */
@@ -982,18 +984,15 @@
             {#if usage.contextWindow}
               <div class="chatting-minus-usage-bar"><span style:width={`${(share * 100).toFixed(1)}%`}></span></div>
             {/if}
-            <div class="chatting-minus-usage-note">
-              {#if usage.compactAt}
-                At {formatTokens(usage.compactAt)} the earlier part of the chat is summarized, so it can go on.
-              {:else}
-                The model's window is unknown.
-              {/if}
+            <div class="chatting-minus-usage-row">
+              <span>Tokens used</span>
+              <span>{formatTokens(usage.inputTokens)} in · {formatTokens(usage.outputTokens)} out</span>
             </div>
             <div class="chatting-minus-usage-row">
               <span>Cost</span>
               <span>
                 {#if usage.plan}
-                  Included in your ChatGPT plan
+                  Included in your ChatGPT plan · <button class="chatting-minus-link-btn" type="button" onclick={openUsage}>Manage usage</button>
                 {:else if usage.costUsd !== undefined}
                   {formatCost(usage.costUsd)} this chat{usage.lastTurnCostUsd !== undefined ? `, ${formatCost(usage.lastTurnCostUsd)} last answer` : ""}
                 {:else}
@@ -1248,24 +1247,35 @@
 
       {:else if msg.type === "changes"}
         {@const files = msg.files ?? []}
-        <!-- What the answer changed, with Undo (while Obsidian runs) -->
-        <div class="chatting-minus-changes" class:is-undone={msg.changesState === "undone"}>
-          <svg class="chatting-minus-tool-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path></svg>
-          <span class="chatting-minus-changes-label" title={files.join("\n")}>
-            {msg.changesState === "undone" ? "Undid the changes to" : "Changed"}
-            {#each files as path, i (path)}{i ? ", " : " "}<button type="button" class="chatting-minus-changes-file" onclick={() => openChanged(path)}>{fileLabel(path)}</button>{/each}
-          </span>
-          {#if msg.changesState === "undoable" && msg.turnId}
-            {@const turnId = msg.turnId}
-            <button
-              class="chatting-minus-changes-undo"
-              type="button"
-              disabled={busy}
-              onclick={() => onUndo(turnId)}
-              title="Put these files back as they were before this answer"
-            >Undo</button>
-          {/if}
-        </div>
+        {@const verb = msg.changesState === "undone" ? "Undid the changes to" : "Changed"}
+        <!-- What the answer changed, with Undo (while Obsidian runs); open: the files as a list -->
+        <details class="chatting-minus-changes" class:is-undone={msg.changesState === "undone"} bind:open={msg.changesOpen}>
+          <summary class="chatting-minus-changes-row">
+            <svg class="chatting-minus-tool-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path></svg>
+            <span class="chatting-minus-changes-label" title={files.join("\n")}>
+              {msg.changesOpen ? `${verb} ${files.length === 1 ? "1 file" : `${files.length} files`}` : `${verb} ${files.map(fileLabel).join(", ")}`}
+            </span>
+            <span class="chatting-minus-tool-chevron" aria-hidden="true"></span>
+            {#if msg.changesState === "undoable" && msg.turnId}
+              {@const turnId = msg.turnId}
+              <button
+                class="chatting-minus-action-btn chatting-minus-changes-undo"
+                type="button"
+                disabled={busy}
+                onclick={(e) => { e.preventDefault(); e.stopPropagation(); onUndo(turnId); }}
+                aria-label="Undo these changes"
+                title="Undo: put these files back as they were before this answer"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg>
+              </button>
+            {/if}
+          </summary>
+          <ul class="chatting-minus-changes-list">
+            {#each files as path (path)}
+              <li><button type="button" class="chatting-minus-changes-file" onclick={() => openChanged(path)} title={path}>{path}</button></li>
+            {/each}
+          </ul>
+        </details>
 
       {:else if msg.type === "error" && (msg.errorKind === "stopped" || msg.errorKind === "compacted")}
         <!-- Stop before any of the answer arrived: a quiet note, not an error -->
@@ -2149,19 +2159,38 @@
   /* ─── Changes of an answer (undo) ───────────────────────────────────── */
   .chatting-minus-changes {
     align-self: stretch;
-    display: flex;
-    align-items: center;
-    gap: 6px;
     min-width: 0;
-    padding: 4px 4px 4px 6px;
     border: 1px solid var(--background-modifier-border);
     border-radius: var(--radius-s);
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
   }
 
+  .chatting-minus-changes-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 2px 2px 2px 6px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .chatting-minus-changes-row::-webkit-details-marker {
+    display: none;
+  }
+
+  .chatting-minus-changes-row:hover .chatting-minus-tool-chevron,
+  .chatting-minus-changes[open] .chatting-minus-tool-chevron {
+    opacity: 0.7;
+  }
+
+  .chatting-minus-changes[open] .chatting-minus-tool-chevron {
+    transform: rotate(45deg);
+  }
+
   .chatting-minus-changes-label {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -2170,6 +2199,25 @@
 
   .chatting-minus-changes.is-undone .chatting-minus-changes-label {
     color: var(--text-faint);
+  }
+
+  /* Undo stays at the row's right end */
+  .chatting-minus-changes-undo {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  /* Open: the files one per line */
+  .chatting-minus-changes-list {
+    margin: 0;
+    padding: 0 8px 6px 26px;
+    list-style: none;
+  }
+
+  .chatting-minus-changes-list li {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* File names look like links */
@@ -2186,14 +2234,6 @@
   .chatting-minus-changes.is-undone .chatting-minus-changes-file {
     color: inherit;
     text-decoration: line-through;
-  }
-
-  .chatting-minus-changes-undo {
-    flex-shrink: 0;
-    padding: 0 8px;
-    height: auto;
-    font-size: var(--font-ui-smaller);
-    box-shadow: none;
   }
 
   .chatting-minus-stopped-note {

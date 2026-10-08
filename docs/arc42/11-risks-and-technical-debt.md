@@ -44,6 +44,8 @@ only its open questions are listed here.
   that is rewritten after every turn; check size and save time with many
   chats with images (saving attachments as separate files would fix it).
 - The conversation list has no search.
+- The plugin's own summary requests (*Compact now*, a provider switch, a
+  request too long) aren't counted in the ring's tokens and cost.
 - Compaction (ADR-18): whether the ChatGPT route accepts
   `context_management` (not in its documented fields; refused, the plugin
   summarizes itself); Anthropic's threshold compaction is a beta; prices

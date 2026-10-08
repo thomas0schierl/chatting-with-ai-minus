@@ -76,6 +76,9 @@ const COMPACTED_NOTE = "The earlier part of this chat was summarized to keep it 
 export interface UsageView {
   /** Tokens of the last request (input and answer). */
   contextTokens: number;
+  /** All tokens the chat's requests used, in and out. */
+  inputTokens: number;
+  outputTokens: number;
   /** The selected model's window; unknown: no ring, only the count. */
   contextWindow?: number;
   /** Where the context is compacted (ADR-18). */
@@ -300,6 +303,8 @@ export class ObsidianChatView extends ItemView {
     const priced = usage.costUsd > 0 || usage.unpricedRequests === 0;
     this.chatContainer?.setUsage({
       contextTokens: usage.contextTokens,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
       contextWindow: option?.contextWindow,
       compactAt: compactThreshold(provider, option),
       ...(priced && !plan ? { costUsd: usage.costUsd, lastTurnCostUsd: usage.lastTurnCostUsd } : {}),

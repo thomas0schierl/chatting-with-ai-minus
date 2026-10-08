@@ -33,7 +33,8 @@ messages and the notes the AI reads go to that provider (see
   (writing style, where new notes go, how you structure things) in an
   `AGENTS.md` note at the vault root; every chat follows them. A folder can
   have its own `AGENTS.md` for its notes. The same file works for other AI
-  tools that follow [agents.md](https://agents.md).
+  tools that follow [agents.md](https://agents.md). *Vault instructions* in the
+  settings opens it (or creates it).
 - **Mention notes:** type `@` or `[[` and pick a note, canvas or image;
   it goes into your message as a link, and its current content goes to
   the AI with the message, so it doesn't have to look it up first.
@@ -43,9 +44,10 @@ messages and the notes the AI reads go to that provider (see
   chat. They run without asking, so add only servers you trust. Not
   available with the ChatGPT plan.
 - **Context and cost:** a small ring in the chat header shows how full
-  the model's context is; click it for the tokens, the estimated cost of
-  the chat and of the last answer (from the provider's list prices; the
-  ChatGPT plan has none), and *Compact now*.
+  the model's context is; click it for the tokens the chat used, the
+  estimated cost of the chat and of the last answer (from the provider's
+  list prices; on the ChatGPT plan, a link to your plan's usage instead),
+  and *Compact now*.
 - **Long chats:** before the context is full, the earlier part of the
   chat is summarized so it can go on: by the provider where it offers
   that (Anthropic, OpenAI, the ChatGPT plan), otherwise by the plugin
@@ -67,10 +69,10 @@ messages and the notes the AI reads go to that provider (see
   header or in the settings. Ask "show me …" and the AI opens a note at a
   passage or a canvas at a card for you.
 - **Undo an answer's changes:** an answer that changed files ends in a
-  row naming them; **Undo** puts them back as they were before it
-  (created files go to the trash, renamed ones get their name back,
-  deleted ones return). If a file changed since, you're asked first.
-  Available until Obsidian closes.
+  row naming them (click it for the list) with an undo button that puts
+  them back as they were before it (created files go to the trash,
+  renamed ones get their name back, deleted ones return). If a file
+  changed since, you're asked first. Available until Obsidian closes.
 - **Enter sends message:** on by default (Shift+Enter starts a new line).
   Turn it off in the settings to make Enter start a new line; then send
   with the send button or Ctrl+Enter (Cmd+Enter on a Mac).

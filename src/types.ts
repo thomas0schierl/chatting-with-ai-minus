@@ -71,7 +71,7 @@ export type VoiceMicMode = "hands-free" | "hold";
 export const DEFAULT_PROVIDER_MODELS: Record<Provider, string> = {
   anthropic: "claude-sonnet-4-6",
   openai: "gpt-6.1-sol",
-  "chatgpt-oauth": "gpt-5.5",
+  "chatgpt-oauth": "gpt-6.1-sol",
 };
 
 /** Defaults; the model catalog is set (empty or saved) when the settings load. */

@@ -21,7 +21,7 @@ test('Loaded settings: the iteration limit is kept within 1 to 100, the catalog 
   assert.deepEqual(fresh.settings.modelCatalog, { entries: [] });
   assert.equal(fresh.settings.model, 'claude-sonnet-4-6');
   // No model saved: the provider's default, so adapters never need one of their own.
-  for (const [provider, model] of [['openai', 'gpt-6.1-sol'], ['chatgpt-oauth', 'gpt-5.5']]) {
+  for (const [provider, model] of [['openai', 'gpt-6.1-sol'], ['chatgpt-oauth', 'gpt-6.1-sol']]) {
     const plugin = new api.ChatPlugin();
     plugin.loadData = async () => ({ provider, model: '' });
     plugin.loadApiKey = () => '';
