@@ -44,6 +44,11 @@ only its open questions are listed here.
   that is rewritten after every turn; check size and save time with many
   chats with images (saving attachments as separate files would fix it).
 - The conversation list has no search.
+- ChatGPT plan: no remaining-usage figure. The plugin's sign-in gets
+  none (no headers; `chatgpt.com/backend-api/wham/usage` answers 401);
+  Codex shows one from that endpoint with its own sign-in (the voice
+  route's, ADR-14). Unchecked whether it counts this app's usage, which
+  has its own limit (`subscription_sharing_usage_limit_exceeded`).
 - The plugin's own summary requests (*Compact now*, a provider switch, a
   request too long) aren't counted in the ring's tokens and cost.
 - Compaction (ADR-18): whether the ChatGPT route accepts

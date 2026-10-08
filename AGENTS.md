@@ -28,7 +28,8 @@ scripts/release.sh X.Y.Z  # bump, commit, tag, push; CI drafts the release
 - **Secrets:** API keys and tokens go only to `SecretStorage`, never to
   `data.json`, logs or chat history.
 - **System prompt stays static:** per-turn context goes into the user
-  message. Only the vault's root `AGENTS.md` joins it (ADR-16).
+  message. Only the vault's root `AGENTS.md` (ADR-16) and its skills list
+  (ADR-20) join it.
 - **No guessing from model names:** take capabilities from the provider's
   model catalog.
 - **Settings repairs run once:** add a versioned migration, never a check
