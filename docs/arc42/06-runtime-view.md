@@ -179,7 +179,8 @@ source (the text as received, before math conversion) and shows
 3. **Undo** (not while a turn runs): files whose state differs from what
    the answer left (the user or a later answer changed them) are named in
    a dialog first; *Cancel* changes nothing. Then the steps are taken back,
-   last first: text written back, created files to the trash, renames
+   last first: text written back, created files to the trash (and the
+   folders made for them, when empty), renames
    renamed back (links in other notes follow), deleted files created again
    with their folders. What fails is named in a notice.
 4. **Tell the model:** the row shows "Undid the changes to …"; the
