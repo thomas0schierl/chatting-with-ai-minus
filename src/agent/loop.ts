@@ -533,7 +533,12 @@ export class AgentLoop {
         }
       }
 
-      debugLog(this.app, "API_RESPONSE", { stopReason: response.stopReason, contentTypes: response.content.map(b => b.type), usage: response.usage });
+      debugLog(this.app, "API_RESPONSE", {
+        stopReason: response.stopReason, contentTypes: response.content.map(b => b.type), usage: response.usage,
+        // Whether the provider compacts on its side now (the ChatGPT route may refuse it, ADR-18).
+        compactsNatively: this.compactsNatively(turnSettings, catalogModel(turnSettings.provider, turnSettings.model)),
+        ...(response.compaction ? { compacted: true } : {}),
+      });
       if (response.usage) {
         // The model's window and prices for the ring (OpenAI: its documentation page, once a day).
         if (i === 0) await loadModelDetails(turnSettings.modelCatalog, turnSettings.provider, turnSettings.apiKey, turnSettings.model);

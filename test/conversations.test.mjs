@@ -358,7 +358,8 @@ test('A turn streams on in the background: the other chat stays as it is, the re
 
   finish();
   await running;
-  // Not shown here; it is in its own chat, and a notice says so.
+  // Not shown here; it is in its own chat, and a notice says so; the chats list was updated (start and end).
+  assert.ok(chat.conversationUpdates >= 3);
   assert.equal(globalThis.__notices.at(-1), 'Answer ready in "Write a lot".');
   assert.deepEqual(chat.shown.map(m => m.text), ['Quick one', 'B1']);
   view.openConversation(a);

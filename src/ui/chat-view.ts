@@ -45,6 +45,8 @@ interface ChatContainerApi extends Record<string, unknown> {
   setInputEnabled(enabled: boolean): void;
   setBusy(busy: boolean): void;
   setQueued(texts: string[]): void;
+  /** The chats list, if open, reloaded (its "Answering…" rows). */
+  updateConversations(): void;
   cancelAskUser(): void;
   clearMessages(): void;
   focus(): void;
@@ -722,6 +724,7 @@ export class ObsidianChatView extends ItemView {
       streaming: null, tools: new Map(), thinking: null, ask: null, queued: [], unsteered: [],
     };
     this.turns.set(conversation.id, turn);
+    chat.updateConversations();
     const ui = () => this.shownChat(turn);
     // The screen stays on while the answer is generated.
     const releaseScreen = screenAwake.hold();
@@ -842,6 +845,7 @@ export class ObsidianChatView extends ItemView {
         // controller takes its leftovers itself, unless the call has ended.)
         const later = this.takeLeftovers(turn);
         this.turns.delete(conversation.id);
+        this.chatContainer?.updateConversations();
         if (shown) {
           shown.setInputEnabled(true);
           shown.setBusy(false);

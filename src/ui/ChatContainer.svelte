@@ -187,6 +187,11 @@
     conversations = listConversations();
   }
 
+  /** The open chats list again (a chat started or finished answering in the background). */
+  export function updateConversations(): void {
+    if (historyOpen) refreshConversations();
+  }
+
   function toggleHistory(): void {
     historyOpen = !historyOpen;
     renamingId = null;

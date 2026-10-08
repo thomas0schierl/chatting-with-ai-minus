@@ -93,6 +93,10 @@ test('Undo takes an answer\'s edits, new files, renames and deletes back, last f
     'Plan.md': 'Old plan',
   });
   assert.ok(folders.has('Old/Deep'));
+  // Folders the answer created for its files are gone again; ones that were there stay.
+  assert.equal(folders.has('Fresh'), false);
+  assert.equal(folders.has('Archive'), false);
+  assert.ok(folders.has('Notes'));
 });
 
 test('Files changed after the answer are named before undoing', async () => {

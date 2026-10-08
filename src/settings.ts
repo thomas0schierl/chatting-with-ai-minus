@@ -1,6 +1,6 @@
 import { App, Modal, Notice, PluginSettingTab, Setting, type SettingDefinitionItem } from "obsidian";
 import type ChatPlugin from "./main";
-import type { ChatSettings, Provider, VoiceMicMode } from "./types";
+import type { ChatSettings, McpServer, Provider, VoiceMicMode } from "./types";
 import { DEFAULT_PROVIDER_MODELS } from "./types";
 import { clearDebugLog } from "./debug";
 import {
@@ -98,9 +98,11 @@ export class ChatSettingTab extends PluginSettingTab {
       { name: "API key", visible: () => this.plugin.settings.provider !== "chatgpt-oauth", render: setting => this.renderApiKeySection(setting) },
       { name: "ChatGPT account", visible: () => this.plugin.settings.provider === "chatgpt-oauth", render: setting => this.renderChatGPTOAuthSection(setting) },
       { name: "Model", aliases: ["Custom model ID", "Refresh models"], render: setting => {
-        this.renderModelSection(setting.settingEl.parentElement!, setting);
+        this.renderModelSection(setting);
         void this.loadCatalog(false);
       } },
+      // Its own row (declarative): rows added next to another row's element don't show.
+      { name: "Custom model ID", visible: () => this.editingCustomModel, render: setting => this.renderCustomModel(setting) },
       { name: "Thinking level", visible: () => !!this.thinkingOptions(), render: setting => this.renderThinkingLevel(setting) },
       { name: "Web search", render: setting => this.renderWebSearch(setting) },
       { name: "Enter sends message", aliases: ["Keyboard", "New line"], render: setting => this.renderEnterSends(setting) },
@@ -114,65 +116,84 @@ export class ChatSettingTab extends PluginSettingTab {
         { name: "Voice", render: setting => this.renderVoiceName(setting) },
         { name: "Microphone", aliases: ["Hold to talk", "Hands-free"], render: setting => this.renderMicMode(setting) },
       ] },
-      { name: "MCP servers", aliases: ["Connectors", "Model Context Protocol"], render: setting => this.renderMcpServers(setting) },
+      { name: "MCP servers", aliases: ["Connectors", "Model Context Protocol"], desc: this.mcpDescription() },
+      this.mcpServerList(),
       { name: "Debug log", aliases: ["Troubleshooting"], render: setting => this.renderDebugLog(setting) },
     ];
   }
 
   // ─── MCP servers (ADR-19) ─────────────────────────────────────────────────
 
-  /** The remote MCP servers: one row each (name, address, token, on/off, remove), and Add. */
-  private renderMcpServers(setting: Setting): void {
-    const s = this.plugin.settings;
-    const container = setting.settingEl.parentElement!;
-    const plan = s.provider === "chatgpt-oauth";
-    setting
-      .setName("MCP servers")
-      .setDesc(plan
-        ? "Remote MCP servers work with an Anthropic or OpenAI API key; the ChatGPT plan doesn't offer them."
-        : "Remote servers (public https) whose tools the AI can use. The provider connects to them and calls their tools without asking, so add only servers you trust.")
-      .addButton((button) => button.setButtonText("Add server").onClick(async () => {
-        s.mcpServers = [...s.mcpServers, { id: `mcp-${Date.now().toString(36)}`, name: "", url: "", enabled: true }];
-        await this.plugin.saveSettings();
-        this.update();
-      }));
+  private mcpDescription(): string {
+    return this.plugin.settings.provider === "chatgpt-oauth"
+      ? "Remote MCP servers work with an Anthropic or OpenAI API key; the ChatGPT plan doesn't offer them."
+      : "Remote servers (public https) whose tools the AI can use. The provider connects to them and calls their tools without asking, so add only servers you trust.";
+  }
 
-    for (const server of s.mcpServers) {
+  /** The servers as an Obsidian settings list: one row each (name, address, token, on/off), add and delete. */
+  private mcpServerList(): SettingDefinitionItem {
+    const s = this.plugin.settings;
+    return {
+      type: "list",
+      cls: "chatting-minus-mcp-servers",
+      emptyState: "No servers yet.",
+      items: (s.mcpServers ?? []).map((server) => ({
+        name: server.name || "New server",
+        aliases: ["MCP"],
+        render: (setting: Setting) => this.renderMcpServer(setting, server),
+      })),
+      onDelete: (index) => {
+        const server = s.mcpServers[index];
+        if (server) void this.plugin.removeMcpServer(server.id).then(() => this.update());
+      },
+      addItem: {
+        name: "Add server",
+        action: () => {
+          s.mcpServers = [...s.mcpServers, { id: `mcp-${Date.now().toString(36)}`, name: "", url: "", enabled: true }];
+          void this.plugin.saveSettings().then(() => this.update());
+        },
+      },
+    };
+  }
+
+  /** One server's row: what is missing (or on/off), name, address, token, on/off. */
+  private renderMcpServer(setting: Setting, server: McpServer): void {
+    const s = this.plugin.settings;
+    const status = () => {
       const problems = [
         ...(validServerName(server.name) ? [] : ["a name of letters, digits, - or _"]),
         ...(validServerUrl(server.url) ? [] : ["an https address"]),
       ];
-      const duplicate = s.mcpServers.some((other) => other !== server && other.name === server.name && server.name);
-      const row = new Setting(container)
-        .setClass("chatting-minus-mcp-server")
-        .setDesc(problems.length ? `Needs ${problems.join(" and ")}.` : duplicate ? "Another server has this name." : server.enabled ? "On" : "Off")
-        .addText((text) => text.setPlaceholder("Name").setValue(server.name).onChange(async (value) => {
-          server.name = value.trim();
-          await this.plugin.saveSettings();
-        }))
-        .addText((text) => text.setPlaceholder("https://…").setValue(server.url).onChange(async (value) => {
-          server.url = value.trim();
-          await this.plugin.saveSettings();
-        }))
-        .addText((text) => {
-          text.inputEl.type = "password";
-          text.setPlaceholder("Token (optional)").setValue(server.token ?? "").onChange(async (value) => {
-            server.token = value.trim() || undefined;
-            await this.plugin.saveSettings();
-          });
-        })
-        .addToggle((toggle) => toggle.setValue(server.enabled).setTooltip("Use this server").onChange(async (value) => {
-          server.enabled = value;
-          await this.plugin.saveSettings();
-          this.update();
-        }))
-        .addExtraButton((button) => button.setIcon("trash").setTooltip("Remove").onClick(async () => {
-          await this.plugin.removeMcpServer(server.id);
-          this.update();
-        }));
-      // Checked again when a field loses focus.
-      row.controlEl.addEventListener("focusout", () => this.update());
-    }
+      const duplicate = !!server.name && s.mcpServers.some((other) => other !== server && other.name === server.name);
+      setting.setName(server.name || "New server");
+      setting.setDesc(problems.length ? `Needs ${problems.join(" and ")}.` : duplicate ? "Another server has this name." : server.enabled ? "On" : "Off");
+    };
+    const save = async () => {
+      status();
+      await this.plugin.saveSettings();
+    };
+    setting
+      .setClass("chatting-minus-mcp-server")
+      .addText((text) => text.setPlaceholder("Name").setValue(server.name).onChange(async (value) => {
+        server.name = value.trim();
+        await save();
+      }))
+      .addText((text) => text.setPlaceholder("https://…").setValue(server.url).onChange(async (value) => {
+        server.url = value.trim();
+        await save();
+      }))
+      .addText((text) => {
+        text.inputEl.type = "password";
+        text.setPlaceholder("Token (optional)").setValue(server.token ?? "").onChange(async (value) => {
+          server.token = value.trim() || undefined;
+          await save();
+        });
+      })
+      .addToggle((toggle) => toggle.setValue(server.enabled).setTooltip("Use this server").onChange(async (value) => {
+        server.enabled = value;
+        await save();
+      }));
+    status();
   }
 
   hide(): void {
@@ -506,7 +527,7 @@ export class ChatSettingTab extends PluginSettingTab {
 
   // ─── Model picker ─────────────────────────────────────────────────────────
 
-  private renderModelSection(containerEl: HTMLElement, row: Setting): void {
+  private renderModelSection(row: Setting): void {
     const s = this.plugin.settings;
     const cached = this.catalogModels;
     const models = cached || FALLBACK_MODELS[s.provider] || FALLBACK_MODELS.anthropic;
@@ -548,23 +569,25 @@ export class ChatSettingTab extends PluginSettingTab {
         }));
     }
 
-    // Custom model text field; an empty ID is never saved.
-    if (this.editingCustomModel) {
-      new Setting(containerEl)
-        .setName("Custom model ID")
-        .setDesc("Enter the full model identifier")
-        .addText((text) =>
-          text
-            .setPlaceholder(DEFAULT_PROVIDER_MODELS[s.provider])
-            .setValue(s.model)
-            .onChange(async (value) => {
-              const id = value.trim();
-              if (!id) return;
-              s.model = id;
-              await this.plugin.saveSettings();
-            })
-        );
-    }
+  }
+
+  /** Custom model text field (while "Custom..." is picked); an empty ID is never saved. */
+  private renderCustomModel(setting: Setting): void {
+    const s = this.plugin.settings;
+    setting
+      .setName("Custom model ID")
+      .setDesc("Enter the full model identifier")
+      .addText((text) =>
+        text
+          .setPlaceholder(DEFAULT_PROVIDER_MODELS[s.provider])
+          .setValue(s.model)
+          .onChange(async (value) => {
+            const id = value.trim();
+            if (!id) return;
+            s.model = id;
+            await this.plugin.saveSettings();
+          })
+      );
   }
 
   // ─── Thinking level ───────────────────────────────────────────────────────

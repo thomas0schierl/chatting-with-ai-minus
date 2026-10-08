@@ -8,7 +8,8 @@ type Step =
   | { kind: "edited"; path: string; before: string; after: string }
   | { kind: "created"; path: string; after: string }
   | { kind: "renamed"; from: string; to: string }
-  | { kind: "deleted"; folders: string[]; files: { path: string; data: ArrayBuffer }[] };
+  | { kind: "deleted"; folders: string[]; files: { path: string; data: ArrayBuffer }[] }
+  | { kind: "folders"; folders: string[] };
 
 /** What a file is expected to be after the turn: its text, there (not text), or gone. */
 type Expected = { text: string } | "exists" | "absent";
@@ -28,6 +29,11 @@ export class ChangeLog {
 
   created(path: string, after: string): void {
     this.steps.push({ kind: "created", path, after });
+  }
+
+  /** Folders a tool created for a file, outermost first. */
+  foldersCreated(folders: string[]): void {
+    if (folders.length) this.steps.push({ kind: "folders", folders });
   }
 
   renamed(from: string, to: string): void {
@@ -67,6 +73,8 @@ export class ChangeLog {
         else names[at] = step.to;
       } else if (step.kind === "deleted") {
         step.files.forEach((file) => add(file.path));
+      } else if (step.kind === "folders") {
+        continue;
       } else {
         add(step.path);
       }
@@ -86,7 +94,7 @@ export class ChangeLog {
       } else if (step.kind === "renamed") {
         expected.set(step.to, expected.get(step.from) ?? "exists");
         expected.set(step.from, "absent");
-      } else {
+      } else if (step.kind === "deleted") {
         for (const file of step.files) expected.set(file.path, "absent");
       }
     }
@@ -139,6 +147,14 @@ async function undoStep(app: App, step: Step): Promise<void> {
       await app.fileManager.renameFile(item, step.from);
       return;
     }
+    case "folders": {
+      // Removed again when nothing else is in them, innermost first.
+      for (const path of [...step.folders].reverse()) {
+        const folder = vault.getFolderByPath(path);
+        if (folder && folder.children.length === 0) await app.fileManager.trashFile(folder);
+      }
+      return;
+    }
     case "deleted": {
       for (const folder of step.folders) await ensureFolder(app, folder);
       for (const file of step.files) {
@@ -153,7 +169,7 @@ async function undoStep(app: App, step: Step): Promise<void> {
 
 function describe(step: Step): string {
   if (step.kind === "renamed") return step.to;
-  if (step.kind === "deleted") return step.files[0]?.path ?? step.folders[0] ?? "";
+  if (step.kind === "deleted" || step.kind === "folders") return ("files" in step ? step.files[0]?.path : undefined) ?? step.folders[0] ?? "";
   return step.path;
 }
 

@@ -256,7 +256,7 @@ export function fakeChat() {
     addChanges(turnId, files, state) { chat.shown.push({ id: nextId++, type: 'changes', turnId, files, changesState: state }); },
     usage: null, setUsage(value) { chat.usage = value; },
     setChangesUndone(turnId) { const row = chat.shown.find(m => m.type === 'changes' && m.turnId === turnId); if (row) row.changesState = 'undone'; },
-    setVoice(state) { chat.voice = state; }, setVoiceAvailable(value) { chat.voiceAvailable = value; }, setEnterSends(value) { chat.enterSends = value; }, setFollowEdits(value) { chat.followEdits = value; }, setQueued(texts) { chat.queued = texts; },
+    setVoice(state) { chat.voice = state; }, setVoiceAvailable(value) { chat.voiceAvailable = value; }, setEnterSends(value) { chat.enterSends = value; }, setFollowEdits(value) { chat.followEdits = value; }, setQueued(texts) { chat.queued = texts; }, conversationUpdates: 0, updateConversations() { chat.conversationUpdates++; },
   };
   return chat;
 }

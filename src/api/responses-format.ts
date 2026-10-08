@@ -180,7 +180,7 @@ export function fromResponsesOutput(
     if (item.type === "message" && Array.isArray(item.content)) {
       for (const part of item.content.filter(isRecord)) {
         if (part.type === "output_text" && typeof part.text === "string") {
-          content.push({ type: "text", text: part.text });
+          content.push({ type: "text", text: withoutCitationMarkers(part.text) });
         } else if (part.type === "refusal" && typeof part.refusal === "string") {
           content.push({ type: "text", text: part.refusal });
         }
@@ -211,6 +211,20 @@ export function fromResponsesOutput(
     // Tools OpenAI called on MCP servers (ADR-19).
     ...withServerCalls(openaiServerCalls(output)),
   };
+}
+
+/**
+ * Citation markers some models write into the text after a web search
+ * (seen on the ChatGPT route, 2026-10-08: "citeturn0search0",
+ * private-use characters around a reference to a search result) instead
+ * of `annotations`. They are dropped from the shown text; the replay
+ * items keep them as sent.
+ */
+const CITATION_MARKER = / ?[^]*/g;
+const CITATION_CHARACTERS = /[-]/g;
+
+export function withoutCitationMarkers(text: string): string {
+  return text.replace(CITATION_MARKER, "").replace(CITATION_CHARACTERS, "");
 }
 
 /**
@@ -251,7 +265,8 @@ function collectResponsesStream(onTextDelta?: (text: string) => void): {
     onEvent: (event) => {
       const type = event.type;
       if (type === "response.output_text.delta") {
-        if (typeof event.delta === "string" && event.delta) onTextDelta?.(event.delta);
+        // The markers' characters go; their words are dropped from the whole text at the end.
+        if (typeof event.delta === "string" && event.delta) onTextDelta?.(event.delta.replace(CITATION_CHARACTERS, ""));
       } else if (type === "response.output_item.done") {
         if (isRecord(event.item)) {
           const index = event.output_index;

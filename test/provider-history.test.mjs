@@ -638,7 +638,7 @@ test('Declarative settings stay searchable without fetching during indexing', ()
   const plugin={settings:settings('openai')}; const tab=new api.ChatSettingTab({},plugin);
   globalThis.__providerRequest=async()=>assert.fail('Indexing must not perform network I/O');
   const definitions=tab.getSettingDefinitions();
-  assert.deepEqual(definitions.map(d=>d.name ?? d.heading),['Provider','API key','ChatGPT account','Model','Thinking level','Web search','Enter sends message',"Follow the AI's edits",'Max tool iterations','Voice','MCP servers','Debug log']);
+  assert.deepEqual(definitions.map(d=>d.name ?? d.heading),['Provider','API key','ChatGPT account','Model','Custom model ID','Thinking level','Web search','Enter sends message',"Follow the AI's edits",'Max tool iterations','Voice','MCP servers',undefined,'Debug log']);
   assert.equal(definitions[1].visible(),true); assert.equal(definitions[2].visible(),false);
   plugin.settings.provider='chatgpt-oauth'; assert.equal(definitions[1].visible(),false); assert.equal(definitions[2].visible(),true);
 });
@@ -723,7 +723,7 @@ test('Settings: "Custom..." is UI state only and never saves an empty model', as
     const original = plugin.settings.model;
     const tab = new api.ChatSettingTab({},plugin);
     let refreshes = 0; tab.update = ()=>{refreshes++;};
-    const render = () => { globalThis.__settingRows = []; tab.renderModelSection({}, new api.Setting()); return globalThis.__settingRows; };
+    const render = () => { globalThis.__settingRows = []; tab.renderModelSection(new api.Setting()); if (tab.editingCustomModel) tab.renderCustomModel(new api.Setting()); return globalThis.__settingRows; };
     let rows = render();
     let dropdown = rows[0].controls[0];
     assert.equal(dropdown.value, original);
@@ -779,4 +779,16 @@ test('Chat history is not saved before the saved chat has been read', async () =
   await fresh.saveChatHistory();
   assert.equal(writes.length, 2);
   assert.deepEqual(writes[1].conversations[0].chatHistory, []);
+});
+
+test('ChatGPT: citation markers in the text (private-use characters) are left out of the shown answer, kept in the replay', async () => {
+  const marked = 'A balanced pile smells earthy. citeturn0search0\n\nTurn it weekly.citeturn0search1';
+  const deltas = [];
+  transport(() => response('chatgpt-oauth', [text(marked)]));
+  const cb = callbacks({ onTextDelta: delta => deltas.push(delta) });
+  const agent = new api.AgentLoop(vaultApp().app, settings('chatgpt-oauth'));
+  await agent.run('Compost?', cb);
+  assert.deepEqual(cb.texts, ['A balanced pile smells earthy.\n\nTurn it weekly.']);
+  assert.doesNotMatch(deltas.join(''), /[-]/);
+  assert.match(JSON.stringify(agent.exportMessages().at(-1).replay.items), /turn0search0/);
 });

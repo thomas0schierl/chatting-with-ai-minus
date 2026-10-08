@@ -167,10 +167,14 @@ function resolveFile(app: App, path?: string): TFile | null {
 }
 
 /** Ensure parent folders exist for a path */
-async function ensureParentFolder(app: App, filePath: string): Promise<void> {
+async function ensureParentFolder(app: App, filePath: string, changes?: ChangeLog): Promise<void> {
   const parentPath = filePath.substring(0, filePath.lastIndexOf("/"));
   if (parentPath && !app.vault.getFolderByPath(parentPath)) {
+    // The folders that didn't exist yet, outermost first (undo removes them again).
+    const parts = parentPath.split("/");
+    const missing = parts.map((_, i) => parts.slice(0, i + 1).join("/")).filter((folder) => !app.vault.getFolderByPath(folder));
     await app.vault.createFolder(parentPath);
+    changes?.foldersCreated(missing);
   }
 }
 
@@ -603,7 +607,7 @@ async function createFile(
     return { result: `File already exists: ${path}. Use edit_document to modify it.`, isError: true };
   }
 
-  await ensureParentFolder(app, path);
+  await ensureParentFolder(app, path, changes);
   await app.vault.create(path, content || "");
   changes?.created(path, content || "");
   return { result: `Created ${path}.`, isError: false, focus: { path, from: 0, to: (content || "").length } };
@@ -667,7 +671,7 @@ async function renameFile(
     return { result: `A file already exists at: ${normalizedNew}`, isError: true };
   }
 
-  await ensureParentFolder(app, normalizedNew);
+  await ensureParentFolder(app, normalizedNew, changes);
 
   // fileManager.renameFile() updates all internal links automatically
   const from = file.path;
