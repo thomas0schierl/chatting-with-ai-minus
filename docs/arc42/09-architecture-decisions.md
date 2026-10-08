@@ -528,3 +528,38 @@
     servers.
   - A token that expires has to be pasted again (no OAuth flow in the
     plugin).
+
+## ADR-20: Skills in a vault folder
+
+- **Status:** accepted 2026-10-08.
+- **Context:** users want reusable instructions for particular tasks
+  ("write meeting notes from a transcript", "weekly review") that the AI
+  picks itself or that they call by name, as Claude Code and Codex offer
+  with skills. Their convention (agentskills.io): a folder per skill with
+  a `SKILL.md` whose properties give `name` and `description`, plus any
+  other files; only names and descriptions are in the prompt, the rest is
+  loaded when needed (progressive disclosure); `/name` calls one. Both
+  keep skills in dot-folders (`.claude/skills`, `.agents/skills`), which
+  Obsidian's vault API doesn't see and its file list doesn't show.
+- **Decision:**
+  - Skills live in a visible vault folder, `Skills` unless set otherwise
+    in the settings; each subfolder with a `SKILL.md` is a skill, named
+    by its `name` property, else by the folder.
+  - The system prompt lists each skill's name and description after the
+    built-in prompt (before AGENTS.md, ADR-16), read at the start of each
+    turn; it changes only when the skills do, so the prompt caches hold
+    (ADR-05).
+  - The `use_skill` tool returns a skill's `SKILL.md` without its
+    properties (up to 32,768 characters, as AGENTS.md) and lists its
+    other files, which the model reads with the vault tools.
+  - `/name` in a message (at its start or after a space) sends the
+    skill's instructions along with the message, as linked files are
+    (`@`); typing `/` offers the skills in the mention list.
+  - The settings list the skills found (each opens its `SKILL.md`) and
+    create a new one from a template.
+- **Consequences:**
+  - Skills made for Claude Code or Codex work once their folder is copied
+    into the skills folder; scripts they contain don't run (the plugin
+    has no shell).
+  - A skill without a description is listed, but the model can't tell
+    when to use it; the settings say so.

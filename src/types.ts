@@ -37,6 +37,8 @@ export interface ChatSettings {
   voiceMicMode: VoiceMicMode;
   /** Remote MCP servers the provider connects to (ADR-19); tokens only in SecretStorage. */
   mcpServers: McpServer[];
+  /** The vault folder with the skills, a subfolder with a SKILL.md each (ADR-20). */
+  skillsFolder: string;
 }
 
 /** A remote MCP server (ADR-19). */
@@ -91,6 +93,7 @@ export const DEFAULT_SETTINGS: Omit<ChatSettings, "modelCatalog"> = {
   codexVoice: "cove",
   voiceMicMode: "hands-free",
   mcpServers: [],
+  skillsFolder: "Skills",
 };
 
 

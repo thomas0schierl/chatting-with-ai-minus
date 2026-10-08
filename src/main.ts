@@ -795,6 +795,7 @@ function normalizeSettings(value: unknown): Partial<ChatSettings> & Pick<ChatSet
   if (typeof value.voice === "string" && value.voice) settings.voice = value.voice;
   if (typeof value.codexVoice === "string" && value.codexVoice) settings.codexVoice = value.codexVoice;
   if (value.voiceMicMode === "hands-free" || value.voiceMicMode === "hold") settings.voiceMicMode = value.voiceMicMode;
+  if (typeof value.skillsFolder === "string" && value.skillsFolder.trim()) settings.skillsFolder = value.skillsFolder.trim();
   if (Array.isArray(value.mcpServers)) {
     // Never a token from data.json (they live in SecretStorage).
     settings.mcpServers = value.mcpServers.filter(isRecord)

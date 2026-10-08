@@ -86,6 +86,7 @@ function imageVault() {
       getFiles: () => [...text.keys(), ...binary.keys()].map(path => ({ path })),
       getMarkdownFiles: () => [...text.keys()].filter(p => p.endsWith('.md')).map(path => ({ path })),
       getFileByPath: path => has(path) ? { path } : null,
+      getFolderByPath: () => null,
       cachedRead: async file => { assert.ok(text.has(file.path), `cachedRead of binary ${file.path}`); return text.get(file.path); },
       readBinary: async file => binary.get(file.path),
     },

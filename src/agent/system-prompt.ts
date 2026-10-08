@@ -34,18 +34,23 @@ const STATIC_PROMPT = `You are Chatting with AI Minus, an AI assistant embedded 
 - Keep summaries to 2-3 sentences unless more detail is requested.`;
 
 /**
- * The system prompt: the built-in one and the vault's AGENTS.md, if any
- * (ADR-16). Identical from call to call while that file doesn't change,
- * so the providers' prompt caches keep working.
+ * The system prompt: the built-in one, the vault's skills (ADR-20) and its
+ * AGENTS.md (ADR-16), if any. Identical from call to call while those
+ * don't change, so the providers' prompt caches keep working.
  */
-export function buildSystemPrompt(vaultInstructions: string | null = null): string {
-  if (!vaultInstructions) return STATIC_PROMPT;
-  return `${STATIC_PROMPT}
+export function buildSystemPrompt(vaultInstructions: string | null = null, skills: string | null = null): string {
+  let prompt = STATIC_PROMPT;
+  if (skills) prompt += `
+
+## Skills
+${skills}`;
+  if (vaultInstructions) prompt += `
 
 ## This vault's instructions (AGENTS.md)
 The user wrote these for AI assistants working in this vault. Follow them; what the user says in the chat wins over them.
 
 ${vaultInstructions}`;
+  return prompt;
 }
 
 /** Last turns kept as context, and characters per turn. */

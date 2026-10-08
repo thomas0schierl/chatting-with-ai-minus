@@ -3,6 +3,7 @@
   import { Component, MarkdownRenderer, Notice } from "obsidian";
   import { onDestroy, tick } from "svelte";
   import { insertMention, mentionAt, mentionCandidates, type MentionQuery } from "./mentions";
+  import { skillAt, skillCandidates, type Skill } from "../agent/skills";
   import type { ToolResult, SelectionScope, ImageAttachment, FileAttachment, ConversationSummary, ChatErrorKind } from "../types";
   import { ACCEPTED_FILES, fileAttachment } from "../files/attachments";
   import { formatBytes } from "../images";
@@ -71,12 +72,14 @@
     onUndo: (turnId: string) => void;
     /** Summarize the chat now (the ring's details). */
     onCompact: () => void;
+    /** The vault's skills, offered after `/` (ADR-20). */
+    listSkills: () => Skill[];
   }
 
   let {
     app, component, onSend, onClear, onStop, onEdit, onRegenerate, onCopy,
     onNewChat, listConversations, onOpenConversation, onRenameConversation, onDeleteConversation,
-    onVoice, onContinue, onToggleFollow, onUndo, onCompact,
+    onVoice, onContinue, onToggleFollow, onUndo, onCompact, listSkills,
   }: Props = $props();
 
   // ─── Context ring (ADR-18) ────────────────────────────────────────────
@@ -608,14 +611,21 @@
   }
 
   // ─── Mentions (`@` or `[[`: link a vault file; its content goes along) ──
+  // and skills (`/name`: the skill goes along, ADR-20), in one list.
+  type Suggestion = { kind: "file"; file: TFile } | { kind: "skill"; skill: Skill };
   let mention = $state<MentionQuery | null>(null);
-  let mentionItems = $state<TFile[]>([]);
+  let mentionItems = $state<Suggestion[]>([]);
   let mentionIndex = $state(0);
 
-  /** Offer files for the mention the caret is in (none: the list closes). */
+  /** Offer skills or files for what the caret is in (none: the list closes). */
   function updateMention(): void {
-    const found = textareaEl ? mentionAt(inputText, textareaEl.selectionStart) : null;
-    mentionItems = found ? mentionCandidates(app, found.query) : [];
+    const caret = textareaEl?.selectionStart ?? 0;
+    const command = textareaEl ? skillAt(inputText, caret) : null;
+    const skills = command ? skillCandidates(listSkills(), command.query) : [];
+    const found = skills.length ? command : textareaEl ? mentionAt(inputText, caret) : null;
+    mentionItems = skills.length
+      ? skills.map((skill) => ({ kind: "skill", skill }))
+      : found ? mentionCandidates(app, found.query).map((file) => ({ kind: "file", file })) : [];
     mention = mentionItems.length ? found : null;
     mentionIndex = 0;
   }
@@ -625,10 +635,13 @@
     mentionItems = [];
   }
 
-  function chooseMention(file: TFile): void {
+  function chooseMention(item: Suggestion): void {
     if (!mention || !textareaEl) return;
+    const caret = textareaEl.selectionStart;
     const source = app.workspace.getActiveFile()?.path ?? "";
-    const next = insertMention(app, inputText, mention, textareaEl.selectionStart, file, source);
+    const next = item.kind === "file"
+      ? insertMention(app, inputText, mention, caret, item.file, source)
+      : { text: `${inputText.slice(0, mention.start)}/${item.skill.name} ${inputText.slice(caret).replace(/^ /, "")}`, caret: mention.start + item.skill.name.length + 2 };
     inputText = next.text;
     closeMention();
     const el = textareaEl;
@@ -1374,20 +1387,25 @@
   {/if}
 
   {#if mention && mentionItems.length}
-    <!-- Files for the mention being typed; mousedown keeps the focus in the input -->
-    <div class="chatting-minus-mentions" role="listbox" aria-label="Link a file">
-      {#each mentionItems as file, i (file.path)}
+    <!-- Skills or files for what is being typed; mousedown keeps the focus in the input -->
+    <div class="chatting-minus-mentions" role="listbox" aria-label={mentionItems[0].kind === "skill" ? "Use a skill" : "Link a file"}>
+      {#each mentionItems as item, i (item.kind === "file" ? item.file.path : item.skill.path)}
         <div
           class="chatting-minus-mention"
           class:is-selected={i === mentionIndex}
           role="option"
           aria-selected={i === mentionIndex}
           tabindex="-1"
-          onmousedown={(e) => { e.preventDefault(); chooseMention(file); }}
+          onmousedown={(e) => { e.preventDefault(); chooseMention(item); }}
           onmousemove={() => { mentionIndex = i; }}
         >
-          <span class="chatting-minus-mention-name">{file.extension === "md" ? file.basename : file.name}</span>
-          {#if folderOf(file)}<span class="chatting-minus-mention-folder">{folderOf(file)}</span>{/if}
+          {#if item.kind === "skill"}
+            <span class="chatting-minus-mention-name">/{item.skill.name}</span>
+            {#if item.skill.description}<span class="chatting-minus-mention-folder">{item.skill.description}</span>{/if}
+          {:else}
+            <span class="chatting-minus-mention-name">{item.file.extension === "md" ? item.file.basename : item.file.name}</span>
+            {#if folderOf(item.file)}<span class="chatting-minus-mention-folder">{folderOf(item.file)}</span>{/if}
+          {/if}
         </div>
       {/each}
     </div>

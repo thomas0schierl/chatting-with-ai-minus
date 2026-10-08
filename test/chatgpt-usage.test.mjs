@@ -3,7 +3,7 @@
 // is shown once.
 import assert from 'node:assert/strict';
 import { test, beforeEach } from 'node:test';
-import { api, settings, sse, transport, chatSetup } from './harness.mjs';
+import { api, settings, sse, transport, chatSetup, settingsApp } from './harness.mjs';
 
 const LIMIT = 'subscription_sharing_usage_limit_exceeded';
 const limitReached = () => ({ status: 429, json: { error: { code: LIMIT, message: 'Usage limit reached' } } });
@@ -51,7 +51,7 @@ test('Other errors stay plain', async () => {
 test('The plan welcome is shown after the first sign-in only', async () => {
   let saves = 0;
   const plugin = { settings: { ...settings('chatgpt-oauth'), chatgptPlanWelcomeShown: false }, saveSettings: async () => { saves++; } };
-  const tab = new api.ChatSettingTab({}, plugin);
+  const tab = new api.ChatSettingTab(settingsApp, plugin);
   tab.update = () => {};
 
   await tab.afterSignIn();

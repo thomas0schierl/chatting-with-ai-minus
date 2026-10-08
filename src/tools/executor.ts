@@ -7,6 +7,7 @@ import { renderCanvas, shortIds } from "./canvas-render";
 import type { ChangeLog } from "./undo";
 import { listMetadata, queryNotes } from "./metadata-query";
 import { getLinks } from "./links";
+import { DEFAULT_SKILLS_FOLDER, useSkill } from "../agent/skills";
 import { readWebPage } from "./web-page";
 import { fileAttachment, isDocumentFile } from "../files/attachments";
 import { createCanvasElement, decodeImage, encodeCanvas, extensionOf, fitImage, formatBytes, imageMediaType, isImagePath } from "../images";
@@ -36,7 +37,8 @@ export async function executeTool(
   input: Record<string, unknown>,
   onAskUser: AskUserCallback,
   scope?: SelectionScope,
-  changes?: ChangeLog
+  changes?: ChangeLog,
+  skillsFolder = DEFAULT_SKILLS_FOLDER
 ): Promise<ToolResult> {
   if (Object.prototype.hasOwnProperty.call(input, "_raw")) {
     return { result: "Invalid tool arguments: provide a valid JSON object and retry.", isError: true };
@@ -84,6 +86,8 @@ export async function executeTool(
         return await getNoteLinks(app, input);
       case "get_current_datetime":
         return getCurrentDatetime();
+      case "use_skill":
+        return await useSkill(app, skillsFolder, input);
       case "open_document":
         return await openDocument(app, input);
       case "ask_user":

@@ -23,6 +23,7 @@ import { TOOL_DEFINITIONS } from "../tools/registry";
 import { executeTool } from "../tools/executor";
 import { buildContext } from "./context";
 import { folderInstructions, instructionsGiven, rootInstructions, toolPaths } from "./instructions";
+import { findSkills, skillsPrompt } from "./skills";
 import { buildSystemPrompt, buildContextMessage } from "./system-prompt";
 import { trimHistory, cutBeforeTurn, newTurnId, HISTORY_MESSAGES } from "./history";
 import { debugLog } from "../debug";
@@ -130,6 +131,8 @@ export class AgentLoop {
   private holds = 0;
   /** The vault root's AGENTS.md as the last turn read it (in the system prompt). */
   private vaultInstructions: string | null = null;
+  /** The skills part of the system prompt (ADR-20), read with the instructions. */
+  private skills: string | null = null;
 
   constructor(app: App, settings: ChatSettings) {
     this.app = app;
@@ -316,7 +319,7 @@ export class AgentLoop {
 
   /** Export the full conversation as a readable markdown transcript */
   exportTranscript(): string {
-    const systemPrompt = buildSystemPrompt(this.vaultInstructions);
+    const systemPrompt = buildSystemPrompt(this.vaultInstructions, this.skills);
 
     const parts: string[] = [
       `# Chatting with AI Minus Transcript`,
@@ -488,7 +491,8 @@ export class AgentLoop {
     // System prompt is static (cache-friendly): the built-in one and the
     // vault's AGENTS.md (ADR-16), which rarely changes. Read once per turn.
     this.vaultInstructions = await rootInstructions(this.app);
-    const systemPrompt = buildSystemPrompt(this.vaultInstructions);
+    this.skills = skillsPrompt(findSkills(this.app, turnSettings.skillsFolder));
+    const systemPrompt = buildSystemPrompt(this.vaultInstructions, this.skills);
     const maxIterations = turnSettings.maxIterations || 20;
     let resumes = 0;
     // A request too long for the model is summarized and sent again, once per turn (ADR-18).
@@ -623,7 +627,8 @@ export class AgentLoop {
             tc.input!,
             callbacks.onAskUser,
             this.scope ?? undefined,
-            callbacks.changes
+            callbacks.changes,
+            turnSettings.skillsFolder
           );
 
         if (isStopped()) return;

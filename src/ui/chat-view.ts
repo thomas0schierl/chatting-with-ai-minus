@@ -6,6 +6,7 @@ import type { AgentCallbacks, ToolResult, SelectionScope, ImageAttachment, FileA
 import { showInView } from "./show-in-view";
 import { confirmUndo } from "./undo-confirm";
 import { mentionContext, mentionedFiles } from "./mentions";
+import { findSkills, invokedSkillsText } from "../agent/skills";
 import { ChangeLog } from "../tools/undo";
 import { voiceTranscriptText } from "../agent/system-prompt";
 import { newTurnId } from "../agent/history";
@@ -246,6 +247,7 @@ export class ObsidianChatView extends ItemView {
         onToggleFollow: () => void this.toggleFollow(),
         onUndo: (turnId: string) => void this.undoChanges(turnId),
         onCompact: () => void this.compactNow(),
+        listSkills: () => findSkills(this.plugin.app, this.plugin.settings.skillsFolder),
       },
     }) as ChatContainerApi;
     this.chatContainer = chat;
@@ -690,7 +692,12 @@ export class ObsidianChatView extends ItemView {
       // The files the message links to go along as they are now.
       const app = this.plugin.app;
       const source = app.workspace.getActiveFile()?.path ?? "";
-      const mentioned = await mentionContext(app, mentionedFiles(app, text, source));
+      const linked = await mentionContext(app, mentionedFiles(app, text, source));
+      // Skills invoked as /name go along loaded (ADR-20).
+      const skills = await invokedSkillsText(app, this.plugin.settings.skillsFolder, text);
+      const mentioned = skills
+        ? { text: linked ? `${skills}\n\n${linked.text}` : skills, images: linked?.images ?? [], files: linked?.files ?? [] }
+        : linked;
       await agent.run(text, callbacks, selection, images, turnId, { voice: !!voice, voiceTranscript: voiceContext, notes, mentioned, files, contextTokens: conversation.usage?.contextTokens });
     }, voice);
   }

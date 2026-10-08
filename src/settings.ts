@@ -1,4 +1,4 @@
-import { App, Modal, Notice, PluginSettingTab, Setting, type SettingDefinitionItem } from "obsidian";
+import { App, Modal, Notice, PluginSettingTab, Setting, normalizePath, type SettingDefinitionItem } from "obsidian";
 import type ChatPlugin from "./main";
 import type { ChatSettings, McpServer, Provider, VoiceMicMode } from "./types";
 import { DEFAULT_PROVIDER_MODELS } from "./types";
@@ -17,6 +17,7 @@ import { CODEX_VOICES, codexAccountSetting, codexRouteSetting } from "./voice/co
 
 import { validServerName, validServerUrl } from "./api/mcp";
 import { INSTRUCTIONS_FILE } from "./agent/instructions";
+import { DEFAULT_SKILLS_FOLDER, SKILL_FILE, SKILL_TEMPLATE, findSkills } from "./agent/skills";
 import { type ModelOption, secretIdentity, catalogIdentity, cachedCatalog, refreshCatalog, getCatalogModels, clearCatalogModels, catalogModel, resolveThinkingLevel, thinkingLevelLabel, CATALOG_TTL } from "./api/model-catalog";
 
 const CUSTOM_MODEL_OPTION = "__custom__";
@@ -112,6 +113,8 @@ export class ChatSettingTab extends PluginSettingTab {
       { name: "Enter sends message", aliases: ["Keyboard", "New line"], render: setting => this.renderEnterSends(setting) },
       { name: "Follow the AI's edits", aliases: ["Show edits", "Highlight"], render: setting => this.renderFollowEdits(setting) },
       { name: "Vault instructions", aliases: ["AGENTS.md", "Instructions"], render: setting => this.renderInstructions(setting) },
+      { name: "Skills", aliases: ["Skill", "SKILL.md", "Skills folder"], render: setting => this.renderSkillsFolder(setting) },
+      this.skillList(),
       { name: "Max tool iterations", render: setting => this.renderMaxIterations(setting) },
       { type: "group", heading: "Voice", items: [
         // The unofficial Codex route, off unless chosen and confirmed (ADR-14).
@@ -140,6 +143,62 @@ export class ChatSettingTab extends PluginSettingTab {
         await this.app.workspace.getLeaf("tab").openFile(file);
         this.update();
       }));
+  }
+
+  // ─── Skills (ADR-20) ──────────────────────────────────────────────────────
+
+  /** The skills folder; the skills found there are listed below it. */
+  private renderSkillsFolder(setting: Setting): void {
+    const s = this.plugin.settings;
+    setting
+      .setDesc("Instructions for particular tasks, a folder each with a SKILL.md. The AI uses a skill when a task matches its description; type /name in the chat to use one yourself.")
+      .addText((text) => {
+        text.setPlaceholder(DEFAULT_SKILLS_FOLDER).setValue(s.skillsFolder).onChange(async (value) => {
+          s.skillsFolder = value.trim() || DEFAULT_SKILLS_FOLDER;
+          await this.plugin.saveSettings();
+        });
+        // The list follows once the name is typed.
+        text.inputEl.addEventListener("blur", () => this.update());
+      });
+  }
+
+  /** The skills found, each opening its SKILL.md; "New skill" starts one from a template. */
+  private skillList(): SettingDefinitionItem {
+    const folder = this.plugin.settings.skillsFolder;
+    return {
+      type: "list",
+      cls: "chatting-minus-skills",
+      emptyState: `No skills in ${folder}/ yet.`,
+      items: findSkills(this.app, folder).map((skill) => ({
+        name: `/${skill.name}`,
+        aliases: ["Skill"],
+        render: (setting: Setting) => {
+          setting
+            .setName(`/${skill.name}`)
+            .setDesc(skill.description || "No description: the AI can't tell when to use it. Add one to its properties.")
+            .addExtraButton((button) => button.setIcon("file-text").setTooltip(`Open ${skill.path}`).onClick(() => {
+              const file = this.app.vault.getFileByPath(skill.path);
+              if (file) void this.app.workspace.getLeaf("tab").openFile(file);
+            }));
+        },
+      })),
+      addItem: {
+        name: "New skill",
+        action: () => void this.createSkill(),
+      },
+    };
+  }
+
+  private async createSkill(): Promise<void> {
+    const folder = normalizePath(this.plugin.settings.skillsFolder || DEFAULT_SKILLS_FOLDER);
+    let name = "new-skill";
+    for (let i = 2; this.app.vault.getAbstractFileByPath(`${folder}/${name}`); i++) name = `new-skill-${i}`;
+    for (const path of [folder, `${folder}/${name}`]) {
+      if (!this.app.vault.getAbstractFileByPath(path)) await this.app.vault.createFolder(path);
+    }
+    const file = await this.app.vault.create(`${folder}/${name}/${SKILL_FILE}`, SKILL_TEMPLATE(name));
+    await this.app.workspace.getLeaf("tab").openFile(file);
+    this.update();
   }
 
   // ─── MCP servers (ADR-19) ─────────────────────────────────────────────────

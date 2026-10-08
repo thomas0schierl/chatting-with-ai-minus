@@ -390,6 +390,21 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
     },
   },
   {
+    name: "use_skill",
+    description:
+      "Load a skill from the vault: its instructions and the list of its other files. Call it before a task that matches a skill listed in the system prompt, then follow the instructions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "The skill's name as listed.",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
     name: "get_current_datetime",
     description:
       "Get the current date and time in the user's local timezone. Useful for daily notes, journaling, scheduling, or any time-aware task.",

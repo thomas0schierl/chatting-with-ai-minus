@@ -29,6 +29,7 @@ const VERBS: Record<string, [string, string]> = {
   rename_file: ["Renaming", "Renamed"],
   delete_file: ["Moving to the trash:", "Moved to the trash:"],
   get_current_datetime: ["Checking", "Checked"],
+  use_skill: ["Using the skill", "Used the skill"],
 };
 
 /** A file path as a reader names it: the file name, without `.md`. */
@@ -75,6 +76,8 @@ function subject(name: string, input: Record<string, unknown>): string {
       return pageLabel(input.url);
     case "list_metadata":
       return typeof input.folder === "string" && input.folder.trim() ? fileLabel(input.folder) : "the vault";
+    case "use_skill":
+      return typeof input.name === "string" ? input.name.replace(/^\//, "") : "";
     case "rename_file":
       return `${fileLabel(input.path)} to ${fileLabel(input.new_path)}`;
     case "get_current_datetime":

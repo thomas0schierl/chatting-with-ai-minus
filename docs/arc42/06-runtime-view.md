@@ -588,6 +588,25 @@ OpenAI's "Sign in with ChatGPT" for open-source apps (ADR-13).
    (a turn without a visible entry); a failed summary doesn't stop the
    turn.
 
+## Skills (`agent/skills.ts`, ADR-20)
+
+1. **Found:** each subfolder of the skills folder (setting, `Skills` by
+   default) with a `SKILL.md`; its `name` property names it (else the
+   folder), its `description` says when to use it. Read at the start of
+   each turn, for the settings' list and for the `/` suggestions.
+2. **System prompt:** a *Skills* section lists `name: description` and
+   tells the model to call `use_skill` before a task that matches.
+3. **`use_skill`:** returns `<skill name path>` with the `SKILL.md` text
+   after its properties, then the paths of the skill's other files.
+4. **`/name`:** typing `/` at the start or after a space offers the skills
+   (fuzzy on the name) in the mention list; choosing one inserts
+   `/name `. On send, each `/name` that names a skill loads it into the
+   message's context, before the linked files.
+5. **Settings:** *Skills* sets the folder; the list below shows each
+   skill as `/name` with its description (a hint when it has none) and a
+   button opening its `SKILL.md`; *New skill* creates
+   `<folder>/new-skill/SKILL.md` from a template and opens it.
+
 ## MCP servers (`api/mcp.ts`, ADR-19)
 
 1. **Settings:** *MCP servers* lists the remote servers: name (letters,

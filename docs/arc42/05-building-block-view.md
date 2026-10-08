@@ -58,6 +58,7 @@ components' scoped ones).
 | `agent/usage.ts` | A conversation's usage: the last request's context, the estimated cost of its requests and of the last turn, from the model's prices (ADR-18). |
 | `agent/compaction.ts` | The compaction point per provider and model, and what a request sends after a compaction (`afterCompaction()`: natively, or with the readable summary first). |
 | `agent/summary.ts` | The plugin's own summary: the transcript, the instruction, and whether an error says the request was too long. |
+| `agent/skills.ts` | Skills (ADR-20): the skills folder's skills for the system prompt, `use_skill`, `/name` in a message, and the `/` suggestions. |
 | `agent/instructions.ts` | The vault's `AGENTS.md` files (ADR-16): the root one for the system prompt; a folder's for the first tool result touching it, found again in the history so it comes once per conversation. |
 | `api/client.ts` | Picks the adapter for the current provider; one retry on rate limits while no text has been shown (not on a ChatGPT usage limit), decided from the `ProviderError`'s status and code. |
 | `api/errors.ts` | `ProviderError`, the one error class the adapters throw for a provider's error answer: message, HTTP status (0 inside a stream), error code, `Retry-After` wait. |
@@ -122,5 +123,6 @@ components' scoped ones).
 | `query_notes` | `metadataCache.getFileCache()`, `getAllTags()` | Tags (nested tags match, all or any), property values (any case, list items, links by name) or set, folder; sorted by path, modification or a property; up to 200 |
 | `list_metadata` | `metadataCache.getFileCache()`, `getAllTags()` | The vault's (or a folder's) tags and property names, with counts and an example value |
 | `get_links` | `metadataCache.resolvedLinks`, `unresolvedLinks`, `getFileCache()`, `cachedRead()` | Linked mentions with their lines, unlinked mentions (name or alias in other notes' text, any case, not in a link or the properties), outgoing links including unresolved ones; 50 notes and 3 lines per note per section. `get_backlinks`, its earlier name, still runs for saved chats |
+| `use_skill` | `getFolderByPath()`, `cachedRead()` (`agent/skills.ts`, run by the loop) | A skill's `SKILL.md` without its properties, up to 32,768 characters, and its other files' paths (ADR-20) |
 | `get_current_datetime` | `Date` | User's locale and time zone |
 | `ask_user` | UI callback | Pauses the loop until the user answers |

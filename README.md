@@ -35,6 +35,12 @@ messages and the notes the AI reads go to that provider (see
   have its own `AGENTS.md` for its notes. The same file works for other AI
   tools that follow [agents.md](https://agents.md). *Vault instructions* in the
   settings opens it (or creates it).
+- **Skills:** instructions for particular tasks ("meeting notes from a
+  transcript", "weekly review"), a folder each in your `Skills` folder
+  with a `SKILL.md` that says what the skill is for and how to do it, as
+  in Claude Code and Codex. The AI uses a skill when a task matches it;
+  type `/` in the chat to pick one yourself. The settings list your
+  skills and start a new one.
 - **Mention notes:** type `@` or `[[` and pick a note, canvas or image;
   it goes into your message as a link, and its current content goes to
   the AI with the message, so it doesn't have to look it up first.

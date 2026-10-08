@@ -13,6 +13,8 @@ export const bundled = await build({
     export { WEB_PAGE_CHARS } from './src/tools/web-page';
     export * as mentions from './src/ui/mentions';
     export * as instructions from './src/agent/instructions';
+    export * as skills from './src/agent/skills';
+    export { buildSystemPrompt } from './src/agent/system-prompt';
     export * as files from './src/files/attachments';
     export * as usage from './src/agent/usage';
     export * as summary from './src/agent/summary';
@@ -62,7 +64,7 @@ export const bundled = await build({
       export class ItemView {}
       export class Menu {}
       export class Modal { constructor(app) { this.app = app; this.contentEl = {}; } open() { (globalThis.__modals ??= []).push(this); } close() {} }
-      export class PluginSettingTab { constructor() { this.containerEl = { addClass() {} }; } hide() {} update() {} }
+      export class PluginSettingTab { constructor(app) { this.app = app; this.containerEl = { addClass() {} }; } hide() {} update() {} }
       // Records rendered rows and their controls in globalThis.__settingRows.
       export class Setting {
         constructor() { this.controls = []; (globalThis.__settingRows ??= []).push(this); }
@@ -285,3 +287,6 @@ export async function chatSetup(provider, saved) {
   return { app, files, plugin, view, chat, writes };
 }
 
+
+/** An app for the settings tab: a vault without files (no skills, no AGENTS.md). */
+export const settingsApp = { vault: { getFolderByPath: () => null, getFileByPath: () => null } };
