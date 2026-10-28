@@ -314,6 +314,20 @@ test("A turn older than the saved API history can't be edited; both histories st
   assert.equal(view.chatContainer.editable(shownIds[1]), true);
 });
 
+test('A message stopped before its answer gets its pencil and can be edited', async () => {
+  const { plugin, view, chat } = await setup('anthropic');
+  // Like the Svelte component: the pencils are worked out when the check is set.
+  chat.setEditable = check => { chat.pencils = chat.shown.filter(m => m.type === 'user').map(m => check(m.turnId)); };
+  const requests = transport((body, index) => index === 0 ? new Promise(() => {}) : response('anthropic', [text('A1')]));
+  void view.handleUserMessage('Q1', null);
+  await until(() => requests.length === 1);
+  view.handleStop();
+  assert.deepEqual(chat.pencils, [true]);
+  await view.editMessage(turnIdsOf(plugin).ui[0], 'Q1 again');
+  assert.deepEqual(userTurns(requests[1]), ['Q1 again']);
+  assert.deepEqual(plugin.chatHistory.map(e => e.text), ['Q1 again', 'A1']);
+});
+
 test('The accepted replacement is saved consistently without persisting a premature cut', async () => {
   const { plugin, view, writes } = await setup('anthropic');
   answering('anthropic');

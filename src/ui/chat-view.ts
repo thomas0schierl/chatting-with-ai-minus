@@ -1573,6 +1573,8 @@ export class ObsidianChatView extends ItemView {
     // Otherwise the next message would answer the stopped turn's question.
     shown?.cancelAskUser();
     rollback?.();
+    // The stopped turn's message gets its pencil (its turn's end no longer does it).
+    if (shown) this.updateEditable();
     // Rollback renders history, which clears attachment chips. Restore after it.
     const restore = shown && restoreDraft ? () => restoreDraft(queued) : undefined;
     if (deferRestore) return restore;
