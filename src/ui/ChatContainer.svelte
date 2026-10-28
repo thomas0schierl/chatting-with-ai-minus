@@ -2240,6 +2240,12 @@
     border-bottom-right-radius: var(--radius-s);
   }
 
+  /* The message as typed: its line breaks too */
+  .ochatting-user-msg .ochatting-msg-content {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
   /* A user message with its edit action, or its edit box */
   .ochatting-user-turn {
     align-self: flex-end;
