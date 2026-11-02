@@ -80,7 +80,7 @@ function fakeChat() {
     addToolCall(name, input) { chat.shown.push({ id: nextId, type: 'tool-call', toolName: name, toolInput: input }); return nextId++; },
     updateToolResult(id) { const msg = chat.shown.find(m => m.id === id); if (msg) msg.type = 'tool-result'; },
     addError(value, errorKind) { chat.shown.push({ id: nextId++, type: 'error', text: value, errorKind }); },
-    showThinking() {}, hideThinking() {}, showAskUser: () => new Promise(() => {}), cancelAskUser() {},
+    showThinking() {}, hideThinking() {}, 
     setInputEnabled() {}, setBusy() {}, updateConversations() {}, setContinue() {}, setQueued() {},
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle() {}, setSelection() {}, getSelection: () => null,
     foldTurn(turnId) { chat.folded.push(turnId); },

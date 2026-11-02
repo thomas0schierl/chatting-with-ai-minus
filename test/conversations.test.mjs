@@ -24,7 +24,7 @@ function fakeChat() {
   let nextId = 0;
   const chat = {
     shown: [],
-    askUser: null,
+    questions: [],
     busy: false,
     addUserMessage(value, images = [], turnId) { chat.shown.push({ id: nextId++, type: 'user', text: value, images, turnId }); },
     addAssistantMessage(value) { chat.shown.push({ id: nextId, type: 'assistant', text: value }); return nextId++; },
@@ -35,8 +35,7 @@ function fakeChat() {
     updateToolResult(id) { const msg = chat.shown.find(m => m.id === id); if (msg) msg.type = 'tool-result'; },
     addError(value) { chat.shown.push({ id: nextId++, type: 'error', text: value }); },
     showThinking() {}, hideThinking() {},
-    showAskUser(question) { if (question !== undefined) chat.addAssistantMessage(question); return new Promise(resolve => { chat.askUser = resolve; }); },
-    cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
+    setQuestions(list) { chat.questions = list; },
     setInputEnabled() {}, setBusy(value) { chat.busy = value; }, foldTurn() {}, updateConversations() {}, setContinue() {}, setQueued() {},
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {},
     title: null, setTitle(value) { chat.title = value; },
@@ -421,7 +420,7 @@ test('OpenAI: after a restart the open conversation replays in full once, then c
 });
 
 for (const action of ['New chat', 'Switching']) {
-  test(`${action}: the turn goes on; its question waits for the return and is answered there`, async () => {
+  test(`${action}: a chat's questions stay with it; the card shows the queue of the chat shown`, async () => {
     const { plugin, view, chat } = await setup('anthropic');
     answering('anthropic');
     await view.handleUserMessage('Other topic', null);
@@ -429,45 +428,21 @@ for (const action of ['New chat', 'Switching']) {
     view.newChat();
     await tick();
 
-    const requests = transport((body, index) => index === 0
-      ? response('anthropic', [call('ask', 'ask_user', { question: 'Which note?' })], 'tool_use')
+    transport((body, index) => index === 0
+      ? response('anthropic', [call('ask', 'ask_user', { questions: [{ id: 'note', question: 'Which note?' }] })], 'tool_use')
       : response('anthropic', [text(`B${index + 1}`)], 'end_turn', index));
-    const asking = view.handleUserMessage('Waiting question', null);
-    while (!chat.askUser) await tick();
+    // Asking doesn't wait: the turn ends, the question waits in the card.
+    await view.handleUserMessage('Waiting question', null);
+    assert.equal(view.running, false);
+    assert.deepEqual(chat.questions.map(q => q.question), ['Which note?']);
     const waiting = plugin.activeConversationId;
 
     if (action === 'New chat') view.newChat(); else await view.openConversation(other);
-    assert.equal(view.running, false);
-    assert.equal(chat.busy, false);
-    // The input no longer answers the other chat's question.
-    assert.equal(chat.askUser, null);
-    assert.equal(requests.length, 1);
-
-    // The next message starts its own turn in the conversation shown now.
-    await view.handleUserMessage('Next', null);
-    assert.equal(requests.length, 2);
-    assert.equal(userTurns(requests[1]).at(-1), 'Next');
-    assert.equal(JSON.stringify(requests[1].messages).includes('Waiting question'), false);
-    const shownNow = plugin.activeConversationId;
-
-    // Back: the turn still runs, its question is shown once and the input answers it.
+    assert.deepEqual(chat.questions, []);
     await view.openConversation(waiting);
-    assert.equal(view.running, true);
-    assert.equal(chat.busy, true);
-    assert.deepEqual(texts(chat.shown), ['Waiting question', 'Which note?']);
-    assert.ok(chat.askUser);
-    chat.addUserMessage('Plan');
-    chat.askUser('Plan');
-    await asking;
-    assert.equal(view.running, false);
-    assert.deepEqual(texts(plugin.chatHistory), ['Waiting question', 'Which note?', 'Plan', 'B3']);
-    assert.ok(JSON.stringify(requests[2].messages).includes('Plan'));
-
-    await view.openConversation(shownNow);
-    assert.deepEqual(texts(plugin.chatHistory).slice(-2), ['Next', 'B2']);
+    assert.deepEqual(chat.questions.map(q => q.question), ['Which note?']);
   });
 }
-
 test('A turn goes on in the background: the chat shown stays as it is, the list says Answering, the end lands in its chat with a notice', async () => {
   const { plugin, view, chat } = await setup('anthropic');
   let finish;
@@ -502,26 +477,23 @@ test('A turn goes on in the background: the chat shown stays as it is, the list 
   assert.equal(view.running, false);
 });
 
-test('A question asked in the background says so in a notice', async () => {
+test('A question asked in the background says so in a notice; its chat shows it when opened', async () => {
   const { plugin, view, chat } = await setup('anthropic');
   let release;
   transport((body, index) => index === 0
-    ? new Promise(resolve => { release = () => resolve(response('anthropic', [call('ask', 'ask_user', { question: 'Which note?' })], 'tool_use')); })
+    ? new Promise(resolve => { release = () => resolve(response('anthropic', [call('ask', 'ask_user', { questions: [{ id: 'note', question: 'Which note?' }] })], 'tool_use')); })
     : response('anthropic', [text('A2')], 'end_turn', index));
   const asking = view.handleUserMessage('Ask me', null);
   while (!release) await tick();
   const a = plugin.activeConversationId;
   view.newChat();
   release();
-  while (!globalThis.__notices.length) await tick();
-  assert.deepEqual(globalThis.__notices, ['"Ask me" has a question for you.']);
-  assert.equal(chat.askUser, null);
-  await view.openConversation(a);
-  chat.askUser('Plan');
   await asking;
-  assert.deepEqual(texts(plugin.chatHistory), ['Ask me', 'Which note?', 'Plan', 'A2']);
+  assert.deepEqual(globalThis.__notices.filter(notice => notice.includes('question')), ['"Ask me" has a question for you.']);
+  assert.deepEqual(chat.questions, []);
+  await view.openConversation(a);
+  assert.deepEqual(chat.questions.map(q => q.question), ['Which note?']);
 });
-
 for (const shown of [true, false]) {
   test(`Deleting a chat stops its turn (${shown ? 'shown' : 'in the background'}); nothing of it lands anywhere`, async () => {
     const { plugin, view, chat } = await setup('anthropic');

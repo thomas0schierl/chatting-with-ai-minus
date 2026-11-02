@@ -23,7 +23,7 @@ function fakeChat() {
     removeMessage(id) { chat.shown = chat.shown.filter(m => m.id !== id); },
     addToolCall() { return nextId++; }, updateToolResult() {},
     addError(value, errorKind) { chat.shown.push({ id: nextId++, type: 'error', text: value, errorKind }); },
-    showThinking() {}, hideThinking() {}, showAskUser: () => new Promise(() => {}), cancelAskUser() {},
+    showThinking() {}, hideThinking() {},
     setInputEnabled() {}, setBusy() {}, foldTurn() {}, updateConversations() {}, setContinue() {}, setQueued() {},
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle() {}, setSelection() {}, getSelection: () => null,
     usage: null, setUsage(value) { chat.usage = value; },

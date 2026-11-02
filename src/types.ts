@@ -385,7 +385,8 @@ export interface AgentCallbacks {
   onToolCall: (name: string, input: Record<string, unknown>) => void;
   onToolResult: (name: string, result: ToolResult) => void;
   onResponse: (text: string) => void;
-  onAskUser: (question: string) => Promise<string>;
+  /** `ask_user` questions: they join the conversation's queue; the tool result (the answers come later). */
+  onAskUser: (questions: import("./agent/questions").UserQuestion[]) => Promise<string>;
   onError: (error: string) => void;
   /**
    * The turn used the steps `maxIterations` allows: it pauses with the model

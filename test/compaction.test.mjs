@@ -341,7 +341,7 @@ function fakeChat() {
     addToolCall(name, input) { chat.shown.push({ id: nextId, type: 'tool-call', toolName: name, toolInput: input }); return nextId++; },
     updateToolResult() {},
     addError(value, errorKind) { chat.shown.push({ id: nextId++, type: 'error', text: value, errorKind }); },
-    showThinking() {}, hideThinking() {}, showAskUser: () => new Promise(() => {}), cancelAskUser() {},
+    showThinking() {}, hideThinking() {},
     setInputEnabled() {}, setBusy() {}, foldTurn() {}, updateConversations() {}, setContinue() {}, setQueued() {},
     clearMessages() { chat.shown = []; }, cutMessages() {}, focus() {}, setModel() {}, setTitle() {}, setSelection() {}, getSelection: () => null,
     usage: null, setUsage(value) { chat.usage = value; },

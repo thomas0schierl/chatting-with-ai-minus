@@ -20,7 +20,6 @@ function fakeChat() {
   const chat = {
     shown: [],
     queued: [],
-    askUser: null,
     addUserMessage(value, images = [], turnId) { chat.shown.push({ id: nextId++, type: 'user', text: value, turnId }); },
     addAssistantMessage(value) { chat.shown.push({ id: nextId, type: 'assistant', text: value }); return nextId++; },
     updateAssistantMessage(id, value) { const msg = chat.shown.find(m => m.id === id); if (msg) msg.text = value; },
@@ -29,8 +28,6 @@ function fakeChat() {
     updateToolResult(id) { const msg = chat.shown.find(m => m.id === id); if (msg) msg.type = 'tool-result'; },
     addError(value) { chat.shown.push({ id: nextId++, type: 'error', text: value }); },
     showThinking() {}, hideThinking() {},
-    showAskUser(question) { chat.addAssistantMessage(question); return new Promise(resolve => { chat.askUser = resolve; }); },
-    cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
     setInputEnabled() {}, setBusy() {}, foldTurn() {}, updateConversations() {}, setContinue() {}, clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle() {},
     setSelection() {}, getSelection: () => null, setQueued(texts) { chat.queued = texts; },
   };

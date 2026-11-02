@@ -8,6 +8,7 @@ import { historySelection, isSavedSelection } from "./selection-history";
 import type { ChatHistoryEntry, FileAttachment, ImageAttachment, SelectionScope, UnifiedMessage } from "./types";
 import { assignLegacyTurnIds, fromLastCompaction, withoutOldToolImages, withoutLargeToolText, withoutLargeVisibleToolText, boundedToolText } from "./agent/history";
 import type { ConversationUsage } from "./agent/usage";
+import { savedQuestions, type QueuedQuestion } from "./agent/questions";
 
 /** Current format version of `chat-state.json` and the chat files. */
 export const CHAT_STATE_VERSION = 4;
@@ -45,6 +46,8 @@ export interface ConversationRecord {
    * run when the chat is shown again (optional, so no new format version).
    */
   pendingMessages?: string[];
+  /** `ask_user` questions waiting for their answers, in order (optional, so no new format version). */
+  questions?: QueuedQuestion[];
   /**
    * Set while a turn runs (saved with it when the app goes to the
    * background); still there at the next start, the turn was cut off.
@@ -77,6 +80,12 @@ export interface PendingTurn {
   remoteEffectsPossible?: boolean;
   turnId: string;
   startedAt: number;
+  /** The loop took the turn's message (into the model's history). */
+  taken?: boolean;
+  /** Undo notes that went with the message (back, if it was never taken). */
+  notes?: string[];
+  /** An edit of an answers message: the keys of the answers it replaces (back in the card, if never taken). */
+  replaces?: string[];
 }
 
 /** `chat-state.json` as this version writes it: the index. */
@@ -195,11 +204,18 @@ function savedRecord(item: StateRecord): ConversationRecord {
     : item.titleSourceTurnId === null || automaticTitle !== derived ? null : first?.turnId;
   const notes = arrayOf<unknown>(item.notes).filter((note): note is string => typeof note === "string");
   const pendingMessages = arrayOf<unknown>(item.pendingMessages).filter((text): text is string => typeof text === "string");
+  const questions = savedQuestions(item.questions);
   // Optional, so no new format version: an older plugin just drops it.
   const pending = item.pendingTurn;
   const pendingTurn = isRecord(pending) && typeof pending.turnId === "string" && typeof pending.startedAt === "number"
-    ? { turnId: pending.turnId, startedAt: pending.startedAt, ...(pending.remoteEffectsPossible === true ? { remoteEffectsPossible: true } : {}),
-      ...(isSavedSelection(pending.selection) ? { selection: historySelection(pending.selection) } : {}) }
+    ? {
+        turnId: pending.turnId, startedAt: pending.startedAt,
+        ...(pending.remoteEffectsPossible === true ? { remoteEffectsPossible: true } : {}),
+        ...(isSavedSelection(pending.selection) ? { selection: historySelection(pending.selection) } : {}),
+        ...(pending.taken === true ? { taken: true } : {}),
+        ...(Array.isArray(pending.notes) && pending.notes.every((note) => typeof note === "string") && pending.notes.length ? { notes: pending.notes } : {}),
+        ...(Array.isArray(pending.replaces) && pending.replaces.every((key) => typeof key === "string") && pending.replaces.length ? { replaces: pending.replaces } : {}),
+      }
     : undefined;
   return {
     id: item.id as string,
@@ -214,6 +230,7 @@ function savedRecord(item: StateRecord): ConversationRecord {
     agentMessages: withoutLargeToolText(withoutOldToolImages(arrayOf<UnifiedMessage>(item.agentMessages))),
     ...(notes.length ? { notes } : {}),
     ...(pendingMessages.length ? { pendingMessages } : {}),
+    ...(questions.length ? { questions } : {}),
     ...(pendingTurn ? { pendingTurn } : {}),
     // Optional too: an older plugin drops it.
     ...savedUsage(item.usage),
@@ -315,6 +332,7 @@ export function savedConversation({ size: _size, unloaded: _unloaded, metadataSa
     agentMessages: withoutLargeToolText(withoutOldToolImages(fromLastCompaction(conversation.agentMessages))),
     ...(titled.notes ? { notes: titled.notes } : {}),
     ...(titled.pendingMessages ? { pendingMessages: titled.pendingMessages } : {}),
+    ...(titled.questions?.length ? { questions: titled.questions } : {}),
     ...(titled.pendingTurn ? { pendingTurn: titled.pendingTurn } : {}),
     ...(titled.usage ? { usage: titled.usage } : {}),
   };

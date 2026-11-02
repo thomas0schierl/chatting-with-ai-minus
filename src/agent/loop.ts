@@ -36,6 +36,7 @@ import { appLifecycle } from "../platform/lifecycle";
 import { afterCompaction, compactThreshold, summaryMessage } from "./compaction";
 import { catalogIdentity } from "../api/model-catalog";
 import { SUMMARY_SYSTEM_PROMPT, isContextOverflow, summaryChunks, summaryChunkRequest } from "./summary";
+import { spokenQuestion } from "./questions";
 
 /** The turn ID of a summary message (it starts its own turn, with no visible entry). */
 function summaryTurnId(): string {
@@ -547,6 +548,11 @@ export class AgentLoop {
     return this.messages.length === 0;
   }
 
+  /** The history holds turn `turnId`'s message (in memory also when a compaction cut it from what is sent and saved). */
+  holdsTurn(turnId: string): boolean {
+    return this.messages.some((message) => message.role === "user" && message.turnId === turnId);
+  }
+
   /**
    * The history ends in a user message or tool results, waiting for an
    * answer; with `turnId`, the last turn there must be that one (a turn
@@ -968,9 +974,9 @@ ${mentioned.text}` : buildContextMessage(context);
         }
       }
 
-      // Emit any text before tool calls (skip if ask_user is coming to avoid
-      // rendering the question twice: once as text and once via showAskUser)
-      const hasAskUser = toolCalls.some((tc) => tc.name === "ask_user");
+      // Emit any text before tool calls (in a voice turn not before ask_user:
+      // its question is the turn's answer, said once)
+      const hasAskUser = this.voiceTurn && toolCalls.some((tc) => tc.name === "ask_user");
       if (textParts.length > 0 && toolCalls.length > 0 && !hasAskUser) {
         callbacks.onResponse(textParts.join(""));
       }
@@ -1013,7 +1019,7 @@ ${mentioned.text}` : buildContextMessage(context);
         if (isStopped()) return;
 
         // In a voice turn the question is spoken as the turn's answer instead of waiting in the input.
-        const voiceQuestion = this.voiceTurn && tc.name === "ask_user" ? (typeof tc.input?.question === "string" ? tc.input.question.trim() : "") : "";
+        const voiceQuestion = this.voiceTurn && tc.name === "ask_user" ? spokenQuestion(tc.input ?? {}) : "";
         if (voiceQuestion) askedAloud = askedAloud ? `${askedAloud}\n\n${voiceQuestion}` : voiceQuestion;
         // A newly discovered rule must reach the model before a write.
         // Rules returned earlier in this same batch have not reached it yet.

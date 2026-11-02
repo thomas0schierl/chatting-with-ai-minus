@@ -23,7 +23,6 @@ function fakeChat() {
   let nextId = 0;
   const chat = {
     shown: [],
-    askUser: null,
     busy: false,
     addUserMessage(value, images = [], turnId, selection) { chat.shown.push({ id: nextId++, type: 'user', text: value, images, turnId, selection }); },
     addAssistantMessage(value) { chat.shown.push({ id: nextId, type: 'assistant', text: value }); return nextId++; },
@@ -35,8 +34,6 @@ function fakeChat() {
     addError(value) { chat.shown.push({ id: nextId++, type: 'error', text: value }); },
     restoreDraft(text, selection, images, files) { chat.draft = { text, selection, images, files }; },
     showThinking() {}, hideThinking() {},
-    showAskUser(question) { chat.addAssistantMessage(question); return new Promise(resolve => { chat.askUser = resolve; }); },
-    cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
     setInputEnabled() {}, setBusy(value) { chat.busy = value; }, foldTurn() {}, updateConversations() {}, setContinue() {}, setQueued() {},
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle() {},
     setSelection() {}, getSelection: () => null,
@@ -179,59 +176,6 @@ test('Edit after a turn with tool calls keeps its call/result pairs; editing tha
   assert.deepEqual(toolUseIds(requests.at(-1)), []);
   assert.deepEqual(toolResultIds(requests.at(-1)), []);
   assert.equal(plugin.chatHistory.some(e => e.type === 'tool-result'), false);
-});
-
-test('Editing a turn while its ask_user question waits stops it and cuts before it', async () => {
-  const { plugin, view, chat } = await setup('anthropic');
-  let runningDuringNewTurn;
-  const requests = transport(async (body, index) => {
-    if (index === 0) return response('anthropic', [text('A1')]);
-    if (index === 1) return response('anthropic', [call('ask', 'ask_user', { question: 'Which note?' })], 'tool_use');
-    // The stopped turn ends while this one runs; it must not end this one's running state.
-    await new Promise(resolve => setTimeout(resolve, 10));
-    runningDuringNewTurn = view.running;
-    return response('anthropic', [text('A2')]);
-  });
-  await view.handleUserMessage('Q1', null);
-  const asking = view.handleUserMessage('Q2', null);
-  await until(() => chat.askUser);
-  const q2 = turnIdsOf(plugin).ui[1];
-
-  const editing = view.editMessage(q2, 'Q2 again');
-  // The question was dropped: nothing waits for an answer.
-  assert.equal(chat.askUser, null);
-  await Promise.all([asking, editing]);
-  assert.equal(runningDuringNewTurn, true);
-  assert.equal(view.running, false);
-  assert.deepEqual(userTurns(requests[2]), ['Q1', 'Q2 again']);
-  assert.deepEqual(toolUseIds(requests[2]), []);
-  assert.deepEqual(toolResultIds(requests[2]), []);
-  assert.deepEqual(plugin.chatHistory.map(e => e.text), ['Q1', 'A1', 'Q2 again', 'A2']);
-  assert.deepEqual(chat.shown.map(m => m.text), ['Q1', 'A1', 'Q2 again', 'A2']);
-});
-
-test('An ask_user answer is no turn of its own: not editable; editing or regenerating its turn cuts it', async () => {
-  const { plugin, view, chat, writes } = await setup('anthropic');
-  transport((body, index) => index === 0
-    ? response('anthropic', [call('ask', 'ask_user', { question: 'Which note?' })], 'tool_use')
-    : response('anthropic', [text(`A${index + 1}`)]));
-  const asking = view.handleUserMessage('Q1', null);
-  await until(() => chat.askUser);
-  chat.addUserMessage('The plan');
-  chat.askUser('The plan');
-  await asking;
-  assert.deepEqual(plugin.chatHistory.map(e => [e.type, e.text]),
-    [['user', 'Q1'], ['assistant', 'Which note?'], ['user', 'The plan'], ['assistant', 'A2']]);
-  assert.equal(plugin.chatHistory[2].turnId, undefined);
-  assert.equal(chat.shown[2].turnId, undefined);
-  assert.deepEqual(turnIdsOf(plugin).ui, turnIdsOf(plugin).agent);
-
-  await until(() => writes.length === 1);
-  const restored = await setup('anthropic', JSON.parse(JSON.stringify(writes[0])));
-  assert.equal(restored.plugin.chatHistory[2].turnId, undefined);
-  transport(() => response('anthropic', [text('Again')]));
-  await restored.view.regenerate();
-  assert.deepEqual(restored.plugin.chatHistory.map(e => e.text), ['Q1', 'Again']);
 });
 
 test('A chat saved without turn IDs gets matching IDs on load and can be edited', async () => {

@@ -16,7 +16,6 @@ function fakeChat() {
   let nextId = 0;
   const chat = {
     shown: [],
-    askUser: null,
     addUserMessage(value, images = [], turnId) { chat.shown.push({ id: nextId++, type: 'user', text: value, images, turnId }); },
     cutMessages(turnId) { const at = chat.shown.findIndex(row => row.turnId === turnId); if (at !== -1) chat.shown.splice(at); },
     restoreDraft(text, selection, images, files) { chat.draft = { text, selection, images, files }; },
@@ -27,8 +26,6 @@ function fakeChat() {
     updateToolResult(id) { const msg = chat.shown.find(m => m.id === id); if (msg) msg.type = 'tool-result'; },
     addError(value) { chat.shown.push({ id: nextId++, type: 'error', text: value }); },
     showThinking() {}, hideThinking() {},
-    showAskUser(question) { chat.addAssistantMessage(question); return new Promise(resolve => { chat.askUser = resolve; }); },
-    cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
     setInputEnabled() {}, setBusy() {}, foldTurn() {}, updateConversations() {}, setContinue() {}, setQueued() {}, clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle() {},
     setSelection() {}, getSelection: () => null,
   };
@@ -131,53 +128,6 @@ test('Tool cards keep their (capped) input across a reload', async () => {
   const restored = await chatSetup('anthropic', JSON.parse(JSON.stringify(writes[0])));
   assert.deepEqual(restored.plugin.chatHistory.find(e => e.type === 'tool-result').toolInput, card.toolInput);
 });
-
-test('An ask_user question and its answer stay in the chat history across a reload', async () => {
-  const { plugin, view, chat, writes } = await chatSetup('anthropic');
-  const requests = transport((body, index) => index === 0
-    ? response('anthropic', [call('ask', 'ask_user', { question: 'Which note?' })], 'tool_use')
-    : response('anthropic', [text(`A${index + 1}`)]));
-  const asking = view.handleUserMessage('Q1', null);
-  await until(() => chat.askUser);
-  chat.addUserMessage('The plan');
-  chat.askUser('The plan');
-  await asking;
-  assert.equal(requests.length, 2);
-  const shown = [['user', 'Q1'], ['assistant', 'Which note?'], ['user', 'The plan'], ['assistant', 'A2']];
-  assert.deepEqual(chat.shown.map(m => [m.type, m.text]), shown);
-  assert.deepEqual(plugin.chatHistory.map(e => [e.type, e.text]), shown);
-
-  await until(() => writes.length === 1);
-  const restored = await chatSetup('anthropic', JSON.parse(JSON.stringify(writes[0])));
-  assert.deepEqual(restored.plugin.chatHistory.map(e => [e.type, e.text]), shown);
-});
-
-for (const action of ['Stop', 'Clear']) {
-  test(`${action} while ask_user waits drops the question: the next message starts a new turn`, async () => {
-    const { plugin, view, chat } = await chatSetup('anthropic');
-    const requests = transport((body, index) => index === 0
-      ? response('anthropic', [call('ask', 'ask_user', { question: 'Which note?' })], 'tool_use')
-      : response('anthropic', [text('A2')]));
-    const asking = view.handleUserMessage('Q1', null);
-    await until(() => chat.askUser);
-
-    if (action === 'Stop') view.handleStop(); else view.clearConversation();
-    // No answer is pending, so typed text is sent as a new message.
-    assert.equal(chat.askUser, null);
-    await asking;
-    assert.equal(view.running, false);
-    await view.handleUserMessage('Q2', null);
-    assert.equal(requests.length, 2);
-    const sent = JSON.stringify(requests[1].messages);
-    assert.equal(sent.includes('Q1'), action === 'Stop');
-    // A stopped call keeps its cancelled result, so the history stays valid.
-    assert.equal(sent.includes('Tool execution cancelled before completion.'), action === 'Stop');
-    assert.deepEqual(plugin.chatHistory.map(e => [e.type, e.text]), [
-      ...(action === 'Stop' ? [['user', 'Q1'], ['assistant', 'Which note?']] : []),
-      ['user', 'Q2'], ['assistant', 'A2'],
-    ]);
-  });
-}
 
 test('A streamed answer grows in one message; Stop keeps what arrived, in the chat and its history', async () => {
   api.resetStreamTransport();
@@ -324,17 +274,6 @@ for (const action of ['Stop', 'Clear']) {
     assert.equal(chat.busy, false);
   });
 }
-
-test('Closing the view releases a pending ask_user turn', async () => {
-  const { view, chat } = await chatSetup('anthropic');
-  transport(() => response('anthropic', [call('ask', 'ask_user', { question: 'Which?' })], 'tool_use'));
-  const asking = view.handleUserMessage('Ask', null);
-  await until(() => chat.askUser);
-  await view.onClose();
-  assert.equal(chat.askUser, null);
-  await asking;
-  assert.equal(view.running, false);
-});
 
 test('An over-budget attachment turn preserves pending undo notes and leaves the view usable', async () => {
   const { plugin, view, chat } = await chatSetup('anthropic');

@@ -22,8 +22,7 @@ and insert positions, `set_properties` input checks, `read_file` and
 `get_current_datetime`, and quoting of a multi-line selection.
 `chat-view.test.mjs` drives the chat view and the plugin's commands with a
 fake Svelte component: the API history without a cap by count (saved and
-loaded whole) and OpenAI chaining past 80 messages, tool card inputs and `ask_user`
-questions and answers after a reload, Stop and Clear while `ask_user` waits,
+loaded whole) and OpenAI chaining past 80 messages, tool card inputs,
 a streamed answer growing in one message and kept on Stop,
 Copy transcript with the chat panel closed, commands waiting for the view,
 and Clear during a turn. `settings-tab.test.mjs` checks that a closed
@@ -89,8 +88,8 @@ opened, an unreadable one kept aside, unlisted files added back and deleted
 ones gone) and the one-time migrations to it (a version 3 file split once
 and kept aside; back from an older version that saved the index), new chat,
 switching, renaming and deleting through the chat view, OpenAI chaining per
-conversation, turns that go on in the background (a question waiting for
-the return, the notices, deleting the chat stops its turn, messages added
+conversation, turns that go on in the background (a chat's questions staying with it,
+the notices, deleting the chat stops its turn, messages added
 after the last step), and the commands that start a new chat.
 `follow-edits.test.mjs`: following the AI's edits (the changed range or
 cards, the reused follow tab and Obsidian's match state, canvas cards
@@ -119,6 +118,26 @@ both settings paths). `mcp.test.mjs`: MCP servers (Anthropic's
 on and valid; the provider's calls shown as steps, failed ones too, and
 replayed as sent; none for the ChatGPT account; tokens only in
 SecretStorage; the *MCP servers* settings in both settings paths).
+`questions.test.mjs`: ask_user with answer options (what a call may ask, a
+single `question` as one free-text question; the call returning at once; the
+queue saved; the answers sent as one message once
+all have one in Codex's reply envelope, shown as each question with its answer, as the next
+turn or into the running one; Stop keeping the
+queue, an edit of the asking turn dropping it; answers stopped before the
+model took them, or sent during an undo, back in the card, never in the
+input, and saved with the chat until the model has them (also refused by the
+30 MB check; stopped after they joined the API history they stay delivered;
+regenerating the turn they were steered into brings them back; compaction
+keeps them delivered; a question asked again gets its own ID; switching to a
+running chat shows its card; an edited answers message replaces its answers;
+stopped before the model took the answers message, it is unsent; a question
+re-asked after a regenerate gets its own ID; stopped after a compaction in
+the answers turn, they count as sent; a stopped unsent message keeps its undo
+notes, Clear brings nothing back; ended before the model took it, back in the card
+after the restart, also a regenerated or edited answers message; answers an edit
+replaced stay delivered through a later edit); text typed with
+them shown below them; two sets in one message; a "<" in an answer; their
+links not read).
 `streaming.test.mjs`: streamed answers (the SSE parser at any chunk
 boundary; each provider's answer rebuilt from its stream equal to the
 unstreamed one, the Codex route with its endpoint and headers; the

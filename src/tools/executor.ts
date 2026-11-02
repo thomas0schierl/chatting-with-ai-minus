@@ -1,5 +1,6 @@
 import { App, TFile, getFrontMatterInfo, normalizePath } from "obsidian";
 import type { SelectionScope, ToolResult, ViewTarget } from "../types";
+import { parseQuestions, type UserQuestion } from "../agent/questions";
 import { changedRange, showInView } from "../ui/show-in-view";
 import { listMetadata, queryNotes } from "./metadata-query";
 import { getLinks } from "./links";
@@ -25,7 +26,8 @@ const BINARY_EXTENSIONS = [
   "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "sqlite", "db",
 ];
 
-type AskUserCallback = (question: string) => Promise<string>;
+/** The questions join the queue and the call returns at once, with the tool result. */
+type AskUserCallback = (questions: UserQuestion[]) => Promise<string>;
 
 /**
  * Executes a tool call against the Obsidian Vault API.
@@ -958,11 +960,11 @@ async function askUser(
   input: Record<string, unknown>,
   onAskUser: AskUserCallback
 ): Promise<ToolResult> {
+  // A single 'question' (the tool's earlier form, which models may still copy
+  // from older chats) is one free-text question.
   const question = requiredString(input.question);
-  if (!question) {
-    return { result: "'question' parameter is required.", isError: true };
-  }
-
-  const answer = await onAskUser(question);
-  return { result: answer, isError: false };
+  const questions = parseQuestions(input.questions ?? (question ? [{ question }] : undefined));
+  if (typeof questions === "string") return { result: questions, isError: true };
+  if (!questions) return { result: "'questions' is required.", isError: true };
+  return { result: await onAskUser(questions), isError: false };
 }

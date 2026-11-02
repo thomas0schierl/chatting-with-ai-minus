@@ -56,6 +56,7 @@ export const bundled = await build({
     export { buildSystemPrompt } from './src/agent/system-prompt';
     export { streamSSE, createSSEParser, resetStreamTransport, RequestNotSent } from './src/api/stream';
     export * as usage from './src/agent/usage';
+    export * as questions from './src/agent/questions';
     export * as summary from './src/agent/summary';
     export { ProviderError } from './src/api/errors';
     export * as voiceProtocol from './src/voice/protocol';

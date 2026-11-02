@@ -310,7 +310,7 @@ function fakeChat() {
     addChanges(turnId, files, state) { chat.shown.push({ id: nextId++, type: 'changes', turnId, files, changesState: state }); },
     setChangesKept(turnId) { const row = chat.shown.find(m => (m.type === 'changes' || m.type === 'steps') && m.turnId === turnId); if (row) row.changesState = 'kept'; },
     setChangesUndone(turnId) { const row = chat.shown.find(m => m.type === 'changes' && m.turnId === turnId); if (row) row.changesState = 'undone'; },
-    showThinking() {}, hideThinking() {}, cancelAskUser() {},
+    showThinking() {}, hideThinking() {},
     restoreDraft(text, selection, images, files) { chat.draft = { text, selection, images, files }; },
     setComposerLocked(value) { chat.composerLocked = value; },
     setInputEnabled() {}, setBusy(value) { chat.busy = value; }, folded: [], foldTurn(turnId) { chat.folded.push(turnId); }, updateConversations() {}, setContinue() {}, setQueued() {}, clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle() {},

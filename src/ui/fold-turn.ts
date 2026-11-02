@@ -22,6 +22,9 @@ export interface FoldPlan<T extends FoldableRow> {
 
 const isStep = (row: FoldableRow): boolean => row.type === "tool-call" || row.type === "tool-result";
 
+// An `ask_user` question stays only in chats from before the question
+// queue, where it was an answer row; its step now folds like any other
+// (the questions wait in their card).
 export function foldPlan<T extends FoldableRow>(rows: T[], turnId: string): FoldPlan<T> | null {
   const start = rows.findIndex((row) => row.type === "user" && row.turnId === turnId);
   if (start === -1) return null;

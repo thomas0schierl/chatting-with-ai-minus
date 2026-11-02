@@ -213,7 +213,6 @@ function fakeChat() {
   let nextId = 0;
   const chat = {
     shown: [],
-    askUser: null,
     voice: null,
     voiceAvailable: false,
     queued: [],
@@ -227,8 +226,6 @@ function fakeChat() {
     addError(value) { chat.shown.push({ id: nextId++, type: 'error', text: value }); },
     addChanges() {}, setChangesUndone() {},
     showThinking() {}, hideThinking() {},
-    showAskUser(question) { if (question !== undefined) chat.addAssistantMessage(question); return new Promise(resolve => { chat.askUser = resolve; }); },
-    cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
     setInputEnabled() {}, setBusy() {}, foldTurn() {}, updateConversations() {}, setEditable() {},
     setQueued(texts) { chat.queued = texts; },
     setContinue() {}, clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle() {},
@@ -1216,7 +1213,6 @@ test('The agent\'s question ends the voice turn as its answer; the spoken reply 
   // The question is the delegation's answer: spoken, the turn is over, nothing waits.
   await until(() => spoken(ch).some(([, words]) => words === 'Which name?'));
   await until(() => !view.running);
-  assert.equal(chat.askUser, null);
   assert.equal(log.chat.length, 1);
 
   answered(ch, 'Which name?');

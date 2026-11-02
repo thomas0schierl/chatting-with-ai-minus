@@ -410,16 +410,37 @@ export const TOOL_DEFINITIONS: UnifiedToolDef[] = [
   {
     name: "ask_user",
     description:
-      "Ask the user a clarifying question. Use this when you need more information before proceeding. The conversation will pause until the user responds.",
+      "Ask the user one to three short questions without waiting: the call returns at once and you go on working. The questions join a queue the user answers when they like; once all are answered, the answers arrive as a user message (while you work, or as the next message after you finish): a <send_user_message_question_reply> list with each question, its id (questionItemId) and the answer. Use it only for decisions that change the result and that you can't infer; otherwise make a reasonable assumption. Prefer one question; call it again for further ones. Offer 2-3 mutually exclusive options when the choices are clear, the recommended one first with \"(Recommended)\" at the end of its label; leave options out for a free-text question. Don't add an \"Other\" option: the user can always type their own answer or skip. An empty answer means skipped: go on with the recommended option or your best judgment and say so.",
     inputSchema: {
       type: "object",
       properties: {
-        question: {
-          type: "string",
-          description: "The question to ask the user.",
+        questions: {
+          type: "array",
+          description: "1 to 3 questions; prefer 1.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Stable identifier for mapping answers (snake_case)." },
+              header: { type: "string", description: "Short label shown above the question (12 or fewer characters)." },
+              question: { type: "string", description: "Single-sentence question." },
+              options: {
+                type: "array",
+                description: "2-3 mutually exclusive choices, the recommended one first; none for a free-text question.",
+                items: {
+                  type: "object",
+                  properties: {
+                    label: { type: "string", description: "1-5 words." },
+                    description: { type: "string", description: "One short sentence on its impact or trade-off." },
+                  },
+                  required: ["label"],
+                },
+              },
+            },
+            required: ["id", "question"],
+          },
         },
       },
-      required: ["question"],
+      required: ["questions"],
     },
   },
   {

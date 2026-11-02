@@ -28,7 +28,6 @@ function fakeChat() {
   let nextId = 0;
   const chat = {
     shown: [],
-    askUser: null,
     thinkingLabels: [],
     continueShown: false,
     addUserMessage(value, images = [], turnId) { chat.shown.push({ id: nextId++, type: 'user', text: value, turnId }); },
@@ -40,8 +39,6 @@ function fakeChat() {
     addError(value) { chat.shown.push({ id: nextId++, type: 'error', text: value }); },
     addChanges(turnId, files, state) { chat.shown.push({ id: nextId++, type: 'changes', turnId, files, changesState: state }); },
     showThinking(label = '') { chat.thinkingLabels.push(label); }, hideThinking() {},
-    showAskUser(question) { if (question !== undefined) chat.addAssistantMessage(question); return new Promise(resolve => { chat.askUser = resolve; }); },
-    cancelAskUser() { const resolve = chat.askUser; chat.askUser = null; resolve?.(''); },
     setInputEnabled() {}, setBusy() {}, foldTurn() {}, updateConversations() {}, setQueued() {},
     setContinue(value) { chat.continueShown = value; },
     clearMessages() { chat.shown = []; }, focus() {}, setModel() {}, setTitle() {},

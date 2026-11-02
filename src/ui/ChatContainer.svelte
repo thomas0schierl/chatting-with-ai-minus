@@ -12,6 +12,7 @@
   import { isSendKey } from "./send-key";
   import { fileLabel, toolLabel } from "./tool-label";
   import { foldPlan } from "./fold-turn";
+  import { questionReplies, shownText, type QuestionPick, type QueuedQuestion } from "../agent/questions";
   import type { ChangesState, UsageView, VoiceAction } from "./chat-view";
   import type { VoiceViewState } from "../voice/controller";
   import { AttachmentPreparation } from "./attachment-preparation";
@@ -73,6 +74,8 @@
     onClear: () => void;
     onStop: () => void;
     onEdit: (turnId: string, text: string) => void;
+    /** An answer to the queued question `key` (null: skipped). */
+    onAnswerQuestion?: (key: string, pick: QuestionPick) => void;
     onRegenerate: () => void;
     onCopy: (text: string) => void;
     /** The current conversation's title. */
@@ -99,7 +102,7 @@
   }
 
   let {
-    app, component, provider, model, onSend, onClear, onStop, onEdit, onRegenerate, onCopy,
+    app, component, provider, model, onSend, onClear, onStop, onEdit, onAnswerQuestion, onRegenerate, onCopy,
     title, onNewChat, listConversations, onOpenConversation, onRenameConversation, onDeleteConversation,
     onToggleFollow, onUndo, listSkills, onContinue, onCompact, onLoadEarlier, onVoice,
   }: Props = $props();
@@ -326,12 +329,23 @@
   // Selection scope (shown as a pill above input)
   let selection = $state<SelectionScope | null>(null);
 
-  // ask_user support
-  let askUserResolve: ((value: string) => void) | null = $state(null);
+  /**
+   * The conversation's `ask_user` questions, in a card above the input, one
+   * at a time; the input stays free. An option, an own answer typed in the
+   * card's field, or Skip answers one; the arrows go back and forth. Once all
+   * have an answer, the chat view sends them. `questionAt`: the one shown;
+   * `ownAnswer`: what is typed in its field; `typedAnswers`: what was typed
+   * and not sent for the others, by key (kept while going back and forth).
+   */
+  let questions = $state<QueuedQuestion[]>([]);
+  let questionAt = $state(0);
+  let ownAnswer = $state("");
+  const typedAnswers = new Map<string, string>();
+  const question = $derived(questions[Math.min(questionAt, questions.length - 1)]);
 
-  /** The action slot shows voice while there is nothing to send (not while a question waits for its answer). */
+  /** The action slot shows voice while there is nothing to send. */
   const showVoiceStart = $derived(
-    canVoice && !voice && !askUserResolve && inputText.trim() === "" && attachments.length === 0 && fileAttachments.length === 0,
+    canVoice && !voice && inputText.trim() === "" && attachments.length === 0 && fileAttachments.length === 0,
   );
 
   // Sync model prop to local state (also updateable via setModel)
@@ -632,26 +646,81 @@
     if (file) void app.workspace.getLeaf(false).openFile(file);
   }
 
-  /**
-   * The next input answers an `ask_user` question. `question` is shown as
-   * the AI's message; without it the chat already shows it (back in the
-   * chat whose question waited).
-   */
-  export function showAskUser(question?: string): Promise<string> {
-    if (question !== undefined) addAssistantMessage(question);
-    inputEnabled = true;
-    textareaEl?.focus();
-
-    return new Promise<string>((resolve) => {
-      askUserResolve = resolve;
-    });
+  /** The queue as it is now: new questions join it, answers are kept; the shown one stays shown. */
+  export function setQuestions(next: QueuedQuestion[]): void {
+    const shown = question?.key;
+    questions = next;
+    for (const key of [...typedAnswers.keys()]) if (!next.some((q) => q.key === key)) typedAnswers.delete(key);
+    const at = next.findIndex((q) => q.key === shown);
+    if (at >= 0) questionAt = at;
+    else {
+      // Another chat's queue, or the shown question went: what was typed for it goes too.
+      if (shown) typedAnswers.delete(shown);
+      questionAt = Math.max(0, next.findIndex((q) => q.answer === undefined));
+      ownAnswer = typedAnswers.get(next[questionAt]?.key ?? "") ?? next[questionAt]?.answer?.note ?? "";
+    }
   }
 
-  /** Drop a pending ask_user question (its turn was stopped or cleared). */
-  export function cancelAskUser(): void {
-    const resolve = askUserResolve;
-    askUserResolve = null;
-    resolve?.("");
+  /** Show question `at`, with its typed answer (sent or not). */
+  function showQuestion(at: number): void {
+    const current = question;
+    if (current) {
+      if (ownAnswer.trim() && ownAnswer !== (current.answer?.note ?? "")) typedAnswers.set(current.key, ownAnswer);
+      else typedAnswers.delete(current.key);
+    }
+    questionAt = at;
+    ownAnswer = typedAnswers.get(questions[at]?.key ?? "") ?? questions[at]?.answer?.note ?? "";
+  }
+
+  /** The shown question's answer; then the next unanswered one (after it, else before). */
+  function answerQuestion(pick: QuestionPick): void {
+    const current = question;
+    if (!current) return;
+    const at = questions.indexOf(current);
+    const order = [...questions.slice(at + 1), ...questions.slice(0, at)];
+    const next = order.find((q) => q.answer === undefined);
+    // Answered: what was typed for it is its answer, or gives way to the pick.
+    ownAnswer = "";
+    typedAnswers.delete(current.key);
+    if (next) showQuestion(questions.indexOf(next));
+    onAnswerQuestion?.(current.key, pick);
+  }
+
+  let ownAnswerEl = $state<HTMLTextAreaElement>();
+
+  /** The own answer's field fits its lines (up to 6). */
+  function growOwnAnswer(): void {
+    const field = ownAnswerEl;
+    if (!field) return;
+    // One line: the stylesheet's height (that of Skip and Next); more: that of its lines
+    // (a pixel of slack: fractional borders round the client height down).
+    field.style.height = "";
+    const height = field.scrollHeight + field.offsetHeight - field.clientHeight;
+    if (field.scrollHeight > field.clientHeight + 1) field.style.height = Math.min(height, 140) + "px";
+    // It scrolls only at its limit; before, an empty scrollbar track showed.
+    field.style.overflowY = height > 140 ? "auto" : "";
+  }
+
+  // Another question shown, or its answer sent: the field fits that text.
+  $effect(() => {
+    void ownAnswer;
+    void questionAt;
+    growOwnAnswer();
+  });
+
+  /** The typed answer; with none typed, the question's answer again (Send after a refused send). */
+  function sendOwnAnswer(): void {
+    const text = ownAnswer.trim();
+    if (text) answerQuestion({ note: text });
+    else if (question?.answer !== undefined) answerQuestion(question.answer);
+  }
+
+  function ownAnswerKeydown(e: KeyboardEvent): void {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (isSendKey(e, enterSends)) {
+      e.preventDefault();
+      sendOwnAnswer();
+    }
   }
 
   export function setInputEnabled(enabled: boolean, preservePreparation = false): void {
@@ -750,6 +819,11 @@
       handleSend();
       return true;
     }
+    // The own answer to a question: Next or Send.
+    if (target === ownAnswerEl) {
+      sendOwnAnswer();
+      return true;
+    }
     // The edit box of a sent message saves with the same key.
     const editing = editingId === null ? undefined : messages.find((m) => m.id === editingId);
     if (editing && target instanceof HTMLElement && target.closest(".ochatting-user-edit")) {
@@ -764,11 +838,7 @@
     const text = inputText.trim();
     if (!text && attachments.length === 0 && fileAttachments.length === 0) return;
 
-    if (askUserResolve && (attachments.length > 0 || fileAttachments.length > 0)) {
-      new Notice("Attachments are not supported when answering a tool question.");
-      return;
-    }
-    if (busy && !askUserResolve) {
+    if (busy) {
       // Added to the running turn (the view steers it); attachments and the
       // selection stay for the next message.
       if (!text) return;
@@ -784,14 +854,6 @@
     const sentFiles = fileAttachments.slice();
     attachments = [];
     fileAttachments = [];
-
-    if (askUserResolve) {
-      addUserMessage(text);
-      const resolve = askUserResolve;
-      askUserResolve = null;
-      resolve(text);
-      return;
-    }
 
     // Pass current selection and consume it (one-shot per send)
     const currentSelection = selection;
@@ -875,11 +937,12 @@
 
   function startEdit(msg: ChatMessage): void {
     editingId = msg.id;
-    editText = msg.text ?? "";
+    editText = shownText(msg.text ?? "");
   }
 
   function saveEdit(msg: ChatMessage): void {
-    const text = editText.trim();
+    // Answers saved unchanged go as they were sent (with their question IDs).
+    const text = msg.text && editText.trim() === shownText(msg.text).trim() ? msg.text : editText.trim();
     // Images and files no longer saved aren't sent again (chat-view.ts editMessage).
     if (!msg.turnId || (!text && !msg.images?.some((image) => image.data) && !msg.attached?.some((file) => file.data || file.text))) return;
     editingId = null;
@@ -1451,7 +1514,22 @@
                 {@render fileChips(msg.attached)}
               {/if}
               {#if msg.text}
-                <div class="ochatting-msg-content">{msg.text}</div>
+                {@const answers = questionReplies(msg.text)}
+                {#if answers}
+                  <!-- Answers to the AI's questions: each question faded like a quote, its answer below -->
+                  <div class="ochatting-msg-content ochatting-replies">
+                    {#each answers.replies as reply, i (i)}
+                      <div class="ochatting-reply">
+                        <div class="ochatting-reply-question">{reply.question}</div>
+                        <div class="ochatting-reply-answer" class:is-skipped={!reply.answer}>{reply.answer || "Skipped"}</div>
+                      </div>
+                    {/each}
+                  </div>
+                  <!-- Typed with them (sent together after the turn's last step) -->
+                  {#if answers.text}<div class="ochatting-msg-content">{answers.text}</div>{/if}
+                {:else}
+                  <div class="ochatting-msg-content">{msg.text}</div>
+                {/if}
               {/if}
             </div>
             {#if msg.turnId && editable(msg.turnId)}
@@ -1628,8 +1706,54 @@
     <!-- Sent while the answer runs; each moves into the chat when the agent takes it in -->
     <div class="ochatting-queued" aria-live="polite">
       {#each queued as text, i (i)}
-        <div class="ochatting-queued-item"><span class="ochatting-queued-label">Queued</span><span class="ochatting-queued-text">{text}</span></div>
+        <div class="ochatting-queued-item"><span class="ochatting-queued-label">Queued</span><span class="ochatting-queued-text">{shownText(text)}</span></div>
       {/each}
+    </div>
+  {/if}
+
+  {#if question}
+    {@const at = questions.indexOf(question)}
+    {@const lastOpen = questions.every((q) => q === question || q.answer !== undefined)}
+    <!-- ask_user questions, one at a time: an option, an own answer, or Skip; once all have one, they go -->
+    <div class="ochatting-question" role="group" aria-label="Question from the AI">
+      <div class="ochatting-question-head">
+        {#if question.header}<span class="ochatting-question-header">{question.header}</span>{/if}
+        <span class="ochatting-question-nav">
+          {#if questions.length > 1}
+            <button class="ochatting-icon-btn" type="button" disabled={at === 0} onclick={() => showQuestion(at - 1)} aria-label="Previous question" title="Previous question"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+            <span class="ochatting-question-count">{at + 1} of {questions.length}</span>
+            <button class="ochatting-icon-btn" type="button" disabled={at === questions.length - 1} onclick={() => showQuestion(at + 1)} aria-label="Next question" title="Next question"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></button>
+          {/if}
+        </span>
+      </div>
+      <div class="ochatting-question-text">{question.question}</div>
+      {#if question.options.length}
+        <div class="ochatting-question-options">
+          {#each question.options as option, i (i)}
+            <button class="ochatting-question-option" class:is-chosen={question.answer?.label === option.label} type="button" onclick={() => answerQuestion({ label: option.label })}>
+              <span class="ochatting-question-number">{i + 1}</span>
+              <span class="ochatting-question-choice">
+                <span class="ochatting-question-label">{option.label}</span>
+                {#if option.description}<span class="ochatting-question-description">{option.description}</span>{/if}
+              </span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+      <div class="ochatting-question-own" class:is-chosen={!!question.answer?.note}>
+        <textarea
+          rows="1"
+          bind:this={ownAnswerEl}
+          bind:value={ownAnswer}
+          onkeydown={ownAnswerKeydown}
+          enterkeyhint={enterSends ? "send" : "enter"}
+          placeholder={question.options.length ? "Other: type your own answer" : "Type your answer"}
+          aria-label="Your own answer"
+        ></textarea>
+        <button class="ochatting-question-skip" class:is-chosen={question.answer === null} type="button" onclick={() => answerQuestion(null)} title="Skip this question">Skip</button>
+        <!-- Send when this answer completes the queue (the answers then go), Next before -->
+        <button class:mod-cta={lastOpen} type="button" disabled={!ownAnswer.trim() && question.answer === undefined} onclick={sendOwnAnswer}>{lastOpen ? "Send" : "Next"}</button>
+      </div>
     </div>
   {/if}
 
@@ -1788,7 +1912,7 @@
       class:ochatting-input-scrollable={inputScrollable}
       bind:this={textareaEl}
       bind:value={inputText}
-      placeholder={askUserResolve ? "Type your answer..." : busy ? "Add to the running task..." : "Ask anything..."}
+      placeholder={busy ? "Add to the running task..." : "Ask anything..."}
       disabled={!inputEnabled}
       rows="1"
       enterkeyhint={enterSends ? "send" : "enter"}
@@ -1823,8 +1947,8 @@
         class="ochatting-send-btn"
         onclick={handleSend}
         disabled={attachmentLoading || composerLocked}
-        aria-label={busy && !askUserResolve ? "Add to the running task" : "Send message"}
-        title={composerLocked ? "Undo in progress..." : attachmentLoading ? "Preparing attachments..." : busy && !askUserResolve ? "Add to the running task" : "Send message"}
+        aria-label={busy ? "Add to the running task" : "Send message"}
+        title={composerLocked ? "Undo in progress..." : attachmentLoading ? "Preparing attachments..." : busy ? "Add to the running task" : "Send message"}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
       </button>
@@ -2441,6 +2565,195 @@
     font-size: var(--font-ui-small);
     color: var(--text-muted);
     flex-shrink: 0;
+  }
+
+  /* ask_user questions with answer options, above the input */
+  .ochatting-question {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 6px 12px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    /* Raised like the chat's other floating parts, so it stands apart from the panel */
+    background: var(--background-primary);
+    box-shadow: var(--shadow-s);
+    flex-shrink: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+
+  .ochatting-question-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+  }
+
+  .ochatting-question-header {
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .ochatting-question-text {
+    font-size: var(--font-ui-medium);
+    color: var(--text-normal);
+  }
+
+  /* The options as a compact numbered list, as in Codex: rows without frames */
+  .ochatting-question-options {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .ochatting-question-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    height: auto;
+    min-height: 32px;
+    padding: 5px 8px;
+    text-align: left;
+    white-space: normal;
+    justify-content: flex-start;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-s);
+    box-shadow: none;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .ochatting-question-option:hover {
+      background: var(--background-modifier-hover);
+    }
+  }
+
+  .ochatting-question-option.is-chosen,
+  .ochatting-question-own.is-chosen textarea,
+  .ochatting-question-skip.is-chosen {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
+  }
+
+  .ochatting-question-nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+  }
+
+  .ochatting-question-nav .ochatting-icon-btn {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+  }
+
+  .ochatting-question-nav .ochatting-icon-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+    background: transparent;
+  }
+
+  .ochatting-question-count {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A finger's height on touch screens (after the rules above, which it overrides) */
+  @media (hover: none) {
+    .ochatting-question-option {
+      min-height: 44px;
+      padding: 8px;
+    }
+
+    .ochatting-question-nav .ochatting-icon-btn {
+      width: 32px;
+      height: 32px;
+      min-width: 32px;
+    }
+  }
+
+  /* The own answer grows with its lines; Skip and Next keep one line's height at its foot */
+  /* Round like the input bar's controls, at their height */
+  .ochatting-question-own {
+    --ochatting-control: 36px;
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+  }
+
+  .ochatting-question-own textarea {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    height: var(--ochatting-control);
+    min-height: var(--ochatting-control);
+    /* One line is exactly the control height: (height - line height - borders) / 2 */
+    padding: calc((var(--ochatting-control) - 1.4em - 2px) / 2) 14px;
+    line-height: 1.4;
+    border-radius: calc(var(--ochatting-control) / 2);
+    resize: none;
+    overflow-y: hidden;
+  }
+
+  .ochatting-question-own button {
+    flex-shrink: 0;
+    height: var(--ochatting-control);
+    padding: 0 14px;
+    border-radius: calc(var(--ochatting-control) / 2);
+  }
+
+  .ochatting-question-number {
+    flex-shrink: 0;
+    min-width: 1.4em;
+    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Label and description on one row (wrapping when long), as in Codex */
+  .ochatting-question-choice {
+    min-width: 0;
+  }
+
+  .ochatting-question-label {
+    color: var(--text-normal);
+    font-weight: var(--font-medium);
+  }
+
+  .ochatting-question-description {
+    margin-left: 8px;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+  }
+
+  /* Answers to the AI's questions in the user's bubble */
+  .ochatting-user-msg .ochatting-replies {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    white-space: normal;
+  }
+
+  .ochatting-reply-question {
+    padding-left: 8px;
+    border-left: 2px solid currentColor;
+    font-size: var(--font-ui-smaller);
+    opacity: 0.85;
+  }
+
+  .ochatting-reply-answer {
+    margin-top: 2px;
+    white-space: pre-wrap;
+  }
+
+  .ochatting-reply-answer.is-skipped {
+    font-style: italic;
+    opacity: 0.75;
   }
 
   /* Messages sent while the answer runs, until the agent takes them in */
@@ -3271,8 +3584,13 @@
     }
 
     .ochatting-edit-input,
-    .ochatting-history-rename {
+    .ochatting-history-rename,
+    .ochatting-question-own textarea {
       font-size: 16px; /* Prevents iOS zoom on focus */
+    }
+
+    .ochatting-question-own {
+      --ochatting-control: 44px; /* touch size, as the input bar */
     }
 
     .ochatting-input-bar,

@@ -129,12 +129,14 @@ Remote tool text shares the chat's existing result-size budget. Non-text MCP res
 |---|---|---|
 | **Read** | `read_document`, `read_file`, `search_vault`, `list_files`, `get_links`, `get_properties`, `get_current_datetime` | Open notes/files (PDF, Word, Excel and PowerPoint files go to the model as files), search by name and content, browse the tree, find a note's links as the Backlinks and Outgoing links panes show them (linked mentions with their lines, unlinked mentions, outgoing links), read frontmatter, fetch the current time in your locale. |
 | **Write** | `edit_document`, `create_file`, `set_properties` | Surgical find-and-replace / insert / full replace; create new notes (parent folders auto-created); safe YAML frontmatter merge or remove. |
-| **Manage** | `rename_file`, `delete_file`, `open_document`, `ask_user` | Rename or move (links auto-update); move to trash (respects your trash setting); show you a note at a passage or a canvas at a card when you ask; pause and ask you when something is ambiguous. |
+| **Manage** | `rename_file`, `delete_file`, `open_document`, `ask_user` | Rename or move (links auto-update); move to trash (respects your trash setting); show you a note at a passage or a canvas at a card when you ask; ask you questions when something is ambiguous, without waiting. |
 | **Query** | `query_notes`, `list_metadata` | Find notes by tags (nested tags too, all or any) and properties (a value or just set), in a folder, sorted by path, last change or a property ("my #project notes that are active, by due date"); list the tags and properties the vault uses. From Obsidian's metadata cache, without reading the notes. |
 | **Canvas** | `read_canvas`, `edit_canvas` | Read a canvas as an outline of groups, cards and connections; add, change, move or remove cards and connections in one all-or-nothing step, with new cards placed so they don't overlap. `search_vault` also finds text on canvas cards and labels. |
 | **Web** | `read_web_page` | Read a web page (a link you give, or one web search found) as Markdown, without navigation and scripts; long pages in parts. |
 | **Images** | `view_image`, `view_canvas` | Look at an image in the vault (PNG, JPEG, GIF or WebP; large ones scaled down), or at a canvas as a picture of its layout with a legend of its cards, the whole canvas or zoomed to one group or card. |
 | **Skills** | `use_skill` | Load one of your [skills](#-skills): its instructions and the list of its other files. |
+
+When the AI asks you something, it doesn't wait: it keeps working, and the questions wait in a card above the input, one at a time. Tap or click an option, type your own answer in the card's field, or **Skip**; the arrows go back and forth, and you can change an answer until the last one is given. Then all answers go together: into the running answer, or as your next message, and the AI reacts to them. The input below stays free for other messages. Stop keeps the questions; editing or regenerating the message they came from drops them.
 
 ## ⚙️ Providers
 

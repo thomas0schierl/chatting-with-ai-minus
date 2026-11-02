@@ -102,18 +102,18 @@ export default class NativeStackQA extends Plugin {
       requirePass(!(await executeTool(app, 'edit_document', { path: note, operation: 'find_replace', find: 'DONE', content: '' }, async () => '', scope)).isError, 'full selection deletion failed');
       requirePass((await executeTool(app, 'edit_document', { path: note, operation: 'find_replace', find: 'after', content: 'WRONG' }, async () => '', scope)).isError, 'deleted selection expanded');
       report.checks.push('scope-refusal', 'whole-selection-deletion');
-      // Pending ask_user must be released by Stop, Clear and closing the real view.
-      for (const action of ['stop', 'clear', 'close']) {
-        view.clearConversation();
-        obTransport.requestUrl = async () => ({ status: 200, headers: {}, json: { content: [{ type: 'tool_use', id: 'ask', name: 'ask_user', input: { question: 'NATIVE-ASK-QA' } }], stop_reason: 'tool_use' } });
-        const asking = view.handleUserMessage(`Ask QA ${action}`, null);
-        await waitUntil(() => view.contentEl.textContent.includes('NATIVE-ASK-QA'));
-        if (action === 'stop') view.handleStop(); else if (action === 'clear') view.clearConversation(); else await view.onClose();
-        await Promise.race([asking, new Promise((_, reject) => setTimeout(() => reject(new Error('ask_user not released')), 2000))]);
-        requirePass(!view.running, `${action} left running`);
-        if (action === 'close') await view.onOpen();
-        report.checks.push(`ask-user-${action}`);
-      }
+      // An ask_user question waits in the real view's card without holding the turn; Clear removes it.
+      view.clearConversation();
+      let asks = 0;
+      obTransport.requestUrl = async () => ({ status: 200, headers: {}, json: asks++ === 0
+        ? { content: [{ type: 'tool_use', id: 'ask', name: 'ask_user', input: { questions: [{ id: 'qa', question: 'NATIVE-ASK-QA', options: [{ label: 'Yes' }] }] } }], stop_reason: 'tool_use' }
+        : { content: [{ type: 'text', text: 'Waiting for the answer.' }], stop_reason: 'end_turn' } });
+      await view.handleUserMessage('Ask QA', null);
+      requirePass(!view.running, 'ask_user held the turn');
+      requirePass(!!view.contentEl.querySelector('.ochatting-question')?.textContent?.includes('NATIVE-ASK-QA'), 'ask_user question not in its card');
+      view.clearConversation();
+      requirePass(!view.contentEl.querySelector('.ochatting-question'), 'Clear left the question');
+      report.checks.push('ask-user-card');
       view.clearConversation();
       const pending: ((value: any) => void)[] = [];
       obTransport.requestUrl = () => new Promise(resolve => pending.push(resolve));

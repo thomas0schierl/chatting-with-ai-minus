@@ -12,6 +12,7 @@ import { ChangeLog } from "../tools/undo";
 import { screenAwake } from "../platform/screen-awake";
 import { historySelection } from "../selection-history";
 import { newTurnId, withoutLargeVisibleToolText } from "../agent/history";
+import { QUESTIONS_ASKED, allAnswered, answeredIn, answersMessage, hasReplies, queuedQuestions, withoutReplies, type QuestionPick, type QueuedQuestion } from "../agent/questions";
 import { mentionContext, mentionedFiles } from "./mentions";
 import { attachmentBudgetError } from "../files/attachments";
 import { findSkills, invokedSkillsContext, type Skill } from "../agent/skills";
@@ -24,6 +25,23 @@ import { appLifecycle } from "../platform/lifecycle";
 import { VoiceController, VOICE_TIMING, requestContext, type VoiceTurnHooks, type VoiceViewState, type VoiceResumeState } from "../voice/controller";
 
 export const VIEW_TYPE_CHAT = "ochatting-view";
+
+/**
+ * The user messages the chat shows as sent (where answers to questions
+ * arrive): a message shows once it reached the model's history (steered in,
+ * or its turn begun; refused before the provider, it goes again), and
+ * compaction leaves the chat as it is, while editing cuts it like the
+ * model's history.
+ */
+function sentText(history: ChatHistoryEntry[]): string {
+  return history.filter((row) => row.type === "user").map((row) => row.text ?? "").join("\n");
+}
+
+/** The chat's note for a message that wasn't sent: its typed text (answers go back to the card), or that it had attachments. */
+function unsentNote(typed: string, attachments: boolean): ChatHistoryEntry | undefined {
+  if (typed) return { type: "error", text: `This message wasn't sent: "${typed}"` };
+  return attachments ? { type: "error", text: "A message with attachments wasn't sent." } : undefined;
+}
 
 /** Saved/typed fallback stays compatible with pendingMessages' string format. */
 function steeredText(item: SteeredMessage): string {
@@ -74,6 +92,8 @@ interface ChatContainerProps {
   onClear: () => void;
   onStop: () => void;
   onEdit: (turnId: string, text: string) => void;
+  /** An answer to the question `key` of the queue (null: skipped). */
+  onAnswerQuestion: (key: string, pick: QuestionPick) => void;
   onRegenerate: () => void;
   onCopy: (text: string) => void;
   title: string;
@@ -105,9 +125,8 @@ interface ChatContainerApi extends Record<string, unknown> {
   /** The thinking dots, with a short label such as "Resuming…". */
   showThinking(label?: string): void;
   hideThinking(): void;
-  /** The next input answers a question; `question` is shown first unless the chat shows it already. */
-  showAskUser(question?: string): Promise<string>;
-  cancelAskUser(): void;
+  /** The conversation's question queue, in the card above the input (empty: no card). */
+  setQuestions?(questions: QueuedQuestion[]): void;
   setInputEnabled(enabled: boolean, preservePreparation?: boolean): void;
   setBusy(busy: boolean): void;
   setComposerLocked?(locked: boolean): void;
@@ -226,8 +245,6 @@ interface RunningTurn {
   tools: Map<string, { id: number; input: Record<string, unknown> }>;
   /** The thinking dots' label ("": just the dots); null: no dots. */
   thinking: string | null;
-  /** An `ask_user` question waiting for its answer. */
-  ask: ((answer: string) => void) | null;
   /** Typed while it runs, until the agent takes them in or they run next (shown as queued). */
   queued: string[];
   /** Typed when no loop step could take them (the turn was ending): they run next. */
@@ -238,7 +255,8 @@ interface RunningTurn {
   started: boolean;
   /** An edit's original turn, put back if the new one is stopped or refused before any answer. */
   rollback?: () => void;
-  /** Puts the unsent message back in the input, until the turn has started. */
+  /** The message of a begun turn (not an edit or voice), to tell whether the model's history took it. */
+  begun?: { turnId: string; text: string; selection: SelectionScope | null; images: ImageAttachment[]; files: FileAttachment[]; notes: string[] };
   /** Puts the unsent message back in the input, with `queued` texts typed meanwhile, until the turn has started (an edit: until answered). */
   restoreDraft?: (queued: string[]) => void;
   onStopped?: () => void;
@@ -372,6 +390,7 @@ export class ObsidianChatView extends ItemView {
         onClear: () => this.handleClear(),
         onStop: () => this.handleStop(),
         onEdit: (turnId: string, text: string) => void this.editMessage(turnId, text),
+        onAnswerQuestion: (key: string, pick: QuestionPick) => this.answerQuestion(key, pick),
         onRegenerate: () => void this.regenerate(),
         onCopy: (text: string) => this.copyAnswer(text),
         title: this.plugin.activeConversation.title,
@@ -408,6 +427,7 @@ export class ObsidianChatView extends ItemView {
   renderHistory(preserveDraft = false): void {
     const chat = this.chatContainer;
     if (!chat) return;
+    this.dropUnsentTurn(this.plugin.activeConversation);
     chat.clearMessages(preserveDraft);
     const history = this.plugin.chatHistory;
     this.shownFrom = pageStart(history, history.length);
@@ -425,6 +445,7 @@ export class ObsidianChatView extends ItemView {
     }
     // Turns before the last compaction, or no longer in the API history, lose their pencil.
     this.updateEditable();
+    this.settleAnswers(this.plugin.activeConversation);
     chat.setHasEarlier?.(this.shownFrom > 0);
     chat.setContinue(this.canContinue());
     if (!this.running && this.plugin.activeConversation.pendingTurn?.remoteEffectsPossible) {
@@ -568,7 +589,11 @@ export class ObsidianChatView extends ItemView {
     this.chatContainer?.setEditable?.((turnId) => agent.canEditTurn(turnId));
   }
 
+  /** The view is closing: what a stopped turn would put back in the input is noted in its chat instead. */
+  private closing = false;
+
   async onClose(): Promise<void> {
+    this.closing = true;
     this.endVoice();
     this.unwatchBackground?.();
     this.handleStop();
@@ -576,10 +601,12 @@ export class ObsidianChatView extends ItemView {
     this.compactions.clear();
     // The turns in the background stop too: they show and save through this view.
     for (const turn of [...this.turns.values()]) this.stopTurn(turn);
+    void this.plugin.saveChatHistory();
     if (this.chatContainer) {
       await unmount(this.chatContainer);
       this.chatContainer = undefined;
     }
+    this.closing = false;
   }
 
   /** Programmatically send a message */
@@ -605,7 +632,7 @@ export class ObsidianChatView extends ItemView {
   }
 
   /** Release expired payloads also held by mounted thumbnails, without
-   * resetting the composer, tool steps, or an in-flight ask_user. */
+   * resetting the composer or tool steps. */
   refreshAttachmentData(): void {
     this.chatContainer?.setRetainedAttachments?.(this.plugin.chatHistory);
   }
@@ -819,14 +846,12 @@ export class ObsidianChatView extends ItemView {
   }
 
   /**
-   * Show the active conversation: its history, and its running turn as far
-   * as it got (the input adds to it, a waiting question can be answered).
+   * Show the active conversation: its history and its questions, and its
+   * running turn as far as it got (the input adds to it).
    */
   private showConversation(): void {
     const chat = this.chatContainer;
     if (!chat) return;
-    // The input stops waiting for another conversation's answer (its question waits).
-    chat.cancelAskUser();
     this.renderHistory();
     chat.setTitle(this.plugin.activeConversation.title);
     const turn = this.turn;
@@ -835,12 +860,15 @@ export class ObsidianChatView extends ItemView {
     chat.setBusy(!!turn || compacting);
     if (compacting) chat.showThinking("Summarizing…");
     chat.setQueued([...turn?.queued ?? []]);
-    if (turn?.ask) this.askNow(turn);
     chat.focus();
-    // Typed after its turn's last step while it ran in the background: they run now.
+    this.runPending();
+  }
+
+  /** Typed after its turn's last step while it ran in the background (also before a restart): they run now. */
+  private runPending(): void {
     const conversation = this.plugin.activeConversation;
     const later = conversation.pendingMessages;
-    if (later?.length && !turn && !this.voice) {
+    if (later?.length && !this.turn && !this.voice) {
       delete conversation.pendingMessages;
       this.voiceLeftovers.delete(conversation);
       void this.handleUserMessage(later.join("\n\n"), null);
@@ -878,10 +906,24 @@ export class ObsidianChatView extends ItemView {
     const originalUpdatedAt = conversation.updatedAt;
     const originalNotes = conversation.notes ?? [];
     const originalUsage = conversation.usage;
+    const originalQuestions = conversation.questions;
     agent.cutBeforeTurn(turnId);
     // The history is shorter now: the next answer counts its context anew.
     if (conversation.usage) conversation.usage = { ...conversation.usage, contextTokens: 0 };
     conversation.chatHistory = history.slice(0, from);
+    // Questions the cut turns asked go with them.
+    const kept = new Set(conversation.chatHistory.map((row) => row.turnId));
+    const left = sentText(conversation.chatHistory);
+    const edited = history[index].text ?? "";
+    // The rows the cut takes away, but the message edited: the edit carries (or replaces) its answers.
+    const cut = sentText(history.slice(from).filter((row) => row !== history[index]));
+    const questions = originalQuestions?.filter((question) => kept.has(question.turnId))
+      // Answers that went only with a later cut turn are back in the card, with their answers;
+      // the others stay as they are (also those an earlier edit replaced, which no row carries).
+      .map(({ delivered, ...question }) => delivered && answeredIn(cut, question) && !answeredIn(left, question) ? question : { ...question, ...(delivered ? { delivered } : {}) });
+    if (questions?.length) conversation.questions = questions;
+    else delete conversation.questions;
+    this.showQuestions(conversation);
     if (history[index].turnId === conversation.titleSourceTurnId) delete conversation.titleSourceTurnId;
     const replacementHistory = conversation.chatHistory;
     // In its own conversation, also when another one is shown by then.
@@ -893,6 +935,14 @@ export class ObsidianChatView extends ItemView {
       conversation.titleSourceTurnId = originalTitleSource;
       conversation.updatedAt = originalUpdatedAt;
       conversation.usage = originalUsage;
+      if (originalQuestions) {
+        // The cut turns' questions come back; those still queued keep their answers.
+        const now = conversation.questions ?? [];
+        conversation.questions = [
+          ...originalQuestions.map((old) => now.find((question) => question.key === old.key) ?? old),
+          ...now.filter((question) => !originalQuestions.some((old) => old.key === question.key)),
+        ];
+      }
       if (originalNotes.length) conversation.notes = [...new Set([...originalNotes, ...conversation.notes ?? []])];
       // Preserve the rejection explanation alongside the original conversation.
       history.push(...replacementHistory.slice(from).filter(row => row.type === "error"));
@@ -903,6 +953,8 @@ export class ObsidianChatView extends ItemView {
       void this.plugin.saveChatHistory();
     };
     this.chatContainer?.cutMessages(turnId, index - from);
+    // The answers this edit replaces (its text may no longer carry them): back in the card if it is never sent.
+    this.editReplaces = (originalQuestions ?? []).filter((question) => question.delivered && answeredIn(edited, question)).map((question) => question.key);
     await this.handleUserMessage(text, selection, images, files, history[index].linkSource ?? "", rollback, undefined, history[index].voiceContext);
   }
 
@@ -944,12 +996,13 @@ export class ObsidianChatView extends ItemView {
         voice.onError(error);
         this.chatContainer?.addError(error);
         this.plugin.chatHistory.push({ type: "error", text: error });
-      } else this.chatContainer?.restoreDraft?.(text, selection, images, files);
+      } else this.restoreTyped(this.plugin.activeConversation, text, selection, images, files);
       new Notice(error);
       return;
     }
     // While a turn runs, a typed message is added to it (steering).
     if (this.running) {
+      this.answersSending(this.plugin.activeConversation, text);
       this.addToRunningTurn(text);
       return;
     }
@@ -962,19 +1015,25 @@ export class ObsidianChatView extends ItemView {
       return;
     }
     const conversation = this.plugin.activeConversation;
+    // Answers in the message (also from pendingMessages after a restart) leave the card while it goes.
+    this.answersSending(conversation, text);
     const turnId = newTurnId();
     const savedSelection = selection ? historySelection(selection) : undefined;
     // What the model should know of (an undo), told once, with this turn.
     const notes = conversation.notes ?? [];
+    // Set by editMessage just before this call (no await in between).
+    const replaces = rollback ? this.editReplaces : [];
+    this.editReplaces = [];
     delete conversation.notes;
     await this.runTurn(turnId, async (agent, callbacks, { isCurrent, begin }) => {
       // The files the message links to go along as they are now; the chat
       // shows only the typed text.
       const app = this.plugin.app;
-      const linked = await mentionContext(app, mentionedFiles(app, text, linkSource), { images, files });
+      const typed = withoutReplies(text);
+      const linked = await mentionContext(app, mentionedFiles(app, typed, linkSource), { images, files });
       if (!isCurrent()) return;
       // Skills named as /name go along loaded, before the linked files.
-      const skills = await invokedSkillsContext(app, this.plugin.settings.skillsFolder, text);
+      const skills = await invokedSkillsContext(app, this.plugin.settings.skillsFolder, typed);
       if (!isCurrent()) return;
       const mentioned = skills
         ? { text: linked ? `${skills.text}\n\n${linked.text}` : skills.text, images: linked?.images ?? [], files: linked?.files ?? [],
@@ -1005,7 +1064,7 @@ export class ObsidianChatView extends ItemView {
       chat.setTitle(conversation.title);
       begin();
       await agent.run(text, callbacks, selection, images, turnId, mentioned, notes, files, conversation.usage?.contextTokens, transcript ?? null);
-    }, { text, selection, images, files, notes, rollback }, voice);
+    }, { text, selection, images, files, notes, rollback, replaces }, voice);
   }
 
   /**
@@ -1036,7 +1095,7 @@ export class ObsidianChatView extends ItemView {
   private async runTurn(
     turnId: string,
     start: (agent: AgentLoop, callbacks: AgentCallbacks, turn: { isCurrent: () => boolean; begin: () => void }) => Promise<void>,
-    draft?: { text: string; selection: SelectionScope | null; images: ImageAttachment[]; files: FileAttachment[]; notes: string[]; rollback?: () => void },
+    draft?: { text: string; selection: SelectionScope | null; images: ImageAttachment[]; files: FileAttachment[]; notes: string[]; rollback?: () => void; replaces?: string[] },
     voice?: VoiceTurnHooks,
   ): Promise<void> {
     const chat = this.chatContainer;
@@ -1047,7 +1106,7 @@ export class ObsidianChatView extends ItemView {
     const release = agent.hold();
     const turn: RunningTurn = {
       conversation, history: conversation.chatHistory, agent, answerShown: false,
-      streaming: null, tools: new Map(), thinking: null, ask: null, queued: [], unsteered: [],
+      streaming: null, tools: new Map(), thinking: null, queued: [], unsteered: [],
       // The screen stays on while the answer is generated.
       releaseScreen: screenAwake.hold(),
       started: !draft, rollback: draft?.rollback,
@@ -1064,7 +1123,7 @@ export class ObsidianChatView extends ItemView {
     // Saved with the chat when the app goes to the background; still there
     // at the next start, the turn was cut off. A new message only once it
     // is sent (`begin`).
-    if (!draft) conversation.pendingTurn = { ...conversation.pendingTurn, turnId, startedAt: Date.now() };
+    if (!draft) conversation.pendingTurn = { ...conversation.pendingTurn, turnId, startedAt: Date.now(), taken: true };
     chat.setContinue(false);
     // The input stays usable: what is sent now is added to this turn.
     chat.setBusy(true);
@@ -1083,13 +1142,19 @@ export class ObsidianChatView extends ItemView {
     if (draft) {
       turn.restoreDraft = (queued) => {
         restoreNotes();
-        if (!voice) chat.restoreDraft?.([draft.text, ...queued].join("\n\n"), draft.selection, draft.images, draft.files);
+        if (!voice) this.restoreTyped(conversation, [draft.text, ...queued].join("\n\n"), draft.selection, draft.images, draft.files);
+        else this.settleAnswers(conversation);
       };
     }
     let consumedVoiceScope: SelectionScope | null = null;
     const begin = () => {
       turn.started = true;
-      conversation.pendingTurn = { turnId, startedAt: Date.now() };
+      if (draft && !voice && !turn.rollback) turn.begun = { turnId, text: draft.text, selection: draft.selection, images: draft.images, files: draft.files, notes: draft.notes };
+      conversation.pendingTurn = {
+        turnId, startedAt: Date.now(),
+        ...(draft?.notes.length ? { notes: draft.notes } : {}),
+        ...(draft?.replaces?.length ? { replaces: draft.replaces } : {}),
+      };
       if (voice && draft?.selection && chat.getSelection() === draft.selection) {
         consumedVoiceScope = draft.selection;
         chat.clearSelection?.();
@@ -1136,6 +1201,10 @@ export class ObsidianChatView extends ItemView {
           history.push({ type: "error", text: error });
         },
         onThinking: () => {
+          // The loop works on the message: the model's history has it (a later compaction may cut it from what is sent).
+          turn.begun = undefined;
+          // Saved with the next save, like the model's history that took it.
+          if (conversation.pendingTurn?.turnId === turnId) conversation.pendingTurn.taken = true;
           // Streamed text the loop didn't deliver (a cut-off stream) goes before the next request.
           this.endStream(turn, false);
           this.setThinking(turn, "");
@@ -1176,17 +1245,18 @@ export class ObsidianChatView extends ItemView {
         onToolCall: (name, input) => {
           answering();
           this.setThinking(turn, null);
-          // Streamed text the loop didn't deliver (it precedes ask_user,
-          // which shows the question itself) is dropped, as before streaming.
+          // Streamed text the loop didn't deliver (it precedes ask_user in a
+          // voice turn, which speaks the question) is dropped, as before streaming.
           this.endStream(turn, false);
-          if (name === "ask_user") return;
+          // A question in a voice turn is its spoken answer, no step.
+          if (name === "ask_user" && voice) return;
           // A tool step on screen shows that the turn did something.
           turn.answerShown = true;
           voice?.onToolCall(name);
           turn.tools.set(name, { id: ui()?.addToolCall(name, input) ?? -1, input });
         },
         onToolResult: (name, { focus, ...result }: ToolResult) => {
-          if (name === "ask_user") return;
+          if (name === "ask_user" && voice) return;
           const call = turn.tools.get(name);
           turn.tools.delete(name);
           if (call) ui()?.updateToolResult(call.id, name, result);
@@ -1207,25 +1277,14 @@ export class ObsidianChatView extends ItemView {
           history.push({ type: "assistant", text });
           voice?.onText(text);
         },
-        onAskUser: async (question) => {
-          answering();
-          // The question is the answer so far.
-          turn.answerShown = true;
-          this.setThinking(turn, null);
-          this.endStream(turn, false);
-          // The chat shows the question and the typed answer; keep both in
-          // the history so they are still there after a reload.
-          history.push({ type: "assistant", text: question });
-          // Answered in its conversation: now, or when the user comes back to it.
-          const answer = await new Promise<string>((resolve) => {
-            turn.ask = resolve;
-            if (ui()) this.askNow(turn, question);
-            else new Notice(`"${conversation.title}" has a question for you.`);
-          });
-          // Empty: Stop, Clear or deleting the chat dropped the question.
-          if (!answer || !isCurrent()) return "";
-          history.push({ type: "user", text: answer });
-          return answer;
+        onAskUser: async (questions) => {
+          // They join the conversation's queue and the agent goes on; the
+          // answers come as a user message once all are answered.
+          conversation.questions = [...conversation.questions ?? [], ...queuedQuestions(questions, turnId, conversation.questions ?? [], sentText(conversation.chatHistory))];
+          const shown = ui();
+          if (shown) this.showQuestions(conversation);
+          else new Notice(`"${conversation.title}" has a question for you.`);
+          return QUESTIONS_ASKED;
         },
         onError: (error) => {
           this.setThinking(turn, null);
@@ -1271,8 +1330,13 @@ export class ObsidianChatView extends ItemView {
         // Rollback renders history, which clears attachment chips. Restore after it.
         // Typed meanwhile, added to a message that was never sent: back in the input with it.
         const unsent = [draft.text, ...this.takeLeftovers(turn).map(steeredText)].join("\n\n");
-        if (ui() && !voice) chat.restoreDraft?.(unsent, draft.selection, draft.images, draft.files);
-        else conversation.chatHistory.push({ type: "error", text: `This message wasn't sent: "${unsent}"` });
+        if (ui() && !voice) this.restoreTyped(conversation, unsent, draft.selection, draft.images, draft.files);
+        else {
+          // Answers to the AI's questions go back to its card, not into a note about the message.
+          if (hasReplies(unsent)) this.settleAnswers(conversation);
+          const note = unsentNote(withoutReplies(unsent), draft.images.length + draft.files.length > 0);
+          if (note) conversation.chatHistory.push(note);
+        }
       }
       turn.releaseScreen();
       release();
@@ -1318,6 +1382,9 @@ export class ObsidianChatView extends ItemView {
           conversation.pendingMessages = [...conversation.pendingMessages ?? [], ...later.map(steeredText)];
           if (shown && voice?.active()) this.voiceLeftovers.set(conversation, [...earlier, ...later]);
         }
+        // Answers the model now has leave the card; those it didn't get come
+        // back (waiting in pendingMessages, or run next, they stay out).
+        this.settleAnswers(conversation);
         // Persist after each turn
         void this.plugin.saveChatHistory();
         if (later.length && shown && !voice?.active()) void this.handleUserMessage(later.map(steeredText).join("\n\n"), null);
@@ -1334,20 +1401,105 @@ export class ObsidianChatView extends ItemView {
   }
 
   /**
-   * Let the user answer `turn`'s question in the input (its conversation is
-   * shown). `question`: shown now; without it the chat shows it already.
+   * An answer to a queued question. Once every question in the card has
+   * one, the answers go as one message: into the running turn, or as the
+   * next. They stay in the chat's queue (saved) until the model has them.
    */
-  private askNow(turn: RunningTurn, question?: string): void {
-    const chat = this.chatContainer;
-    if (!chat || !turn.ask) return;
-    chat.setInputEnabled(true);
-    void chat.showAskUser(question).then((answer) => {
-      // Switching away cancels the input, not the question: it waits for the return.
-      if (!answer && this.turns.get(turn.conversation.id) === turn && !this.shownChat(turn)) return;
-      const resolve = turn.ask;
-      turn.ask = null;
-      resolve?.(answer);
-    });
+  private answerQuestion(key: string, pick: QuestionPick): void {
+    const conversation = this.plugin.activeConversation;
+    conversation.questions = (conversation.questions ?? []).map((question) => question.key === key ? { ...question, answer: pick } : question);
+    const open = this.shownQuestions(conversation);
+    if (allAnswered(open) && !this.undoing && !this.compactions.has(conversation.id)) {
+      void this.handleUserMessage(answersMessage(open), null);
+    } else {
+      if (allAnswered(open)) new Notice("Please wait for the current response to complete.");
+      this.showQuestions(conversation);
+    }
+    void this.plugin.saveChatHistory();
+  }
+
+  /** The answers an edit replaces, from editMessage to the turn it starts. */
+  private editReplaces: string[] = [];
+
+  /** Keys of questions whose answers are on their way to the model, per conversation (not in the card). */
+  private sending = new WeakMap<ConversationRecord, Set<string>>();
+
+  /** The questions the card shows: not delivered, not on their way (also not waiting in pendingMessages). */
+  private shownQuestions(conversation: ConversationRecord) {
+    const sending = this.sending.get(conversation);
+    const pending = (conversation.pendingMessages ?? []).join("\n");
+    return (conversation.questions ?? []).filter((question) => !question.delivered && !sending?.has(question.key) && !answeredIn(pending, question));
+  }
+
+  private showQuestions(conversation: ConversationRecord): void {
+    if (this.plugin.activeConversationId === conversation.id) this.chatContainer?.setQuestions?.(this.shownQuestions(conversation));
+  }
+
+  /** The answers in `text` are on their way: out of the card. */
+  private answersSending(conversation: ConversationRecord, text: string): void {
+    if (!hasReplies(text)) return;
+    const keys = (conversation.questions ?? []).filter((question) => answeredIn(text, question)).map((question) => question.key);
+    if (!keys.length) return;
+    this.sending.set(conversation, new Set([...this.sending.get(conversation) ?? [], ...keys]));
+    this.showQuestions(conversation);
+  }
+
+  /**
+   * With no turn running in `conversation`: answers the chat shows as sent
+   * (`sentText`) are delivered (they stay, out of the card, until their
+   * asking turn goes, so cutting the message that carried them brings them
+   * back); answers on their way that didn't get there are back in the card.
+   * The card shows the conversation's queue either way.
+   */
+  private settleAnswers(conversation: ConversationRecord): void {
+    if (!this.turns.has(conversation.id)) {
+      this.sending.delete(conversation);
+      const questions = conversation.questions ?? [];
+      if (questions.some((question) => question.answer !== undefined && !question.delivered)) {
+        const text = sentText(conversation.chatHistory);
+        conversation.questions = questions.map((question) => !question.delivered && answeredIn(text, question) ? { ...question, delivered: true } : question);
+      }
+      // Delivered ones go with their asking turn.
+      const turns = new Set(conversation.chatHistory.map((row) => row.turnId));
+      const kept = (conversation.questions ?? []).filter((question) => !question.delivered || turns.has(question.turnId));
+      if (kept.length) conversation.questions = kept;
+      else delete conversation.questions;
+    }
+    this.showQuestions(conversation);
+  }
+
+  /**
+   * A turn cut off (Obsidian ended) after its row was saved but before the
+   * loop took its message: the message wasn't sent. Its row becomes a
+   * "wasn't sent" note (its answers go back to the card, its undo notes to
+   * the next message), once, before the chat shows it.
+   */
+  private dropUnsentTurn(conversation: ConversationRecord): void {
+    const pending = conversation.pendingTurn;
+    if (!pending || pending.taken || this.turns.has(conversation.id)) return;
+    const history = conversation.chatHistory;
+    const at = history.findIndex((row) => row.type === "user" && row.turnId === pending.turnId);
+    // Not marked taken (also a save from before the mark existed): the model's history decides, and anything after the row.
+    if (at < 0 || history.slice(at + 1).some((row) => row.type !== "error") || this.plugin.agentFor(conversation).holdsTurn(pending.turnId)) return;
+    const text = history[at].text ?? "";
+    const note = unsentNote(withoutReplies(text), !!(history[at].images?.length || history[at].attachedFiles?.length));
+    // With what was said before it in a voice conversation.
+    const from = visibleTurnStart(history, at);
+    history.splice(from, at + 1 - from);
+    if (note) history.push(note);
+    // Answers it carried, or replaced as an edit, are back in the card.
+    const back = (question: QueuedQuestion) => answeredIn(text, question) || !!pending.replaces?.includes(question.key);
+    conversation.questions = conversation.questions?.map(({ delivered, ...question }) => delivered && !back(question) ? { ...question, delivered } : question);
+    if (pending.notes?.length) conversation.notes = [...new Set([...pending.notes, ...conversation.notes ?? []])];
+    delete conversation.pendingTurn;
+    void this.plugin.saveChatHistory();
+  }
+
+  /** An unsent message back in the input: what was typed; answers in it go back to the card. */
+  private restoreTyped(conversation: ConversationRecord, text: string, selection: SelectionScope | null, images: ImageAttachment[], files: FileAttachment[]): void {
+    const typed = withoutReplies(text);
+    if (hasReplies(text)) this.settleAnswers(conversation);
+    if (typed || images.length || files.length) this.chatContainer?.restoreDraft?.(typed, selection, images, files);
   }
 
   // ─── Undo per answer ────────────────────────────────────────────────
@@ -1543,7 +1695,8 @@ export class ObsidianChatView extends ItemView {
 
   /**
    * Stops `turn` (shown or in the background): what it showed so far
-   * stays; what was added to it and a waiting question are dropped. Not
+   * stays; what was added to it is dropped (answers to the AI's questions
+   * go back to its card). Not
    * yet answered, an edit's original turn and the unsent message come back,
    * with what was typed meanwhile. `deferRestore`: the input is filled by
    * the returned function instead (after the next conversation rendered).
@@ -1567,14 +1720,33 @@ export class ObsidianChatView extends ItemView {
     this.chatContainer?.updateConversations();
     delete turn.conversation.pendingTurn;
     shown?.setContinue(false);
-    const ask = turn.ask;
-    turn.ask = null;
-    ask?.("");
-    // Otherwise the next message would answer the stopped turn's question.
-    shown?.cancelAskUser();
     rollback?.();
     // Rollback renders history, which clears attachment chips. Restore after it.
-    const restore = shown && restoreDraft ? () => restoreDraft(queued) : undefined;
+    // Begun, but stopped before the model's history took the message (while
+    // a summary was written, or the folder rules read): it wasn't sent, so
+    // it leaves the chat and goes back to the input (answers to the card).
+    const begun = turn.begun;
+    const unsent = begun && !turn.agent.holdsTurn(begun.turnId) ? begun : undefined;
+    const restoreUnsent = !!unsent && !!shown && !this.closing;
+    if (unsent) {
+      const at = turn.history.findIndex((row) => row.type === "user" && row.turnId === unsent.turnId);
+      if (at >= 0) turn.history.splice(at, 1);
+      // What the model should have learned with it (an undo) waits for the next message.
+      if (unsent.notes.length) turn.conversation.notes = [...new Set([...unsent.notes, ...turn.conversation.notes ?? []])];
+      // Not shown (or the view closing): the chat says what wasn't sent; its answers go back to the card.
+      const note = unsentNote(withoutReplies(unsent.text), unsent.images.length + unsent.files.length > 0);
+      if (!restoreUnsent && note) turn.history.push(note);
+      if (shown) {
+        this.renderHistory(true);
+        this.plugin.touchConversation();
+        shown.setTitle(turn.conversation.title);
+      }
+    }
+    // Answers the model has stay out of the card; those dropped with the turn come back.
+    this.settleAnswers(turn.conversation);
+    const restore = shown && restoreDraft ? () => restoreDraft(queued)
+      : restoreUnsent && unsent ? () => this.restoreTyped(turn.conversation, [unsent.text, ...queued].join("\n\n"), unsent.selection, unsent.images, unsent.files)
+      : undefined;
     if (deferRestore) return restore;
     restore?.();
     return undefined;
@@ -1612,10 +1784,13 @@ export class ObsidianChatView extends ItemView {
       // Clear drops the turn: nothing comes back.
       turn.rollback = undefined;
       turn.restoreDraft = undefined;
+      turn.begun = undefined;
       this.stopTurn(turn);
     }
     this.dismissContinue();
     delete this.plugin.activeConversation.pendingMessages;
+    delete this.plugin.activeConversation.questions;
+    this.sending.delete(this.plugin.activeConversation);
     this.plugin.agent.clear();
     this.plugin.chatHistory = [];
     delete this.plugin.activeConversation.notes;
@@ -1624,7 +1799,7 @@ export class ObsidianChatView extends ItemView {
     this.plugin.touchConversation();
     this.chatContainer?.setTitle(this.plugin.activeConversation.title);
     this.chatContainer?.clearMessages();
-    this.chatContainer?.cancelAskUser();
+    this.chatContainer?.setQuestions?.([]);
     this.chatContainer?.setInputEnabled(true);
     this.chatContainer?.setBusy(false);
     // Clear persisted state
