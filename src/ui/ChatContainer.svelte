@@ -16,7 +16,7 @@
   import type { VoiceViewState } from "../voice/controller";
   import { AttachmentPreparation } from "./attachment-preparation";
   import { withoutLargeVisibleToolText } from "../agent/history";
-  import { contextShare, formatCost, formatTokens } from "../agent/usage";
+  import { contextShare, formatCost, formatTokens, percentOf } from "../agent/usage";
 
   /** Where a ChatGPT account sees its plan's Codex usage. */
   const CHATGPT_USAGE_URL = "https://chatgpt.com/codex/settings/usage";
@@ -1224,6 +1224,7 @@
       <!-- How full the context is (full: the compaction point); a click shows the details -->
       {@const filled = contextShare(usage.contextTokens, usage.compactAt, usage.contextWindow)}
       {@const share = filled ?? 0}
+      {@const sharePercent = percentOf(Math.min(usage.contextTokens, usage.compactAt ?? usage.contextWindow ?? 0), usage.compactAt ?? usage.contextWindow ?? 1)}
       <div class="ochatting-usage" bind:this={usageEl}>
         <button
           class="ochatting-icon-btn ochatting-usage-btn"
@@ -1232,7 +1233,7 @@
           onclick={() => usageOpen = !usageOpen}
           aria-expanded={usageOpen}
           aria-label={usage.plan ? "Context" : "Context and cost"}
-          title={filled === undefined ? `Context ${formatTokens(usage.contextTokens)} tokens` : usage.compactAt !== undefined ? `Context ${Math.round(share * 100)} % of the way to compaction` : `Context ${Math.round(share * 100)} % full`}
+          title={filled === undefined ? `Context ${formatTokens(usage.contextTokens)} tokens` : usage.compactAt !== undefined ? `Context ${sharePercent} % of the way to compaction` : `Context ${sharePercent} % full`}
         >
           <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
             <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-opacity="0.25" stroke-width="2.5"></circle>
@@ -1246,12 +1247,13 @@
           <div class="ochatting-usage-pop" role="dialog" aria-label={usage.plan ? "Context" : "Context and cost"}>
             <div class="ochatting-usage-row">
               <span>Context</span>
-              <span>{formatTokens(usage.contextTokens)}{usage.contextWindow ? ` of ${formatTokens(usage.contextWindow)}` : " tokens"}{usage.compactAt === undefined && usage.contextWindow ? ` (${Math.round(share * 100)} %)` : ""}</span>
+              <!-- Of the window too, so past the compaction point (not compacted yet) it still shows how close the window is -->
+              <span>{formatTokens(usage.contextTokens)}{usage.contextWindow ? ` of ${formatTokens(usage.contextWindow)} (${percentOf(usage.contextTokens, usage.contextWindow)} %)` : " tokens"}</span>
             </div>
             {#if usage.compactAt !== undefined}
               <div class="ochatting-usage-row">
                 <span>Compacts at</span>
-                <span>{formatTokens(usage.compactAt)} ({Math.round(share * 100)} % reached)</span>
+                <span>{formatTokens(usage.compactAt)} ({sharePercent} % reached)</span>
               </div>
             {/if}
             {#if filled !== undefined}

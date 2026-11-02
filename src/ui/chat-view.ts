@@ -1242,7 +1242,8 @@ export class ObsidianChatView extends ItemView {
           history.push({ type: "error", text: note, errorKind: "paused" });
           turn.paused = true;
           if (selection && conversation.pendingTurn?.turnId === turnId) conversation.pendingTurn.selection = historySelection(selection);
-          voice?.onError(`${note} Continue in the chat to go on.`);
+          // Not a failure: the voice says so, and that it can go on.
+          voice?.onText(`${note} Continue in the chat to go on.`);
         },
         // Added to the running turn (typed or spoken): shown where the agent took it in.
         onSteered: (text) => {
@@ -1309,7 +1310,7 @@ export class ObsidianChatView extends ItemView {
           shown.setBusy(false);
           shown.focus();
         } else {
-          new Notice(`Answer ready in "${conversation.title}".`);
+          new Notice(turn.paused ? `"${conversation.title}" paused; Continue in the chat to go on.` : `Answer ready in "${conversation.title}".`);
         }
         // Not shown: saved with the chat, they run when it's shown again.
         // A voice conversation takes them itself; not shown, they wait in its chat.
