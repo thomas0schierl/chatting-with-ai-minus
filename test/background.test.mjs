@@ -784,3 +784,21 @@ for (const provider of ['anthropic', 'openai']) test(`${provider}: failed durabl
   assert.equal(requests.length, 0);
   assert.ok(plugin.chatHistory.some(row => row.type === 'error' && /checkpoint/.test(row.text)));
 });
+
+test('A turn that pauses in the background says so in its notice, not that its answer is ready', async () => {
+  const { plugin, view } = await chatSetup('anthropic');
+  plugin.settings.maxIterations = 2;
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  transport(async (body, index) => {
+    if (index === 1) await held;
+    return response('anthropic', [call(`read${index}`, 'read_file', { path: 'Cases/Case Template.md' })], 'tool_use', index);
+  });
+  const running = view.handleUserMessage('Read the template twice', null);
+  await tick();
+  view.newChat();
+  release();
+  await running;
+  assert.ok(globalThis.__notices.some(notice => notice.includes('paused')));
+  assert.ok(!globalThis.__notices.some(notice => notice.startsWith('Answer ready')));
+});

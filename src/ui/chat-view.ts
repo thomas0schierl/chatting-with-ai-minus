@@ -1301,7 +1301,8 @@ export class ObsidianChatView extends ItemView {
           history.push({ type: "error", text: note, errorKind: "paused" });
           turn.paused = true;
           if (selection && conversation.pendingTurn?.turnId === turnId) conversation.pendingTurn.selection = historySelection(selection);
-          voice?.onError(`${note} Continue in the chat to go on.`);
+          // Not a failure: the voice says so, and that it can go on.
+          voice?.onText(`${note} Continue in the chat to go on.`);
         },
         // Added to the running turn (typed or spoken): shown where the agent took it in.
         onSteered: (text) => {
@@ -1373,7 +1374,7 @@ export class ObsidianChatView extends ItemView {
           shown.setBusy(false);
           shown.focus();
         } else {
-          new Notice(`Answer ready in "${conversation.title}".`);
+          new Notice(turn.paused ? `"${conversation.title}" paused; Continue in the chat to go on.` : `Answer ready in "${conversation.title}".`);
         }
         // Not shown: saved with the chat, they run when it's shown again.
         // A voice conversation takes them itself; not shown, they wait in its chat.
@@ -1721,6 +1722,8 @@ export class ObsidianChatView extends ItemView {
     delete turn.conversation.pendingTurn;
     shown?.setContinue(false);
     rollback?.();
+    // The stopped turn's message gets its pencil (its turn's end no longer does it).
+    if (shown) this.updateEditable();
     // Rollback renders history, which clears attachment chips. Restore after it.
     // Begun, but stopped before the model's history took the message (while
     // a summary was written, or the folder rules read): it wasn't sent, so

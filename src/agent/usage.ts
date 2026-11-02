@@ -86,6 +86,11 @@ export function contextShare(contextTokens: number, compactAt: number | undefine
   return limit ? Math.min(1, contextTokens / limit) : undefined;
 }
 
+/** `part` as a whole percentage of `whole`, rounded down ("100" only once reached). */
+export function percentOf(part: number, whole: number): number {
+  return Math.floor(part * 100 / whole);
+}
+
 /** "45.2k", "1.1M". */
 export function formatTokens(tokens: number): string {
   if (tokens >= MILLION) return `${(tokens / MILLION).toFixed(1).replace(/\.0$/, "")}M`;
